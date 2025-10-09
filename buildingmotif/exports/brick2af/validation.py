@@ -12,6 +12,7 @@ from buildingmotif.exports.brick2af.utils import (
     _definition_to_shape,
     _definition_to_sparql,
 )
+from buildingmotif.namespaces import BMOTIF, RDF
 
 BRICK = Namespace("https://brickschema.org/schema/Brick#")
 
@@ -316,99 +317,6 @@ def generate_html_report(
         file.write(html_content)
 
 
-def validate(manifest, model, rules, output_path, format):
-    # Ensure a BuildingMOTIF instance exists
-    try:
-        bm = get_building_motif()
-    except Exception:
-        bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant")
-
-    brick = Library.load(ontology_graph="../libraries/brick/Brick.ttl")
-    Library.load(ontology_graph="http://qudt.org/2.1/vocab/unit")
-    Library.load(ontology_graph="http://qudt.org/2.1/vocab/quantitykind")
-    Library.load(ontology_graph="http://qudt.org/2.1/vocab/dimensionvector")
-    Library.load(ontology_graph="http://qudt.org/2.1/schema/facade/qudt")
-
-    constraints = Library.load(ontology_graph="constraints/constraints.ttl")
-
-    # Use the provided BuildingMOTIF Model instance
-
-    manifest_sc = ShapeCollection.create()
-    if isinstance(manifest, Graph):
-        manifest_sc.graph += manifest
-    else:
-        manifest_sc.graph.parse(manifest, format="ttl")
-    model.update_manifest(manifest_sc)
-
-    successful_rules = defaultdict(lambda: defaultdict(dict))
-    # get the SPARQL query for each rule
-    if isinstance(rules, dict):
-        rules_dict = rules
-    else:
-        with open(rules, "r") as f:
-            rules_dict = json.load(f)
-    for rule, defn in rules_dict.items():
-        rule = f"http://example.org/building#{rule}"
-        for classname in defn["applicability"]:
-            class_ = BRICK[classname]
-            for variable in defn["definitions"]:
-                # this only queries for 1 variable
-                query = _definition_to_sparql(
-                    class_, defn["definitions"][variable], variable
-                )
-                results = model.graph.query(query)
-                for row in results.bindings:
-                    inst = row["root"]
-                    successful_rules[rule][inst].update(row)
-        # loop through all 'inst' for this rule. If the length of its dictionary == len(defn["definitions"]), then it's successful
-        for inst in deepcopy(successful_rules[rule]):
-            if (
-                len(successful_rules[rule][inst]) != len(defn["definitions"]) + 1
-            ):  # +1 for the 'root' variable
-                del successful_rules[rule][inst]
-
-    res = model.validate(error_on_missing_imports=False)
-    res.report.serialize("output.ttl", format="ttl")
-
-    grouped_diffs = defaultdict(lambda: defaultdict(list))
-    for focus_node, diffs in res.diffset.items():
-        for diff in diffs:
-            original_shape = find_original_shape(model, diff.failed_shape)
-            ## remove focus_node from the successful rules
-            # if original_shape in successful_rules:
-            #    if focus_node in successful_rules[original_shape]:
-            #        del successful_rules[original_shape][focus_node]
-            grouped_diffs[original_shape][focus_node].append(diff.reason())
-
-    # NOTE: everything seems to be in 'grouped_diffs'. One rule gets dropped for some reason...
-    # doesn't seem to be the same one each time
-    with open("grouped_diffs.json", "w") as f:
-        json.dump(grouped_diffs, f, indent=4)
-    if format == "html":
-        generate_html_report(grouped_diffs, successful_rules, output_path + ".html")
-    else:
-        generate_markdown_report(grouped_diffs, successful_rules, output_path + ".md")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Validate a model against a manifest and output the results as an HTML or Markdown file."
-    )
-    parser.add_argument("manifest_ttl", help="Path to the manifest.ttl file")
-    parser.add_argument("model_ttl", help="Path to the model.ttl file")
-    parser.add_argument("rule_json", help="Path to the rule.json file")
-    parser.add_argument("output_path", help="Path to the output file (no extension)")
-    parser.add_argument("format", help="Format of the output file [md, html]")
-
-    args = parser.parse_args()
-    manifest_g = Graph()
-    manifest_g.parse(args.manifest_ttl, format="ttl")
-    model = Model.from_file(args.model_ttl)
-    validate(
-        manifest_g, model, args.rule_json, args.output_path, args.format
-    )
-
-
 def apply_rules_to_model(model: Model, rules: dict):
     """Compute rule bindings for a BuildingMOTIF Model and rules dict.
 
@@ -449,12 +357,13 @@ def get_model_diffs(model):
     for focus_node, diffs in validation_context.diffset.items():
         for diff in diffs:
             original_shape = find_original_shape(model, diff.failed_shape)
-            ## remove focus_node from the successful rules
-            # if original_shape in successful_rules:
-            #    if focus_node in successful_rules[original_shape]:
-            #        del successful_rules[original_shape][focus_node]
-            grouped_diffs[original_shape][focus_node].append(diff.reason())
-
+            # skip non-Analytics_Application shapes
+            if (
+                original_shape,
+                RDF.type,
+                BMOTIF.Analytics_Application,
+            ) in validation_context.shapes_graph:
+                grouped_diffs[original_shape][focus_node].append(diff.reason())
     return grouped_diffs
 
 

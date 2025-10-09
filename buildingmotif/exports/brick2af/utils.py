@@ -9,11 +9,12 @@ try:  # prefer lxml for pretty output
     from lxml import etree  # type: ignore
 except Exception:  # fallback to stdlib
     from xml.etree import ElementTree as etree  # type: ignore
+
 from rdflib import RDF, SH, BNode, Graph, Literal, Namespace, URIRef
 from rdflib.collection import Collection
 from xmldiff import formatting, main
 
-from buildingmotif.namespaces import BRICK
+from buildingmotif.namespaces import BMOTIF, BRICK
 
 # build relationship
 RELATIONSHIPS = ["hasPoint", "hasPart", "isPointOf", "isPartOf", "feeds"]
@@ -211,6 +212,7 @@ def _definition_to_shape(defn: Dict[str, Any], ns: Namespace) -> Graph:
     shape = Graph()
     shapename = ns[defn["name"].replace(" ", "_")]
     shape.add((shapename, RDF["type"], SH["NodeShape"]))
+    shape.add((shapename, RDF["type"], BMOTIF["Analytics_Application"]))
     shape.add((shapename, SH["name"], Literal(defn["name"])))
     applicability = ", ".join(defn.get("applicability", []))
     if applicability:
