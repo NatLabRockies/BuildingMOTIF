@@ -364,6 +364,8 @@ def get_model_diffs(model):
                 BMOTIF.Analytics_Application,
             ) in validation_context.shapes_graph:
                 grouped_diffs[original_shape][focus_node].append(diff.reason())
+            else:
+                print(f"Skipping non-Analytics_Application shape: {original_shape}")
     return grouped_diffs
 
 
