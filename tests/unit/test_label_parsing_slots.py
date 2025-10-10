@@ -62,3 +62,38 @@ def test_slot_grouping_cross_order_two_groups():
             "warnings": [],
         }
     ]
+
+
+def test_slot_method_returns_copy_and_groups():
+    """
+    Demonstrates using Parser.slot() to assign slots after constructing the parsers.
+    Ensures the original parser is not mutated and that grouping works with non-adjacent tokens.
+    """
+    # Base parsers without slots
+    equip = abbreviations(COMMON_EQUIP_ABBREVIATIONS_BRICK)
+    ident = regex(r"\d+", Identifier)
+
+    # Original equip parser should have no slot
+    base_res = equip("AHU")
+    assert base_res and base_res[0].slot is None
+
+    # Use slot() to create slotted copies for grouping
+    parser = sequence(
+        equip.slot("equip"),
+        regex(r"-", Delimiter),  # not slotted, just a delimiter
+        ident.slot("equip"),
+    )
+
+    results, failed = parse_list(parser, ["AHU-7"])
+    assert len(failed) == 0
+
+    grouped = results_to_tokens(results)
+    assert grouped == [
+        {
+            "label": "AHU-7",
+            "tokens": [
+                {"identifier": "7", "type": BRICK.Air_Handling_Unit.toPython()},
+            ],
+            "warnings": [],
+        }
+    ]
