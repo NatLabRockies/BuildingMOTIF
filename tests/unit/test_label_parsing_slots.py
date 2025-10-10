@@ -32,3 +32,33 @@ def test_slot_grouping_non_adjacent():
             "warnings": [],
         }
     ]
+
+
+def test_slot_grouping_cross_order_two_groups():
+    """
+    More complex example: tokens appear as
+      <ident 1> <ident 2> <const 2> <const 1>
+    and should still pair by slot into two (identifier, type) entries.
+    """
+    parser = sequence(
+        regex(r"\d+", Identifier, slot="g1"),
+        regex(r"[-_]", Delimiter),
+        regex(r"\d+", Identifier, slot="g2"),
+        abbreviations({"SP": BRICK.Setpoint}, slot="g2"),
+        abbreviations({"AHU": BRICK.Air_Handling_Unit}, slot="g1"),
+    )
+
+    results, failed = parse_list(parser, ["1-2SPAHU"])
+    assert len(failed) == 0
+
+    grouped = results_to_tokens(results)
+    assert grouped == [
+        {
+            "label": "1-2SPAHU",
+            "tokens": [
+                {"identifier": "1", "type": BRICK.Air_Handling_Unit.toPython()},
+                {"identifier": "2", "type": BRICK.Setpoint.toPython()},
+            ],
+            "warnings": [],
+        }
+    ]
