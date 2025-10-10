@@ -78,8 +78,33 @@ class Parser(ABC):
 def results_to_tokens(results):
     tokens = []
     for r in results:
-        res = {"label": r, "tokens": []}
-        parts = iter(results[r])
+        res = {"label": r, "tokens": [], "warnings": []}
+        token_list = results[r]
+
+        # 1) Slot-first grouping: pair tokens that share a slot
+        slot_groups = defaultdict(list)
+        for t in token_list:
+            slot_name = getattr(t, "slot", None)
+            if slot_name:
+                slot_groups[slot_name].append(t)
+
+        for slot_name, group in slot_groups.items():
+            const = next((t for t in group if isinstance(t.token, Constant)), None)
+            ident = next((t for t in group if isinstance(t.token, Identifier)), None)
+            if const and ident:
+                res["tokens"].append(
+                    {
+                        "identifier": ident.token.value,
+                        "type": const.token.value.toPython(),
+                    }
+                )
+            else:
+                missing = "type" if not const else "identifier"
+                res["warnings"].append(f"Slot {slot_name} missing {missing}")
+
+        # 2) Legacy fallback: process remaining un-slotted tokens by adjacency
+        remaining = [t for t in token_list if getattr(t, "slot", None) is None]
+        parts = iter(remaining)
         first = None
         while True:
             try:
