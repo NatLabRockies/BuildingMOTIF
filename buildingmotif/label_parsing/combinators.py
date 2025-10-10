@@ -27,7 +27,7 @@ class string(Parser):
         self.s = s
         self.type_name = type_name
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
         if target.startswith(self.s):
@@ -37,7 +37,7 @@ class string(Parser):
                     ensure_token(self.type_name, self.s),
                     len(self.s),
                     id=self.id,
-                    slot=self.slot,
+                    slot=self._slot,
                 )
             ]
         return [
@@ -47,7 +47,7 @@ class string(Parser):
                 0,
                 f"Expected {self.s}, got {target[:len(self.s)]}",
                 id=self.id,
-                slot=self.slot,
+                slot=self._slot,
             )
         ]
 
@@ -58,7 +58,7 @@ class rest(Parser):
     def __init__(self, type_name: TokenOrConstructor, id=None, slot=None):
         self.type_name = type_name
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
         return [
@@ -67,7 +67,7 @@ class rest(Parser):
                 ensure_token(self.type_name, target),
                 len(target),
                 id=self.id,
-                slot=self.slot,
+                slot=self._slot,
             )
         ]
 
@@ -79,7 +79,7 @@ class substring_n(Parser):
         self.length = length
         self.type_name = type_name
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
         if len(target) >= self.length:
@@ -90,7 +90,7 @@ class substring_n(Parser):
                     ensure_token(self.type_name, value),
                     self.length,
                     id=self.id,
-                    slot=self.slot,
+                    slot=self._slot,
                 )
             ]
         return [
@@ -100,7 +100,7 @@ class substring_n(Parser):
                 0,
                 f"Expected {self.length} characters, got {target[:self.length]}",
                 id=self.id,
-                slot=self.slot,
+                slot=self._slot,
             )
         ]
 
@@ -112,7 +112,7 @@ class regex(Parser):
         self.r = r
         self.type_name = type_name
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
         match = re.match(self.r, target)
@@ -124,7 +124,7 @@ class regex(Parser):
                     ensure_token(self.type_name, value),
                     len(value),
                     id=self.id,
-                    slot=self.slot,
+                    slot=self._slot,
                 )
             ]
         return [
@@ -134,7 +134,7 @@ class regex(Parser):
                 0,
                 f"Expected {self.r}, got {target[:len(self.r)]}",
                 id=self.id,
-                slot=self.slot,
+                slot=self._slot,
             )
         ]
 
@@ -145,7 +145,7 @@ class choice(Parser):
     def __init__(self, *parsers: Parser, id=None, slot=None):
         self.parsers = parsers
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
         errors = []
@@ -153,10 +153,10 @@ class choice(Parser):
             result = p(target)
             if result and not any(r.error for r in result):
                 # inject slot if provided and not already set on tokens
-                if self.slot is not None:
+                if self._slot is not None:
                     for r in result:
                         if getattr(r, "slot", None) is None and not r.error:
-                            r.slot = self.slot
+                            r.slot = self._slot
                 return result
             if result:
                 errors.extend(
@@ -174,7 +174,7 @@ class choice(Parser):
                 0,
                 " | ".join([str(s) for s in errors]),
                 id=self.id,
-                slot=self.slot,
+                slot=self._slot,
             )
         ]  # type: ignore
 
@@ -185,10 +185,10 @@ class constant(Parser):
     def __init__(self, type_name: Token, id=None, slot=None):
         self.id = id
         self.type_name = type_name
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
-        return [TokenResult(None, self.type_name, 0, id=self.id, slot=self.slot)]
+        return [TokenResult(None, self.type_name, 0, id=self.id, slot=self._slot)]
 
 
 class abbreviations(Parser):
@@ -198,7 +198,7 @@ class abbreviations(Parser):
         parsers = [string(s, Constant(URIRef(t)), slot=slot) for s, t in patterns.items()]
         self.choice = choice(*parsers, id=id, slot=slot)
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str):
         return self.choice(target)
@@ -210,7 +210,7 @@ class sequence(Parser):
     def __init__(self, *parsers: Parser, id=None, slot=None):
         self.parsers = parsers
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target: str) -> List[TokenResult]:
         results = []
@@ -220,10 +220,10 @@ class sequence(Parser):
             if not result:
                 raise Exception("Expected result")
             # inject slot if provided and not present on child results
-            if self.slot is not None:
+            if self._slot is not None:
                 for r in result:
                     if getattr(r, "slot", None) is None and not r.error:
-                        r.slot = self.slot
+                        r.slot = self._slot
             results.extend(result)
             # if there are any errors, return the results
             if any(r.error for r in result):
@@ -240,7 +240,7 @@ class many(Parser):
     def __init__(self, seq_parser: Parser, id=None, slot=None):
         self.seq_parser = seq_parser
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target):
         results = []
@@ -255,8 +255,8 @@ class many(Parser):
             # total consumed by this repetition
             total_length = sum([r.length for r in part])
             # inject indexed slot if provided
-            if self.slot is not None:
-                indexed_slot = f"{self.slot}#{idx}"
+            if self._slot is not None:
+                indexed_slot = f"{self._slot}#{idx}"
                 for r in part:
                     if getattr(r, "slot", None) is None and not r.error:
                         r.slot = indexed_slot
@@ -278,18 +278,18 @@ class maybe(Parser):
     def __init__(self, parser: Parser, id=None, slot=None):
         self.parser = parser
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target):
         result = self.parser(target)
         # if the result is not empty and there are no errors, return the result, otherwise return a null token
         if result and not any(r.error for r in result):
-            if self.slot is not None:
+            if self._slot is not None:
                 for r in result:
                     if getattr(r, "slot", None) is None and not r.error:
-                        r.slot = self.slot
+                        r.slot = self._slot
             return result
-        return [TokenResult(None, Null(), 0, id=self.id, slot=self.slot)]
+        return [TokenResult(None, Null(), 0, id=self.id, slot=self._slot)]
 
 
 class until(Parser):
@@ -302,7 +302,7 @@ class until(Parser):
         self.type_name = type_name
         self.parser = parser
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target):
         length = 1
@@ -315,7 +315,7 @@ class until(Parser):
                         ensure_token(self.type_name, target[:length]),
                         length,
                         id=self.id,
-                        slot=self.slot,
+                        slot=self._slot,
                     )
                 ]
             length += 1
@@ -326,7 +326,7 @@ class until(Parser):
                 0,
                 f"Expected {self.type_name}, got {target[:length]}",
                 id=self.id,
-                slot=self.slot,
+                slot=self._slot,
             )
         ]
 
@@ -338,12 +338,12 @@ class extend_if_match(Parser):
         self.parser = parser
         self.type_name = type_name
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target):
         result = self.parser(target)
         if result and not any(r.error for r in result):
-            result.extend([TokenResult(None, self.type_name, 0, id=self.id, slot=self.slot)])
+            result.extend([TokenResult(None, self.type_name, 0, id=self.id, slot=self._slot)])
             return result
         return result
 
@@ -401,7 +401,7 @@ class wrap(Parser):
         self.parser: Parser = parser
         self.type_name: TokenOrConstructor = type_name
         self.id = id
-        self.slot = slot
+        self._slot = slot
 
     def __call__(self, target) -> List[TokenResult]:
         result: List[TokenResult] = self.parser(target)
@@ -414,7 +414,7 @@ class wrap(Parser):
                     ensure_token(self.type_name, value),
                     len(value),
                     id=self.id,
-                    slot=self.slot,
+                    slot=self._slot,
                 )
             ]
         return result
