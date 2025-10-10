@@ -64,6 +64,51 @@ class Parser(ABC):
 
         return cls
 
+    def clone(self, **overrides):
+        """
+        Create a new parser instance of the same class with the same constructor args,
+        overridden by any provided keyword arguments.
+        """
+        args = dict(self.__args__)
+        args.update(overrides)
+        sig = signature(self.__class__.__init__)
+        vararg_name = None
+        for pname, param in sig.parameters.items():
+            if pname == "self":
+                continue
+            if param.kind == Parameter.VAR_POSITIONAL:
+                vararg_name = pname
+                break
+        varargs = args.get(vararg_name, []) if vararg_name else []
+        kwargs = {k: v for k, v in args.items() if k != vararg_name}
+        return self.__class__(*varargs, **kwargs)
+
+    def slot(self, name: str):
+        """
+        Return a copy of this parser with its slot set to `name` (does not mutate the original).
+        If the underlying parser does not accept a `slot` parameter, returns a lightweight
+        wrapper that injects the slot into emitted TokenResults.
+        """
+        sig = signature(self.__class__.__init__)
+        if "slot" in sig.parameters:
+            return self.clone(slot=name)
+
+        class _SlotWrapper(Parser):
+            def __init__(self, inner, slot_name):
+                self.inner = inner
+                # minimal args for potential serialization
+                self.__args__ = {"parser": inner, "slot": slot_name}
+
+            def __call__(self, target: str):
+                res = self.inner(target)
+                if res and not any(r.error for r in res):
+                    for r in res:
+                        if getattr(r, "slot", None) is None and not r.error:
+                            r.slot = name
+                return res
+
+        return _SlotWrapper(self, name)
+
     @abstractmethod
     def __call__(self, target: str) -> List[TokenResult]:
         pass
