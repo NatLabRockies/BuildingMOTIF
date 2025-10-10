@@ -247,7 +247,10 @@ class many(Parser):
         idx = 0
         while True:
             part = self.seq_parser(target)
-            if not part or any(r.error for r in part):
+            if not part:
+                break
+            # If the parser fails immediately (first token has no value), stop without adding
+            if part[0].value is None:
                 break
             # total consumed by this repetition
             total_length = sum([r.length for r in part])
@@ -258,6 +261,9 @@ class many(Parser):
                     if getattr(r, "slot", None) is None and not r.error:
                         r.slot = indexed_slot
             results.extend(part)
+            # if this repetition produced an error, include what we have and stop
+            if any(r.error for r in part):
+                break
             if total_length == 0:
                 # prevent infinite loops on zero-length matches
                 break
