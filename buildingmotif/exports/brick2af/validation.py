@@ -1,13 +1,12 @@
-import argparse
 import json
+import logging
 import re
 from collections import defaultdict
 from copy import deepcopy
 
 from rdflib import Graph, Namespace, URIRef
 
-from buildingmotif import BuildingMOTIF, get_building_motif
-from buildingmotif.dataclasses import Library, Model, ShapeCollection
+from buildingmotif.dataclasses import Model
 from buildingmotif.exports.brick2af.utils import (
     _definition_to_shape,
     _definition_to_sparql,
@@ -331,6 +330,7 @@ def apply_rules_to_model(model: Model, rules: dict):
                 query = _definition_to_sparql(
                     class_, defn["definitions"][variable], variable
                 )
+                logging.info(f"Applying rule {rule} with query:\n{query}")
                 results = model.graph.query(query)
                 for row in results.bindings:
                     inst = row["root"]
