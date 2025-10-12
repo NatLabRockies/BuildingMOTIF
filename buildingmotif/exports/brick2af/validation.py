@@ -366,7 +366,7 @@ def get_model_diffs(model):
                 grouped_diffs[original_shape][focus_node].append(diff.reason())
             else:
                 print(f"Skipping non-Analytics_Application shape: {original_shape}")
-    return grouped_diffs
+    return grouped_diffs, validation_context
 
 
 def get_report(grouped_diffs: defaultdict, successful_rules: defaultdict):
