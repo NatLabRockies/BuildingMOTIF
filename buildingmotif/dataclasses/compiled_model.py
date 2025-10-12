@@ -66,7 +66,9 @@ class CompiledModel:
         """Return the manifest ShapeCollection associated with this compiled model's underlying Model."""
         return self.model.get_manifest()
 
-    def node_subgraph(self, node: rdflib.term.Node, self_contained: bool = True) -> rdflib.Graph:
+    def node_subgraph(
+        self, node: rdflib.term.Node, self_contained: bool = True
+    ) -> rdflib.Graph:
         """Return a subgraph describing the given node from the compiled model graph.
 
         This behaves like Model.node_subgraph but operates on the compiled data graph
@@ -127,7 +129,7 @@ class CompiledModel:
         )
         # skolemize the shape graph so we have consistent identifiers across
         # validation through the interpretation of the validation report
-        ontology_graph = self.graph.skolemize()
+        ontology_graph = self.graph
 
         for shape_uri in shapes_to_test:
             temp_model_graph = copy_graph(model_graph)
