@@ -129,7 +129,7 @@ class CompiledModel:
         )
         # skolemize the shape graph so we have consistent identifiers across
         # validation through the interpretation of the validation report
-        ontology_graph = self.graph
+        ontology_graph = skolemize_shapes(self.graph)
 
         for shape_uri in shapes_to_test:
             temp_model_graph = copy_graph(model_graph)
