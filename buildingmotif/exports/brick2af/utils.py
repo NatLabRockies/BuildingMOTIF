@@ -199,15 +199,32 @@ def _definition_to_shape(defn: Dict[str, Any], ns: Namespace) -> Graph:
 
     :SimultaneousHeatingAndCooling a sh:NodeShape ;
         sh:targetClass brick:AHU, brick:RTU, brick:RVAV ;
+        sh:and ( _:choice1 ) ;
+        sh:and ( _:choice2 ) .
+
+    _:choice1 a sh:NodeShape ;
+        sh:name "Chilled_Water_Valve_Command requirement" ;
+        sh:message "Chilled_Water_Valve_Command must satisfy one of the available options." ;
         sh:or (
-            [ sh:name "Chilled_Water_Valve_Command" ; sh:path brick:hasPoint ; sh:qualifiedValueShape [ sh:class brick:Chilled_Water_Valve_Command ] ; sh:qualifiedMinCount 1 ],
-            [ sh:name "Chilled_Water_Valve_Command" ; sh:path brick:hasPart ; sh:qualifiedValueShape [ sh:node :Chilled_Water_Valve ] ; sh:qualifiedMinCount 1 ],
-        ) ;
+            [ sh:name "Chilled_Water_Valve_Command option 1" ; sh:property [
+                sh:path brick:hasPoint ; sh:qualifiedValueShape [ sh:class brick:Chilled_Water_Valve_Command ] ; sh:qualifiedMinCount 1
+            ] ],
+            [ sh:name "Chilled_Water_Valve_Command option 2" ; sh:property [
+                sh:path brick:hasPart ; sh:qualifiedValueShape [ sh:node :Chilled_Water_Valve ] ; sh:qualifiedMinCount 1
+            ] ]
+        ) .
+
+    _:choice2 a sh:NodeShape ;
+        sh:name "Hot_Water_Valve_Command requirement" ;
+        sh:message "Hot_Water_Valve_Command must satisfy one of the available options." ;
         sh:or (
-            [ sh:name "Hot_Water_Valve_Command" ; sh:path brick:hasPoint ; sh:qualifiedValueShape [ sh:class brick:Hot_Water_Valve_Command ] ; sh:qualifiedMinCount 1 ],
-            [ sh:name "Hot_Water_Valve_Command" ; sh:path brick:hasPart ; sh:qualifiedValueShape [ sh:node :Hot_Water_Valve ] ; sh:qualifiedMinCount 1 ],
-        ) ;
-    .
+            [ sh:name "Hot_Water_Valve_Command option 1" ; sh:property [
+                sh:path brick:hasPoint ; sh:qualifiedValueShape [ sh:class brick:Hot_Water_Valve_Command ] ; sh:qualifiedMinCount 1
+            ] ],
+            [ sh:name "Hot_Water_Valve_Command option 2" ; sh:property [
+                sh:path brick:hasPart ; sh:qualifiedValueShape [ sh:node :Hot_Water_Valve ] ; sh:qualifiedMinCount 1
+            ] ]
+        ) .
     """
     shape = Graph()
     shapename = ns[defn["name"].replace(" ", "_")]
@@ -359,6 +376,18 @@ def _choice_to_shape(
     and add them to the shape graph. Then add to the shapename an sh:or that
     includes all the options.
     """
+    label_base = name_hint or "Choice"
+    choice_shape = BNode() if shapename is not None else varname
+    shape_graph.add((choice_shape, RDF["type"], SH["NodeShape"]))
+    shape_graph.add((choice_shape, SH["name"], Literal(f"{label_base} requirement")))
+    shape_graph.add(
+        (
+            choice_shape,
+            SH["message"],
+            Literal(f"{label_base} must satisfy one of the available options."),
+        )
+    )
+
     or_list = []
     for idx, option in enumerate(choice, start=1):
         print(f"shapename: {shapename}, varname: {varname}, option: {option}")
@@ -384,10 +413,15 @@ def _choice_to_shape(
 
     or_list_name = BNode()
     Collection(shape_graph, or_list_name, or_list)
-    target_shape = shapename if shapename is not None else varname
-    shape_graph.add((target_shape, SH["or"], or_list_name))
+    shape_graph.add((choice_shape, SH["or"], or_list_name))
 
-    return varname
+    if shapename is not None:
+        and_list_name = BNode()
+        Collection(shape_graph, and_list_name, [choice_shape])
+        shape_graph.add((shapename, SH["and"], and_list_name))
+        return varname
+
+    return choice_shape
 
 
 def _prop_to_shape(
