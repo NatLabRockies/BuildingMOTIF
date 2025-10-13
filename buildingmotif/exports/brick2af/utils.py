@@ -216,9 +216,9 @@ def _definition_to_shape(defn: Dict[str, Any], ns: Namespace) -> Graph:
     shape.add((shapename, SH["name"], Literal(defn["name"])))
     applicability = ", ".join(defn.get("applicability", []))
     if applicability:
-        message = f"Applies to {applicability}."
+        message = f"{applicability} needs definitions for {', '.join(defn['definitions'].keys())}."
     else:
-        message = "Applies the BuildingMOTIF diagnostic rule."
+        message = f"Needs definitions for {', '.join(defn['definitions'].keys())}."
     shape.add((shapename, SH["message"], Literal(message)))
     for target in defn["applicability"]:
         shape.add((shapename, SH["targetClass"], BRICK[target]))
