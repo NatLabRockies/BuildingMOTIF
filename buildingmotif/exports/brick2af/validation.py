@@ -335,9 +335,13 @@ def apply_rules_to_model(model: Model, rules: dict):
                 for row in results.bindings:
                     inst = row["root"]
                     successful_rules[rule_uri][inst].update(row)
+                    logging.info(f"  Found instantiation: {row}")
         # prune incomplete bindings (must have all variables + root)
         for inst in deepcopy(successful_rules[rule_uri]):
             if len(successful_rules[rule_uri][inst]) != len(defn["definitions"]) + 1:
+                logging.info(
+                    f"  Incomplete instantiation for {inst}, removing: {successful_rules[rule_uri][inst]}"
+                )
                 del successful_rules[rule_uri][inst]
     return successful_rules
 
