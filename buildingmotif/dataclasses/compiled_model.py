@@ -198,6 +198,8 @@ class CompiledModel:
         # remove imports from data graph
         shapeg.remove((None, OWL.imports, None))
 
+        shapeg.serialize("full-graph-to-validate.ttl")
+
         # validate the data graph
         valid, report_g, report_str = shacl_validate(
             shapeg,
