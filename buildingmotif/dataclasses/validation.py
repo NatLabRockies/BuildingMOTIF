@@ -1,10 +1,10 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import cached_property
 from itertools import chain
 from secrets import token_hex
-from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Set, Tuple, Union
 
 import rdflib
@@ -744,6 +744,81 @@ def _expand_or_result_to_diffs(
     return diffs
 
 
+def _expand_and_result_to_diffs(
+    g: Graph, result: Node, focus: Optional[URIRef]
+) -> List["GraphDiff"]:
+    """Expand an sh:AndConstraintComponent result into concrete GraphDiffs by
+    examining referenced shapes and any sh:detail children.
+
+    The SHACL engine may emit only the top-level And violation without per-option
+    results, so we additionally analyze the shapes graph structure to synthesize
+    actionable diffs for each required sub-shape."""
+
+    diffs: List["GraphDiff"] = []
+
+    and_list = g.value(result, SH.sourceShape / SH["and"])
+    if and_list is not None:
+        try:
+            members = list(Collection(g, and_list))
+        except Exception:
+            members = []
+        for member in members:
+            # If the member itself offers alternatives, surface an OrShape to preserve context.
+            or_list = g.value(member, SH["or"])
+            if or_list is not None:
+                try:
+                    alt_shapes = tuple(Collection(g, or_list))
+                except Exception:
+                    alt_shapes = ()
+                messages = _messages_from_or_shapes(g, or_list, focus)
+                validation_report = g.cbd(result)
+                diffs.append(
+                    OrShape(
+                        focus,
+                        validation_report,
+                        g,
+                        alt_shapes,
+                        tuple(messages) if messages else None,
+                    )
+                )
+                for alt in alt_shapes:
+                    diffs.extend(_diffs_from_shape_node(g, alt, focus))
+                continue
+
+            diffs.extend(_diffs_from_shape_node(g, member, focus))
+
+    # Also examine any detail children emitted by the validation engine.
+    for child in g.objects(result, SH.detail):
+        child_focus = g.value(child, SH.focusNode) or focus
+
+        gc = _detect_graph_class_cardinality(g, child)
+        if gc is not None:
+            diffs.append(gc)
+            continue
+
+        pcc = _detect_path_class_count(g, child, child_focus)  # type: ignore[arg-type]
+        if pcc is not None:
+            diffs.append(pcc)
+            continue
+
+        psc = _detect_path_shape_count(g, child, child_focus)  # type: ignore[arg-type]
+        if psc is not None:
+            diffs.append(psc)
+            continue
+
+        rp = _detect_required_path(g, child, child_focus)  # type: ignore[arg-type]
+        if rp is not None:
+            diffs.append(rp)
+            continue
+
+        rc = _detect_required_class(g, child, child_focus)  # type: ignore[arg-type]
+        if rc is not None:
+            diffs.append(rc)
+            continue
+
+    return diffs
+
+
 def _diffs_from_shape_node(
     g: Graph, shape_node: Node, focus: Optional[URIRef]
 ) -> List[GraphDiff]:
@@ -896,7 +971,7 @@ def _collect_or_messages(g: Graph, result: Node) -> List[str]:
 
 
 def _deduplicate_diffs_by_focus_path_classnode(
-    diffs: Dict[Optional[URIRef], Set[GraphDiff]]
+    diffs: Dict[Optional[URIRef], Set[GraphDiff]],
 ) -> Dict[Optional[URIRef], Set[GraphDiff]]:
     """Deduplicate diffs using each diff's declared dedup_key."""
     new_diffs: Dict[Optional[URIRef], Set[GraphDiff]] = {}
@@ -942,9 +1017,12 @@ class ValidationContext:
         Returns a list of (focus, Template) pairs. focus may be None for graph-level diffs.
         """
         from buildingmotif.dataclasses import Library, Template
+
         lib = Library.create(f"resolve_{token_hex(4)}")
         # Persist final unified templates in a timestamped library so they have real IDs
-        save_lib = Library.create(datetime.utcnow().strftime("resolved_%Y%m%dT%H%M%S%fZ"))
+        save_lib = Library.create(
+            datetime.utcnow().strftime("resolved_%Y%m%dT%H%M%S%fZ")
+        )
         results: List[Tuple[Optional[URIRef], Template]] = []
         for focus, diffset in self.diffset.items():
             if focus is None:
@@ -953,7 +1031,9 @@ class ValidationContext:
                         results.append((None, t))
                 continue
             templ_lists = (diff.resolve(lib) for diff in diffset)
-            templs: List[Template] = list(filter(None, chain.from_iterable(templ_lists)))
+            templs: List[Template] = list(
+                filter(None, chain.from_iterable(templ_lists))
+            )
             if len(templs) <= 1:
                 for t in templs:
                     results.append((focus, t))
@@ -1065,6 +1145,11 @@ class ValidationContext:
                 )
                 for d in _expand_or_result_to_diffs(g, result, focus):
                     print(f"From expanding OR: Adding diff {d} for focus {focus}")
+                    diffs[focus].add(d)
+                continue
+
+            if comp == SH.AndConstraintComponent:
+                for d in _expand_and_result_to_diffs(g, result, focus):
                     diffs[focus].add(d)
                 continue
 
