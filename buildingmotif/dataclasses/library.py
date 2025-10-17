@@ -1,13 +1,14 @@
 import logging
 import pathlib
 import tempfile
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from importlib import resources
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import pygit2
 import rdflib
 import yaml
-from pkg_resources import resource_exists, resource_filename
 from rdflib.exceptions import ParserError
 from rdflib.plugins.parsers.notation3 import BadSyntax
 from rdflib.util import guess_format
@@ -23,6 +24,26 @@ from buildingmotif.utils import get_ontology_files, shacl_inference
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
+
+
+LIBRARIES_PACKAGE = "buildingmotif.libraries"
+
+
+def _library_resource_exists(resource: str) -> bool:
+    """Check whether the packaged library resource exists."""
+    try:
+        traversable = resources.files(LIBRARIES_PACKAGE).joinpath(resource)
+    except ModuleNotFoundError:
+        return False
+    return traversable.is_file() or traversable.is_dir()
+
+
+@contextmanager
+def _library_resource_path(resource: str) -> Iterator[pathlib.Path]:
+    """Yield a temporary or on-disk path to a packaged library resource."""
+    traversable = resources.files(LIBRARIES_PACKAGE).joinpath(resource)
+    with resources.as_file(traversable) as path:
+        yield pathlib.Path(path)
 
 
 @dataclass
@@ -117,15 +138,21 @@ class Library:
         elif ontology_graph is not None:
             if isinstance(ontology_graph, str):
                 ontology_graph_path = ontology_graph
-                if resource_exists("buildingmotif.libraries", ontology_graph_path):
-                    logging.debug(f"Loading builtin library: {ontology_graph_path}")
-                    ontology_graph_path = resource_filename(
-                        "buildingmotif.libraries", ontology_graph_path
-                    )
-                ontology_graph = rdflib.Graph()
-                ontology_graph.parse(
-                    ontology_graph_path, format=guess_format(ontology_graph_path)
+                is_packaged_resource = _library_resource_exists(ontology_graph_path)
+                resource_cm = (
+                    _library_resource_path(ontology_graph_path)
+                    if is_packaged_resource
+                    else nullcontext(ontology_graph_path)
                 )
+                if is_packaged_resource:
+                    logging.debug(f"Loading builtin library: {ontology_graph_path}")
+                ontology_graph_obj = rdflib.Graph()
+                with resource_cm as geometry_source:
+                    source_str = str(geometry_source)
+                    ontology_graph_obj.parse(
+                        source_str, format=guess_format(source_str)
+                    )
+                ontology_graph = ontology_graph_obj
             return cls._load_from_ontology(
                 ontology_graph,
                 overwrite=overwrite,
@@ -133,21 +160,24 @@ class Library:
                 run_shacl_inference=run_shacl_inference,
             )
         elif directory is not None:
-            if resource_exists("buildingmotif.libraries", directory):
-                logging.debug(f"Loading builtin library: {directory}")
-                src = pathlib.Path(
-                    resource_filename("buildingmotif.libraries", directory)
-                )
-            else:
-                src = pathlib.Path(directory)
-            if not src.exists():
-                raise Exception(f"Directory {src} does not exist")
-            return cls._load_from_directory(
-                src,
-                overwrite=overwrite,
-                infer_templates=infer_templates,
-                run_shacl_inference=run_shacl_inference,
+            is_packaged_resource = _library_resource_exists(directory)
+            resource_cm = (
+                _library_resource_path(directory)
+                if is_packaged_resource
+                else nullcontext(pathlib.Path(directory))
             )
+            if is_packaged_resource:
+                logging.debug(f"Loading builtin library: {directory}")
+            with resource_cm as directory_path:
+                src = pathlib.Path(directory_path)
+                if not src.exists():
+                    raise Exception(f"Directory {src} does not exist")
+                return cls._load_from_directory(
+                    src,
+                    overwrite=overwrite,
+                    infer_templates=infer_templates,
+                    run_shacl_inference=run_shacl_inference,
+                )
         elif name is not None:
             bm = get_building_motif()
             db_library = bm.table_connection.get_db_library_by_name(name)
@@ -467,7 +497,9 @@ class Library:
 
     def get_template_by_name(self, name: str) -> Template:
         """Get template by name from this library."""
-        dbt = self._bm.table_connection.get_db_template_by_name_in_library(name, self._id)
+        dbt = self._bm.table_connection.get_db_template_by_name_in_library(
+            name, self._id
+        )
         return Template.load(dbt.id)
 
 
