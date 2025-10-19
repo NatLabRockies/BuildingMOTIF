@@ -668,7 +668,7 @@ def shacl_validate(
                 data_graph, shape_graph or Graph(), **tq_kwargs
             )
         except ImportError as e:
-            logging.info(
+            logging.warning(
                 f"TopQuadrant SHACL engine not available {e}. Using PySHACL instead."
             )
 
