@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 from rdflib import URIRef
 
-from buildingmotif.dataclasses import Library, Model
+from buildingmotif.dataclasses import Library, Model, ShapeCollection
 from buildingmotif.dataclasses.compiled_model import CompiledModel
 
 
@@ -118,3 +118,34 @@ def test_shape_to_df(clean_building_motif_topquadrant):
         df[df["target"] == "urn:model1/vav2"]["hasAirFlowSensor"].values[0]
         == "urn:model1/afs2"
     )
+
+
+def test_validate_reuses_resolved_imports(
+    clean_building_motif_topquadrant, monkeypatch
+):
+    model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
+    shape_collection = Library.load(
+        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    ).get_shape_collection()
+
+    original_resolve_imports = ShapeCollection.resolve_imports
+    calls: list[bool] = []
+
+    def tracking_resolve(self, *args, **kwargs):
+        calls.append(kwargs.get("error_on_missing_imports", True))
+        return original_resolve_imports(self, *args, **kwargs)
+
+    monkeypatch.setattr(ShapeCollection, "resolve_imports", tracking_resolve)
+
+    compiled_model = model.compile([shape_collection])
+
+    # compilation should resolve imports once with error_on_missing_imports=False
+    assert calls == [False]
+
+    calls.clear()
+    compiled_model.validate(error_on_missing_imports=False)
+    assert calls == []
+
+    with pytest.raises(Exception):
+        compiled_model.validate(error_on_missing_imports=True)
+    assert calls == [True]

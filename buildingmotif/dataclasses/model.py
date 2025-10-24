@@ -185,7 +185,9 @@ class Model:
         """
         self.graph += graph
 
-    def node_subgraph(self, node: rdflib.term.Node, self_contained: bool = True) -> rdflib.Graph:
+    def node_subgraph(
+        self, node: rdflib.term.Node, self_contained: bool = True
+    ) -> rdflib.Graph:
         """Return the Concise Bounded Description (CBD) of a node in this model's graph.
 
         If self_contained is True, compute a fixed-point closure by iteratively
@@ -245,7 +247,10 @@ class Model:
         return compiled_model.validate(error_on_missing_imports)
 
     def compile(
-        self, shape_collections: Optional[List["ShapeCollection"]] = None, min_iterations: int = 1, max_iterations: int = 3
+        self,
+        shape_collections: Optional[List["ShapeCollection"]] = None,
+        min_iterations: int = 1,
+        max_iterations: int = 3,
     ) -> "CompiledModel":
         """Compile the graph of this model against one or more ShapeCollections.
 
@@ -263,8 +268,13 @@ class Model:
         ontology_graph = rdflib.Graph()
         if shape_collections is None:
             shape_collections = [self.get_manifest()]
+        resolved_import_graphs: List[rdflib.Graph] = []
         for shape_collection in shape_collections:
-            ontology_graph += shape_collection.resolve_imports(error_on_missing_imports=False).graph
+            resolved_graph = shape_collection.resolve_imports(
+                error_on_missing_imports=False
+            ).graph
+            resolved_import_graphs.append(resolved_graph)
+            ontology_graph += resolved_graph
 
         ontology_graph = skolemize_shapes(ontology_graph)
 
@@ -277,7 +287,12 @@ class Model:
             min_iterations=min_iterations,
             max_iterations=max_iterations,
         )
-        return CompiledModel(self, shape_collections, compiled_graph)
+        return CompiledModel(
+            self,
+            shape_collections,
+            compiled_graph,
+            resolved_import_graphs=resolved_import_graphs,
+        )
 
     def get_manifest(self) -> ShapeCollection:
         """Get ShapeCollection from model.

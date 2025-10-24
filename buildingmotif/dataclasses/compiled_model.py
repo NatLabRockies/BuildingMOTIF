@@ -36,12 +36,22 @@ class CompiledModel:
         shape_collections: List[ShapeCollection],
         compiled_graph: rdflib.Graph,
         shacl_engine: str = "default",
+        resolved_import_graphs: Optional[List[rdflib.Graph]] = None,
     ):
         self.model = model
         self.shape_collections = shape_collections
+        self._resolved_import_graphs = (
+            [copy_graph(graph) for graph in resolved_import_graphs]
+            if resolved_import_graphs is not None
+            else None
+        )
         ontology_graph = rdflib.Graph()
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
+        if self._resolved_import_graphs is not None:
+            for graph in self._resolved_import_graphs:
+                ontology_graph += graph
+        else:
+            for shape_collection in shape_collections:
+                ontology_graph += shape_collection.graph
 
         ontology_graph = skolemize_shapes(ontology_graph)
 
@@ -58,8 +68,12 @@ class CompiledModel:
     @cached_property
     def graph(self) -> rdflib.Graph:
         g = copy_graph(self._compiled_graph)
-        for shape_collection in self.shape_collections:
-            g += shape_collection.graph
+        if self._resolved_import_graphs is not None:
+            for graph in self._resolved_import_graphs:
+                g += copy_graph(graph)
+        else:
+            for shape_collection in self.shape_collections:
+                g += shape_collection.graph
         return g
 
     def get_manifest(self) -> ShapeCollection:
@@ -181,10 +195,14 @@ class CompiledModel:
         # transformation, like a list of deltas for potential fixes?
         shapeg = copy_graph(self._compiled_graph)
         # aggregate shape graphs
-        for sc in self.shape_collections:
-            shapeg += sc.resolve_imports(
-                error_on_missing_imports=error_on_missing_imports
-            ).graph
+        if self._resolved_import_graphs is not None and not error_on_missing_imports:
+            for graph in self._resolved_import_graphs:
+                shapeg += copy_graph(graph)
+        else:
+            for sc in self.shape_collections:
+                shapeg += sc.resolve_imports(
+                    error_on_missing_imports=error_on_missing_imports
+                ).graph
         # inline sh:node for interpretability
         shapeg = rewrite_shape_graph(shapeg)
 
