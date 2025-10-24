@@ -261,7 +261,7 @@ def test_model_compile(bm: BuildingMOTIF, shacl_engine):
     )
 
     brick = Library.load(
-        ontology_graph="libraries/brick/Brick-full.ttl", infer_templates=False
+        ontology_graph="libraries/brick/Brick.ttl", infer_templates=False
     )
 
     compiled_model = small_office_model.compile([brick.get_shape_collection()])
