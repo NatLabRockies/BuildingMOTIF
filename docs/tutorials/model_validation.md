@@ -70,7 +70,7 @@ model.graph.parse("tutorial1_model.ttl", format="ttl")
 constraints = Library.load(ontology_graph="../../buildingmotif/libraries/constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.load(ontology_graph="../../libraries/brick/Brick.ttl")
 g36 = Library.load(directory="../../libraries/ashrae/guideline36")
 ```
 

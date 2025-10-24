@@ -48,7 +48,7 @@ model = Model.create(BLDG, description="This is a test model for a simple buildi
 constraints = Library.load(ontology_graph="constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.load(ontology_graph="../../libraries/brick/Brick.ttl")
 g36 = Library.load(directory="../../libraries/ashrae/guideline36")
 
 # load tutorial 2 model and manifest

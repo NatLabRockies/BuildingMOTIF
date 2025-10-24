@@ -85,7 +85,7 @@ Currently, libraries in `../../buildingmotif/libraries/` are *included* and libr
 ```{code-cell}
 # load a library
 from buildingmotif.dataclasses import Library
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.load(ontology_graph="../../libraries/brick/Brick.ttl")
 
 # print the first 10 templates
 print("The Brick library contains the following templates:")
