@@ -25781,7 +25781,7 @@ bsh:isPartOfShape a sh:PropertyShape ;
 
 <https://w3id.org/rec> rdfs:label "RealEstateCore"^^xsd:string ;
     owl:imports <http://datashapes.org/dash>,
-        <https://brickschema.org/schema/1.3/Brick>,
+        <https://brickschema.org/schema/1.4/Brick>,
         <https://w3id.org/rec/brickpatches> ;
     owl:versionInfo "4.0"^^xsd:string .
 
