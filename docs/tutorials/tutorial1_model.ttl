@@ -1,8 +1,10 @@
 @prefix bldg: <urn:ex/> .
 @prefix brick: <https://brickschema.org/schema/Brick#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-<urn:bldg/> a owl:Ontology .
+<urn:bldg/> a owl:Ontology ;
+    rdfs:comment "This is a test model for a simple building" .
 
 <urn:bldg/Core_ZN-PSC_AC> a brick:AHU ;
     brick:hasPart <urn:bldg/Core_ZN-PSC_AC-Clg_Coil>,
