@@ -28,7 +28,7 @@ class Record:
 
 The choice of values for the `Record` is up to each `RecordIngressHandler` instance:
 - the [`BACnetIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.bacnet.html#buildingmotif.ingresses.bacnet.BACnetNetwork) uses the `rtype` field to differentiate between BACnet Devices and BACnet Objects. The `fields` field contains key-value pairs of different BACnet properties like `name` and `units`
-- the [`CSVIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.csv.html#buildingmotif.ingresses.csv.CSVIngress) uses the `rtype` field to denote the CSV filename, and uses the `fields` field to store column-cell values from each row of the CSV file
+- the [`CSVIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.csvingress.html#buildingmotif.ingresses.csvingress.CSVIngress) uses the `rtype` field to denote the CSV filename, and uses the `fields` field to store column-cell values from each row of the CSV file
 
 ### Graph Ingress Handler
 
@@ -56,7 +56,7 @@ The [`BACnetIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingres
 
 ### CSV Files
 
-The [`CSVIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.csv.html#buildingmotif.ingresses.csv.CSVIngress) takes a CSV filename as an argument  (e.g. `mydata.csv`) and generates a set of `Record`s corresponding to each row in the file.
+The [`CSVIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.csvingress.html#buildingmotif.ingresses.csvingress.CSVIngress) takes a CSV filename as an argument  (e.g. `mydata.csv`) and generates a set of `Record`s corresponding to each row in the file.
 
 - `rtype`: the filename that contained the row
 - `fields`: key-value pairs for the row. The key is the column name; the value is the value of that column at the given row
