@@ -36,9 +36,6 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
         "libraries/qudt/VOCAB_QUDT-PREFIXES.ttl",
         "libraries/qudt/SHACL-SCHEMA-SUPPLEMENT_QUDT.ttl",
         "libraries/qudt/VOCAB_QUDT-SYSTEM-OF-UNITS-ALL.ttl",
-        "libraries/brick/imports/rec.ttl",
-        "libraries/brick/imports/recimports.ttl",
-        "libraries/brick/imports/brickpatches.ttl",
     ]
     for dep in dependency_graphs:
         Library.load(
