@@ -29,7 +29,7 @@
         # TODO only applies to supply fan
         sh:path brick:hasPart ;
         sh:qualifiedValueShape [
-            sh:node components:variable-speed-fan-vfd ;
+            sh:class brick:Variable_Frequency_Drive ;
             sh:property [
                 rdfs:label "VFDSPD" ;
                 rdfs:comment "VFD speed" ;

@@ -1,10 +1,11 @@
+import logging
 from typing import Tuple
 
 from rdflib import Graph, Namespace
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
-from buildingmotif.namespaces import bind_prefixes
+from buildingmotif.namespaces import PARAM, RDF, bind_prefixes
 
 # all the Brick libraries to test
 libraries = [
@@ -21,7 +22,7 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
     this initial setup to provide each test with a clean environment.
     """
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant", log_level=logging.ERROR)
     bm.setup_tables()
     brick = Library.load(
         ontology_graph="libraries/brick/Brick.ttl", run_shacl_inference=False
@@ -36,9 +37,6 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
         "libraries/qudt/VOCAB_QUDT-PREFIXES.ttl",
         "libraries/qudt/SHACL-SCHEMA-SUPPLEMENT_QUDT.ttl",
         "libraries/qudt/VOCAB_QUDT-SYSTEM-OF-UNITS-ALL.ttl",
-        "libraries/brick/imports/rec.ttl",
-        "libraries/brick/imports/recimports.ttl",
-        "libraries/brick/imports/brickpatches.ttl",
     ]
     for dep in dependency_graphs:
         Library.load(
@@ -59,13 +57,20 @@ def test_brick_template(bm, brick, library, template):
         bind_prefixes(g)
         m.add_graph(g)
         ctx = m.validate(
-            [brick.get_shape_collection()],
+            [brick.get_shape_collection(), library.get_shape_collection()],
             error_on_missing_imports=False,
         )
     except Exception as e:
         bm.session.rollback()
         raise e
     assert ctx.valid, ctx.report_string
+
+
+def pname_has_brick_type(template, brick):
+    query = (
+        "ASK { <urn:___param___#name> rdf:type ?x . ?x rdfs:subClassOf* brick:Entity }"
+    )
+    return (template + brick).query(query).askAnswer
 
 
 def pytest_generate_tests(metafunc):
@@ -78,6 +83,13 @@ def pytest_generate_tests(metafunc):
         for library_name in libraries:
             library = Library.load(directory=library_name, run_shacl_inference=False)
             templates = sorted(library.get_templates(), key=lambda t: t.name)
+            # filter out templates that don't have a "p:name rdf:type ?x . ?x rdfs:subClassOf* brick:Entity" triple;
+            # these are designed to be composed
+            templates = [
+                t
+                for t in templates
+                if pname_has_brick_type(t.body, brick.get_shape_collection().graph)
+            ]
             params.extend([(bm, brick, library, template) for template in templates])
             ids.extend([f"{library.name}-{template.name}" for template in templates])
         metafunc.parametrize("bm,brick,library,template", params, ids=ids)
