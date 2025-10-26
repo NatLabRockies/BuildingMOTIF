@@ -119,7 +119,7 @@ RUN apt update \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install BACpypes
+RUN pip3 install BACpypes --break-system-packages
 
 COPY virtual_bacnet.py virtual_bacnet.py
 COPY BACpypes.ini .''')
@@ -188,12 +188,19 @@ We use the `buildingmotif.ingresses.bacnet.BACnetNetwork` ingress module to pull
 ```{code-cell} python3
 from buildingmotif.ingresses.bacnet import BACnetNetwork
 
-bacnet = BACnetNetwork("172.24.0.1/32") # don't change this if you are using the docker compose setup
+bacnet = BACnetNetwork(
+    "172.24.0.1/32",
+    discover_kwargs={"global_broadcast": True},  # optional, helps find virtual devices
+)
 for rec in bacnet.records:
     print(rec)
 ```
 
-Each of these records has an `rtype` field, which is used by the ingress implementation to differentiate between different kinds of records; here it differentiates between BACnet Devices and BACnet Objects, which have different expressions in Brick. The `fields` attribute cotnains arbitrary key-value pairs, again defined by the ingress implementation, which can be interpreted by another ingress module.
+```{note}
+The `BACnetNetwork` ingress uses BAC0's asynchronous connection helpers under the hood. It opens the network with `BAC0.start` and blocks on discovery by awaiting `bacnet._discover(**discover_kwargs)`, so forwarding options such as `global_broadcast` or `whois` will influence how aggressively the underlying BACnet scan runs. No additional event-loop management is needed when calling the ingress from synchronous code.
+```
+
+Each of these records has an `rtype` field, which is used by the ingress implementation to differentiate between different kinds of records; here it differentiates between BACnet Devices and BACnet Objects, which have different expressions in Brick. The `fields` attribute contains arbitrary key-value pairs, again defined by the ingress implementation, which can be interpreted by another ingress module.
 
 ## BACnet to Brick: an Initial Model
 

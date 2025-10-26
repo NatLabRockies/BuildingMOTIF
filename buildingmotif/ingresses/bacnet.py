@@ -1,4 +1,5 @@
 # configure logging output
+import asyncio
 import logging
 import warnings
 from functools import cached_property
@@ -6,7 +7,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import BAC0
-    from BAC0.core.devices.Device import Device as BACnetDevice
 except ImportError:
     logging.critical(
         "Install the 'bacnet-ingress' module, e.g. 'pip install buildingmotif[bacnet-ingress]'"
@@ -23,43 +23,75 @@ logger.setLevel(logging.ERROR)
 
 
 class BACnetNetwork(RecordIngressHandler):
-    def __init__(self, ip: Optional[str] = None):
+    def __init__(
+        self,
+        ip: Optional[str] = None,
+        *,
+        discover_kwargs: Optional[Dict[str, Any]] = None,
+        ping: bool = False,
+        device_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         """
         Reads a BACnet network to discover the devices and objects therein
 
-        :param ip: IP/mask for the host which is canning the networks,
+        :param ip: IP/mask for the host which is scanning the network,
                     defaults to None
         :type ip: Optional[str], optional
+        :param discover_kwargs: Optional kwargs forwarded to BAC0._discover.
+        :type discover_kwargs: Optional[Dict[str, Any]]
+        :param ping: Whether to ping devices during connect; defaults to False.
+        :type ping: bool
+        :param device_kwargs: Optional kwargs forwarded to BAC0.device.
+        :type device_kwargs: Optional[Dict[str, Any]]
         """
-        # create the network object; this will handle scans
-        # Be a good net citizen: do not ping BACnet devices
-        self.network = BAC0.connect(ip=ip, ping=False)
-        # initiate discovery of BACnet networks
-        self.network.discover()
+        self.objects: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+        self._run_async(
+            self._collect_objects(
+                ip=ip,
+                discover_kwargs=discover_kwargs or {},
+                ping=ping,
+                device_kwargs=device_kwargs or {},
+            )
+        )
 
-        self.devices: List[BACnetDevice] = []
-        self.objects: Dict[Tuple[str, int], List[dict]] = {}
-
-        # for each discovered Device, create a BAC0.device object
-        # This will read the BACnet objects off of the Device.
-        # Save the BACnet objects in the objects dictionary
+    def _run_async(self, coro):
+        loop = asyncio.new_event_loop()
         try:
-            if self.network.discoveredDevices is None:
-                warnings.warn("BACnet ingress could not find any BACnet devices")
-            for (address, device_id) in self.network.discoveredDevices:  # type: ignore
-                # set poll to 0 to avoid reading the points regularly
-                dev = BAC0.device(address, device_id, self.network, poll=0)
-                self.devices.append(dev)
-                self.objects[(address, device_id)] = []
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(coro)
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
 
-                for bobj in dev.points:
+    async def _collect_objects(
+        self,
+        *,
+        ip: Optional[str],
+        discover_kwargs: Dict[str, Any],
+        ping: bool,
+        device_kwargs: Dict[str, Any],
+    ):
+        device_kwargs.setdefault("poll", 0)
+
+        async with BAC0.start(ip=ip, ping=ping) as bacnet:
+            await bacnet._discover(**discover_kwargs)
+
+            discovered = getattr(bacnet, "discoveredDevices", None)
+            if not discovered:
+                warnings.warn("BACnet ingress could not find any BACnet devices")
+                return
+
+            for (address, device_id) in discovered:
+                device = await BAC0.device(address, device_id, bacnet, **device_kwargs)
+                objects: List[Dict[str, Any]] = []
+
+                for bobj in device.points:
                     obj = bobj.properties.asdict
                     self._clean_object(obj)
-                    self.objects[(address, device_id)].append(obj)
-        finally:
-            for dev in self.devices:
-                self.network.unregister_device(dev)
-            self.network.disconnect()
+                    objects.append(obj)
+
+                self.objects[(address, device_id)] = objects
 
     def _clean_object(self, obj: Dict[str, Any]):
         if "name" in obj:

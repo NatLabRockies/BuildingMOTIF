@@ -4,7 +4,7 @@ WORKDIR /opt
 
 RUN apt update     && apt install -y     python3     python3-pip     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install BACpypes
+RUN pip3 install BACpypes --break-system-packages
 
 COPY virtual_bacnet.py virtual_bacnet.py
 COPY BACpypes.ini .
