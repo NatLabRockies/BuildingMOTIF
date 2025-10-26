@@ -1,4 +1,4 @@
-FROM python:3.9 as base
+FROM python:3.12 as base
 
 WORKDIR /opt
 
