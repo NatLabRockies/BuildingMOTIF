@@ -77,7 +77,8 @@ class BACnetNetwork(RecordIngressHandler):
         ping: bool,
         device_kwargs: Dict[str, Any],
     ):
-        device_kwargs.setdefault("poll", 0)
+        device_kwargs.setdefault("poll", -1)
+        device_kwargs.setdefault("auto_save", False)
 
         logger.error(f"starting with {ip=} {ping=}")
         async with BAC0.start(ip=ip, ping=ping) as bacnet:
@@ -119,14 +120,19 @@ class BACnetNetwork(RecordIngressHandler):
 
             for (address, device_id, _) in discovered_entries:
                 device = await BAC0.device(address, device_id, bacnet, **device_kwargs)
-                objects: List[Dict[str, Any]] = []
+                try:
+                    objects: List[Dict[str, Any]] = []
 
-                for bobj in device.points:
-                    obj = bobj.properties.asdict
-                    self._clean_object(obj)
-                    objects.append(obj)
+                    for bobj in device.points:
+                        obj = bobj.properties.asdict
+                        self._clean_object(obj)
+                        objects.append(obj)
 
-                self.objects[(address, device_id)] = objects
+                    self.objects[(address, device_id)] = objects
+                finally:
+                    disconnect_task = device.disconnect(save_on_disconnect=False)
+                    if disconnect_task is not None:
+                        await disconnect_task
 
     def _clean_object(self, obj: Dict[str, Any]):
         if "name" in obj:
