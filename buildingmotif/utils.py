@@ -241,101 +241,135 @@ def get_template_parts_from_shape(
     body = Graph()
     root_param = PARAM["name"]
 
-    deps = []
+    deps: List[Dict] = []
+    dep_keys: Set[Tuple[str, Optional[str], str]] = set()
+    visited: Set[Tuple[Node, Node]] = set()
 
-    pshapes = shape_graph.objects(subject=shape_name, predicate=SH["property"])
-    for pshape in pshapes:
-        property_path = shape_graph.value(pshape, SH["path"])
-        if property_path is None:
-            raise Exception(
-                f"no sh:path detected on {shape_name} property shape {pshape}"
+    def is_nodeshape(node_uri: URIRef) -> bool:
+        if (node_uri, RDF.type, SH.NodeShape) in shape_graph:
+            return True
+        for graph in depedency_graphs.values():
+            if (node_uri, RDF.type, SH.NodeShape) in graph:
+                return True
+        return False
+
+    def resolve_library(node_uri: URIRef) -> Optional[str]:
+        library = None
+        for library_name, graph in depedency_graphs.items():
+            if (node_uri, RDF.type, SH.NodeShape) in graph:
+                library = library_name
+                break
+        return library
+
+    def add_dependency(node_uri: URIRef, param: URIRef):
+        if not isinstance(node_uri, URIRef):
+            return
+        library = resolve_library(node_uri) if is_nodeshape(node_uri) else None
+        dep_key = (str(node_uri), library, str(param))
+        if dep_key in dep_keys:
+            return
+        dep_dict: Dict[str, Union[str, Dict[str, URIRef]]] = {
+            "template": str(node_uri),
+            "args": {"name": param},
+        }
+        if library is not None:
+            dep_dict["library"] = library
+        deps.append(dep_dict)  # type: ignore[arg-type]
+        dep_keys.add(dep_key)
+        body.add((param, RDF.type, node_uri))
+
+    def process_shape(shape_node: Node, focus_param: URIRef):
+        key = (shape_node, focus_param)
+        if key in visited:
+            return
+        visited.add(key)
+
+        if (shape_node, RDF.type, OWL.Class) in shape_graph and isinstance(
+            shape_node, URIRef
+        ):
+            body.add((focus_param, RDF.type, shape_node))
+
+        for cls in shape_graph.objects(shape_node, SH["class"]):
+            if isinstance(cls, URIRef):
+                body.add((focus_param, RDF.type, cls))
+
+        for cls in shape_graph.objects(shape_node, SH["targetClass"]):
+            if isinstance(cls, URIRef):
+                body.add((focus_param, RDF.type, cls))
+
+        for node_shape in shape_graph.objects(shape_node, SH["node"]):
+            if isinstance(node_shape, URIRef):
+                add_dependency(node_shape, focus_param)
+
+        pshapes = shape_graph.objects(subject=shape_node, predicate=SH["property"])
+        for pshape in pshapes:
+            property_path = shape_graph.value(pshape, SH["path"])
+            if property_path is None:
+                raise Exception(
+                    f"no sh:path detected on {shape_node} property shape {pshape}"
+                )
+
+            mincounts = list(
+                shape_graph.objects(
+                    subject=pshape, predicate=SH["minCount"] | SH["qualifiedMinCount"]
+                )
             )
-        # TODO: expand otypes to include sh:in, sh:or, or no datatype at all!
-        otypes = list(
-            shape_graph.objects(
-                subject=pshape,
-                predicate=SH["qualifiedValueShape"]
-                * ZeroOrOne  # type:ignore
-                / (SH["class"] | SH["node"] | SH["datatype"]),
-            )
-        )
-        mincounts = list(
-            shape_graph.objects(
-                subject=pshape, predicate=SH["minCount"] | SH["qualifiedMinCount"]
-            )
-        )
-        if len(otypes) > 1:
-            raise Exception(f"more than one object type detected on {shape_name}")
-        if len(mincounts) > 1:
-            raise Exception(f"more than one min count detected on {shape_name}")
-        if len(mincounts) == 0 or len(otypes) == 0:
-            # print(f"No useful information on {shape_name} - {pshape}")
-            # print(shape_graph.cbd(pshape).serialize())
-            continue
-        (path, otype, mincount) = property_path, otypes[0], mincounts[0]
-        assert isinstance(mincount, Literal)
 
-        param_name = shape_graph.value(pshape, SH["name"])
+            if len(mincounts) > 1:
+                raise Exception(f"more than one min count detected on {shape_node}")
+            if len(mincounts) == 0:
+                continue
 
-        for num in range(int(mincount)):
-            if param_name is not None:
-                param = PARAM[f"{param_name}{num}"]
-            else:
-                param = _gensym()
-            body.add((root_param, path, param))
+            mincount = mincounts[0]
+            assert isinstance(mincount, Literal)
 
-            otype_as_class = (None, SH["class"], otype) in shape_graph
-            otype_as_node = (None, SH["node"], otype) in shape_graph
-            otype_is_nodeshape = (otype, RDF.type, SH.NodeShape) in shape_graph
+            qvs_node = shape_graph.value(pshape, SH["qualifiedValueShape"])
 
-            if (otype_as_class and otype_is_nodeshape) or otype_as_node:
-                if not isinstance(otype, URIRef):
-                    continue
-                library = None
-                for library_name, graph in depedency_graphs.items():
-                    if (otype, RDF.type, SH.NodeShape) in graph:
-                        library = library_name
-                        break
-                if library is None:
-                    deps.append({"template": str(otype), "args": {"name": param}})
+            def _gather(predicate):
+                if qvs_node is not None:
+                    return list(shape_graph.objects(qvs_node, predicate))
+                return list(shape_graph.objects(pshape, predicate))
+
+            classes = _gather(SH["class"])
+            nodes = _gather(SH["node"])
+            datatypes = _gather(SH["datatype"])
+
+            types_total = len(classes) + len(nodes) + len(datatypes)
+            if types_total > 1:
+                raise Exception(f"more than one object type detected on {shape_node}")
+            if types_total == 0 and qvs_node is None:
+                continue
+
+            param_name = shape_graph.value(pshape, SH["name"])
+
+            for num in range(int(mincount.toPython())):
+                if param_name is not None:
+                    param = PARAM[f"{param_name}{num}"]
                 else:
-                    deps.append(
-                        {
-                            "template": str(otype),
-                            "library": library,
-                            "args": {"name": param},
-                        }
-                    )
-                body.add((param, RDF.type, otype))
+                    param = _gensym()
+                body.add((focus_param, property_path, param))
 
-        pvalue = shape_graph.value(pshape, SH["hasValue"])
-        if pvalue:
-            body.add((root_param, path, pvalue))
+                if classes:
+                    for cls in classes:
+                        if isinstance(cls, URIRef):
+                            if is_nodeshape(cls):
+                                add_dependency(cls, param)
+                            else:
+                                body.add((param, RDF.type, cls))
 
-    if (shape_name, RDF.type, OWL.Class) in shape_graph:
-        body.add((root_param, RDF.type, shape_name))
+                if nodes:
+                    node_target = nodes[0]
+                    if isinstance(node_target, URIRef):
+                        add_dependency(node_target, param)
 
-    classes = shape_graph.objects(shape_name, SH["class"])
-    for cls in classes:
-        body.add((root_param, RDF.type, cls))
+                if qvs_node is not None:
+                    process_shape(qvs_node, param)
 
-    classes = shape_graph.objects(shape_name, SH["targetClass"])
-    for cls in classes:
-        body.add((root_param, RDF.type, cls))
+            pvalue = shape_graph.value(pshape, SH["hasValue"])
+            if pvalue:
+                body.add((focus_param, property_path, pvalue))
 
-    # for all objects of sh:node, add them to the deps if they haven't been added
-    # already through the property shapes above
-    nodes = shape_graph.cbd(shape_name).objects(predicate=SH["node"], unique=True)
-    for node in nodes:
-        # if node is already in deps, skip it
-        if any(str(node) == dep["template"] for dep in deps):
-            continue
-        # skip non-URIRef nodes
-        if not isinstance(node, URIRef):
-            continue
-        deps.append(
-            {"template": str(node), "args": {"name": "name"}}
-        )  # tie to root param
+    process_shape(shape_name, root_param)
 
     return body, deps
 
