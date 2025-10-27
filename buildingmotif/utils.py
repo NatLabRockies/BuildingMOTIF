@@ -14,7 +14,7 @@ from rdflib.paths import ZeroOrOne
 from rdflib.term import Node
 
 from buildingmotif.database.errors import TemplateNotFound
-from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
+from buildingmotif.namespaces import OWL, PARAM, RDF, RDFS, SH, XSD, bind_prefixes
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Template
@@ -224,6 +224,7 @@ def get_template_parts_from_shape(
     - sh:property with sh:qualifiedMinCount
     - sh:class
     - sh:node
+    - rdfs:subClassOf
 
     :param shape_name: name of shape
     :type shape_name: URIRef
@@ -296,6 +297,16 @@ def get_template_parts_from_shape(
         for cls in shape_graph.objects(shape_node, SH["targetClass"]):
             if isinstance(cls, URIRef):
                 body.add((focus_param, RDF.type, cls))
+
+        superclass_nodes: Set[Node] = set()
+        for graph in [shape_graph, *depedency_graphs.values()]:
+            superclass_nodes.update(graph.objects(shape_node, RDFS["subClassOf"]))
+
+        for superclass in superclass_nodes:
+            if isinstance(superclass, URIRef) and is_nodeshape(superclass):
+                add_dependency(superclass, focus_param)
+            elif isinstance(superclass, URIRef):
+                body.add((focus_param, RDF.type, superclass))
 
         for node_shape in shape_graph.objects(shape_node, SH["node"]):
             if isinstance(node_shape, URIRef):

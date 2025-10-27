@@ -79,6 +79,27 @@ def test_get_template_parts_from_shape():
     # assert (PARAM['name'], BRICK.hasPoint,
 
 
+def test_get_template_parts_from_shape_rdfs_subclass():
+    shape_graph = Graph()
+    shape_graph.parse(
+        data=PREAMBLE
+        + """
+    :parentShape a owl:Class, sh:NodeShape .
+
+    :childShape a owl:Class, sh:NodeShape ;
+        rdfs:subClassOf :parentShape, brick:Equipment .
+    """
+    )
+
+    body, deps = get_template_parts_from_shape(MODEL["childShape"], shape_graph)
+
+    assert len(deps) == 1
+    assert deps[0]["template"] == str(MODEL["parentShape"])
+    assert deps[0]["args"] == {"name": PARAM["name"]}
+    assert (PARAM["name"], A, MODEL["parentShape"]) in body
+    assert (PARAM["name"], A, BRICK.Equipment) in body
+
+
 def test_replace_nodes():
     g = Graph()
     g.parse(
