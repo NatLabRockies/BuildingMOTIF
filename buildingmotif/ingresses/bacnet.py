@@ -79,15 +79,45 @@ class BACnetNetwork(RecordIngressHandler):
     ):
         device_kwargs.setdefault("poll", 0)
 
+        logger.error(f"starting with {ip=} {ping=}")
         async with BAC0.start(ip=ip, ping=ping) as bacnet:
+            await asyncio.sleep(2)
             await bacnet._discover(**discover_kwargs)
+            await asyncio.sleep(2)
 
             discovered = getattr(bacnet, "discoveredDevices", None)
             if not discovered:
                 warnings.warn("BACnet ingress could not find any BACnet devices")
                 return
 
-            for (address, device_id) in discovered:
+            discovered_entries: List[Tuple[Any, Any, Dict[str, Any]]] = []
+            if isinstance(discovered, dict):
+                for info in discovered.values():
+                    address = info.get("address")
+                    obj_instance = info.get("object_instance")
+                    device_id = None
+                    if isinstance(obj_instance, tuple) and len(obj_instance) >= 2:
+                        device_id = obj_instance[1]
+                    else:
+                        device_id = info.get("device_id")
+
+                    if address is None or device_id is None:
+                        logger.warning(
+                            "Skipping discovered device with missing address/device_id: %s",
+                            info,
+                        )
+                        continue
+
+                    if hasattr(address, "addr"):
+                        address = address.addr
+                    address = str(address)
+                    discovered_entries.append((address, device_id, info))
+
+            if not discovered_entries:
+                warnings.warn("BACnet ingress could not find any BACnet devices")
+                return
+
+            for (address, device_id, _) in discovered_entries:
                 device = await BAC0.device(address, device_id, bacnet, **device_kwargs)
                 objects: List[Dict[str, Any]] = []
 

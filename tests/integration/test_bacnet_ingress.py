@@ -13,7 +13,7 @@ from buildingmotif.namespaces import BACNET, BRICK, RDF
 def test_bacnet_ingress(bm):
     BLDG = Namespace("urn:building/")
     m = Model.create(BLDG, "test building for bacnet scan")
-    bacnet = BACnetNetwork("172.24.0.2/24")
+    bacnet = BACnetNetwork("172.24.0.20/16")
     tobrick = BACnetToBrickIngress(bm, bacnet)
     m.add_graph(tobrick.graph(BLDG))
 
@@ -35,7 +35,7 @@ def test_bacnet_scan_cli(bm, tmp_path):
     d.mkdir()
     output_file = d / "output.json"
     subprocess.run(
-        shlex.split(f'buildingmotif scan -o "{str(output_file)}" -ip 172.24.0.2/24')
+        shlex.split(f'buildingmotif scan -o "{str(output_file)}" -ip 172.24.0.20/16')
     )
     assert output_file.exists()
     bacnet = BACnetNetwork.load(output_file)
