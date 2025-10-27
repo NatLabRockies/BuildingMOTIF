@@ -28,6 +28,7 @@ class BACnetNetwork(RecordIngressHandler):
         ip: Optional[str] = None,
         *,
         discover_kwargs: Optional[Dict[str, Any]] = None,
+        global_broadcast: bool = True,
         ping: bool = False,
         device_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -39,16 +40,20 @@ class BACnetNetwork(RecordIngressHandler):
         :type ip: Optional[str], optional
         :param discover_kwargs: Optional kwargs forwarded to BAC0._discover.
         :type discover_kwargs: Optional[Dict[str, Any]]
+        :param global_broadcast: Whether to issue global broadcast Who-Is requests.
+        :type global_broadcast: bool
         :param ping: Whether to ping devices during connect; defaults to False.
         :type ping: bool
         :param device_kwargs: Optional kwargs forwarded to BAC0.device.
         :type device_kwargs: Optional[Dict[str, Any]]
         """
         self.objects: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+        discover_kwargs = dict(discover_kwargs or {})
+        discover_kwargs.setdefault("global_broadcast", global_broadcast)
         self._run_async(
             self._collect_objects(
                 ip=ip,
-                discover_kwargs=discover_kwargs or {},
+                discover_kwargs=discover_kwargs,
                 ping=ping,
                 device_kwargs=device_kwargs or {},
             )
