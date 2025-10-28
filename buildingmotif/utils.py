@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pyshacl  # type: ignore
 from rdflib import BNode, Graph, Literal, URIRef
+from rdflib.collection import Collection
 from rdflib.compare import _TripleCanonicalizer
 from rdflib.paths import ZeroOrOne
 from rdflib.term import Node
@@ -379,6 +380,22 @@ def get_template_parts_from_shape(
             pvalue = shape_graph.value(pshape, SH["hasValue"])
             if pvalue:
                 body.add((focus_param, property_path, pvalue))
+
+        for or_list in shape_graph.objects(shape_node, SH["or"]):
+            try:
+                options = list(Collection(shape_graph, or_list))
+            except Exception:
+                options = []
+            if not options:
+                continue
+            chosen = options[0]
+            if isinstance(chosen, URIRef):
+                if is_nodeshape(chosen):
+                    process_shape(chosen, focus_param)
+                else:
+                    body.add((focus_param, RDF.type, chosen))
+            elif isinstance(chosen, BNode):
+                process_shape(chosen, focus_param)
 
     process_shape(shape_name, root_param)
 

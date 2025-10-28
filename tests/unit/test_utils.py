@@ -200,6 +200,29 @@ def test_inline_sh_nodes(shacl_engine):
     assert len(shape1_cbd) == 8
 
 
+def test_get_template_parts_from_shape_with_or():
+    shape_graph = Graph()
+    shape_graph.parse(
+        data=PREAMBLE
+        + """
+    :shape1 a owl:Class, sh:NodeShape ;
+        sh:or ( :option1 :option2 ) .
+    :option1 a owl:Class, sh:NodeShape ;
+        sh:property [
+            sh:path brick:hasPoint ;
+            sh:qualifiedValueShape [ sh:class brick:Zone_Air_Temperature_Sensor ] ;
+            sh:qualifiedMinCount 1 ;
+        ] .
+    :option2 a owl:Class, sh:NodeShape .
+    """
+    )
+    body, deps = get_template_parts_from_shape(MODEL["shape1"], shape_graph)
+    point_targets = list(body.objects(PARAM["name"], BRICK.hasPoint))
+    assert point_targets
+    for target in point_targets:
+        assert (target, A, BRICK.Zone_Air_Temperature_Sensor) in body
+
+
 def test_inline_sh_and(bm: BuildingMOTIF, shacl_engine):
     bm.shacl_engine = shacl_engine
     sg = Graph()
