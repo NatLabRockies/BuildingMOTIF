@@ -92,68 +92,6 @@
     ] ;
 .
 
-:sa-temp a sh:NodeShape, owl:Class ;
-    sh:class brick:Supply_Air_Temperature_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:oa-temp a sh:NodeShape, owl:Class ;
-    sh:class brick:Outside_Air_Temperature_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:ma-temp a sh:NodeShape, owl:Class ;
-    sh:class brick:Mixed_Air_Temperature_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:ra-temp a sh:NodeShape, owl:Class ;
-    sh:class brick:Return_Air_Temperature_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:filter-pd a sh:NodeShape, owl:Class ;
-    sh:class brick:Filter_Differential_Pressure_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:clg-signal a sh:NodeShape, owl:Class ;
-    sh:class brick:Cooling_Command ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:htg-signal a sh:NodeShape, owl:Class ;
-    sh:class brick:Heating_Command ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
 
 :zone-temperature a sh:NodeShape, owl:Class ;
     sh:class brick:Zone_Temperature_Sensor ;
@@ -164,23 +102,6 @@
     ] ;
 .
 
-:occupancy-sensor a sh:NodeShape, owl:Class ;
-    sh:class brick:Occupancy_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
-
-:zone-co2-level a sh:NodeShape, owl:Class ;
-    sh:class brick:CO2_Level_Sensor ;
-    sh:property [
-        sh:minCount 1;
-        sh:maxCount 1;
-        sh:path brick:hasUnit ;
-    ] ;
-.
 
 :oa-ra-damper a sh:NodeShape, owl:Class ;
     sh:class brick:Damper ;

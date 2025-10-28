@@ -9,7 +9,7 @@
 
 :vav-with-reheat a sh:NodeShape, owl:Class, bmotif:System_Specification ;
     sh:class brick:RVAV ;
-    rdfs:subClassOf vav41:vav-cooling-only ;
+    sh:node vav41:vav-cooling-only ;
     sh:or ( :heating-signal1 :heating-signal2 ) ;
     bmotif:domain bmotif:HVAC ;
 .

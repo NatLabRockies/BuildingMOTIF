@@ -41,7 +41,7 @@
 :fc-3 a sh:NodeShape, owl:Class, bmotif:Analytics_Application ;
     rdfs:label "FC#3" ;
     rdfs:comment "MAT too high; should be between OAT and RAT" ;
-    rdfs:subClassOf :fc-2 .
+    sh:node :fc-2 .
 
 :fc-4 a sh:NodeShape, owl:Class, bmotif:Analytics_Application ;
     bmotif:domain bmotif:HVAC ;

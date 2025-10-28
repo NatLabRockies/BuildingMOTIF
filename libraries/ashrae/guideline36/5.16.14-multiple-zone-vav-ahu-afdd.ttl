@@ -71,7 +71,7 @@
 :fc-3 a sh:NodeShape, owl:Class, bmotif:Analytics_Application ;
     rdfs:label "FC#3" ;
     rdfs:comment "MAT too high; should be between OAT and RAT" ;
-    rdfs:subClassOf :fc-2 .
+    sh:node :fc-2 .
 
 :fc-4 a sh:NodeShape, owl:Class, bmotif:Analytics_Application ;
     bmotif:domain bmotif:HVAC ;
@@ -133,8 +133,7 @@
           sh:qualifiedMinCount 1 ;
         ]
     ) ;
-    # use subclassof to compose shapes
-    rdfs:subClassOf :percent-oa-minimum .
+    sh:node :percent-oa-minimum .
 
 :percent-oa-fraction a sh:NodeShape, owl:Class ;
     rdfs:label "%OA" ;

@@ -37,31 +37,31 @@
     ] ;
     sh:property [
         sh:path brick:hasPoint ;
-        sh:qualifiedValueShape [ sh:node vav48:oa-temp ] ;
+        sh:qualifiedValueShape [ sh:class brick:Outside_Air_Temperature_Sensor ] ;
         sh:qualifiedMinCount 1 ;
         sh:qualifiedMaxCount 1 ;
     ] ;
     sh:property [
         sh:path brick:hasPoint ;
-        sh:qualifiedValueShape [ sh:node vav48:ma-temp ] ;
+        sh:qualifiedValueShape [ sh:class brick:Mixed_Air_Temperature_Sensor ] ;
         sh:qualifiedMinCount 1 ;
         sh:qualifiedMaxCount 1 ;
     ] ;
     sh:property [
         sh:path brick:hasPoint ;
-        sh:qualifiedValueShape [ sh:node vav48:ra-temp ] ;
+        sh:qualifiedValueShape [ sh:class brick:Return_Air_Temperature_Sensor] ;
         sh:qualifiedMinCount 1 ;
         sh:qualifiedMaxCount 1 ;
     ] ;
     sh:property [
         sh:path brick:hasPoint ;
-        sh:qualifiedValueShape [ sh:node vav48:sa-temp ] ;
+        sh:qualifiedValueShape [ sh:class brick:Supply_Air_Temperature_Sensor] ;
         sh:qualifiedMinCount 1 ;
         sh:qualifiedMaxCount 1 ;
     ] ;
     sh:property [
         sh:path brick:hasPoint ;
-        sh:qualifiedValueShape [ sh:node vav48:filter-pd ] ;
+        sh:qualifiedValueShape [sh:class brick:Filter_Differential_Pressure_Sensor] ;
         sh:qualifiedMinCount 1 ;
         sh:qualifiedMaxCount 1 ;
     ] ;

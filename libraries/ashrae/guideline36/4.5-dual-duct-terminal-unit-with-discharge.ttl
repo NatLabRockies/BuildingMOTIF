@@ -41,15 +41,15 @@
         sh:qualifiedMinCount 1 ;
         sh:qualifiedMaxCount 1 ;
     ] ;
-    rdfs:subClassOf vav41:zone-temperature, vav41:zone-co2-level, vav41:occupancy-sensor ;
+    sh:node vav41:zone-temperature, vav41:zone-co2-level, vav41:occupancy-sensor ;
 .
 
 :hot-deck a sh:NodeShape, owl:Class ;
     sh:class brick:Hot_Deck ;
-    rdfs:subClassOf components:heating_damper ;
+    sh:node components:heating_damper ;
 .
 
 :cold-deck a sh:NodeShape, owl:Class ;
     sh:class brick:Cold_Deck ;
-    rdfs:subClassOf components:cooling_damper ;
+    sh:node components:cooling_damper ;
 .

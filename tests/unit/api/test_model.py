@@ -441,7 +441,15 @@ def test_validate_model_bad_args(client, building_motif):
 def test_validate_model_against_shapes(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Load libraries
-    Library.load(ontology_graph=str(PROJECT_DIR / "libraries/brick/Brick.ttl"))
+    brick = Library.load(ontology_graph=str(PROJECT_DIR / "libraries/brick/Brick.ttl"))
+    unit = Library.load(
+        ontology_graph=str(PROJECT_DIR / "libraries/qudt/VOCAB_QUDT-UNITS-ALL.ttl")
+    )
+    qk = Library.load(
+        ontology_graph=str(
+            PROJECT_DIR / "libraries/qudt/VOCAB_QUDT-QUANTITY-KINDS-ALL.ttl"
+        )
+    )
     ashrae_g36 = Library.load(
         directory=str(PROJECT_DIR / "libraries/ashrae/guideline36/")
     )
@@ -465,7 +473,12 @@ def test_validate_model_against_shapes(client, building_motif, shacl_engine):
         f"/models/{medium_office_model.id}/validate_shape",
         headers={"Content-Type": "application/json"},
         json={
-            "shape_collection_ids": [ashrae_g36.get_shape_collection().id],
+            "shape_collection_ids": [
+                ashrae_g36.get_shape_collection().id,
+                brick.get_shape_collection().id,
+                unit.get_shape_collection().id,
+                qk.get_shape_collection().id,
+            ],
             "shape_uris": [
                 "urn:ashrae/g36/5.16.14/multiple-zone-vav-ahu-afdd/fc-3",
                 "urn:ashrae/g36/5.16.14/multiple-zone-vav-ahu-afdd/fc-4",
@@ -557,7 +570,10 @@ def test_validate_endpoint_include_templates_returns_inlined_templates_with_para
     assert "templates" in data
     assert isinstance(data["templates"], list)
     assert len(data["templates"]) >= 1
-    assert all(isinstance(t.get("template_id"), int) and t["template_id"] > 0 for t in data["templates"])
+    assert all(
+        isinstance(t.get("template_id"), int) and t["template_id"] > 0
+        for t in data["templates"]
+    )
     # Verify focus is included for each template and includes the VAV focus node
     for t in data["templates"]:
         assert "focus" in t
@@ -590,7 +606,9 @@ def test_validate_endpoint_include_templates_returns_inlined_templates_with_para
     assert "https://brickschema.org/schema/Brick#Air_Flow_Sensor" in all_types
 
 
-def test_validate_endpoint_include_templates_via_json_body(client, building_motif, shacl_engine):
+def test_validate_endpoint_include_templates_via_json_body(
+    client, building_motif, shacl_engine
+):
     # Ensure SHACL engine configured
     building_motif.shacl_engine = shacl_engine
 
@@ -608,7 +626,10 @@ def test_validate_endpoint_include_templates_via_json_body(client, building_moti
     res = client.post(
         f"/models/{model.id}/validate",
         headers={"Content-Type": "application/json"},
-        json={"library_ids": [library_1.id, library_2.id, brick.id], "include_templates": True},
+        json={
+            "library_ids": [library_1.id, library_2.id, brick.id],
+            "include_templates": True,
+        },
     )
     assert res.status_code == 200, res.data
 
@@ -616,7 +637,10 @@ def test_validate_endpoint_include_templates_via_json_body(client, building_moti
     assert "templates" in data
     assert isinstance(data["templates"], list)
     assert len(data["templates"]) >= 1
-    assert all(isinstance(t.get("template_id"), int) and t["template_id"] > 0 for t in data["templates"])
+    assert all(
+        isinstance(t.get("template_id"), int) and t["template_id"] > 0
+        for t in data["templates"]
+    )
     for t in data["templates"]:
         assert "template_id" in t
         assert isinstance(t["template_id"], int) and t["template_id"] > 0
