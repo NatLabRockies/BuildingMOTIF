@@ -5,21 +5,14 @@ import warnings
 from functools import cached_property
 from typing import Any, Dict, List, Optional, Tuple
 
+from buildingmotif.ingresses.base import Record, RecordIngressHandler
+
 try:
     import BAC0
 except ImportError:
     logging.critical(
         "Install the 'bacnet-ingress' module, e.g. 'pip install buildingmotif[bacnet-ingress]'"
     )
-
-
-from buildingmotif.ingresses.base import Record, RecordIngressHandler
-
-# We do this little rigamarole to avoid BAC0 spitting out a million
-# logging messages warning us that we changed the log level, which
-# happens when we go through the normal BAC0 log level procedure
-logger = logging.getLogger("BAC0_Root.BAC0.scripts.Base.Base")
-logger.setLevel(logging.ERROR)
 
 
 class BACnetNetwork(RecordIngressHandler):
@@ -87,7 +80,6 @@ class BACnetNetwork(RecordIngressHandler):
         device_kwargs.setdefault("poll", -1)
         device_kwargs.setdefault("auto_save", False)
 
-        logger.error(f"starting with {ip=} {ping=}")
         async with BAC0.start(ip=ip, ping=ping) as bacnet:
             await asyncio.sleep(2)
             await bacnet._discover(**discover_kwargs)
@@ -110,7 +102,7 @@ class BACnetNetwork(RecordIngressHandler):
                         device_id = info.get("device_id")
 
                     if address is None or device_id is None:
-                        logger.warning(
+                        logging.warning(
                             "Skipping discovered device with missing address/device_id: %s",
                             info,
                         )
@@ -128,6 +120,13 @@ class BACnetNetwork(RecordIngressHandler):
             for (address, device_id, _) in discovered_entries:
                 device = await BAC0.device(address, device_id, bacnet, **device_kwargs)
                 try:
+                    # keep persistence disabled and quiet for one-shot scans
+                    setattr(device.properties, "auto_save", False)
+                    setattr(device.properties, "clear_history_on_save", False)
+                    setattr(device.properties, "history_size", None)
+                    if hasattr(device, "_log"):
+                        device._log.setLevel(logging.ERROR)  # type: ignore[attr-defined]
+
                     objects: List[Dict[str, Any]] = []
 
                     for bobj in device.points:
@@ -137,14 +136,36 @@ class BACnetNetwork(RecordIngressHandler):
 
                     self.objects[(address, device_id)] = objects
                 finally:
-                    disconnect_task = device.disconnect(save_on_disconnect=False)
-                    if disconnect_task is not None:
-                        await disconnect_task
+                    disconnect = getattr(
+                        device, "_disconnect", None  # type: ignore[attr-defined]
+                    )
+                    if callable(disconnect):
+                        await disconnect(save_on_disconnect=False, unregister=True)
 
     def _clean_object(self, obj: Dict[str, Any]):
-        if "name" in obj:
+        def _normalize(value: Any, path: Tuple[Any, ...]) -> Any:
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, dict):
+                normalized: Dict[Any, Any] = {}
+                for key, nested in value.items():
+                    normalized[key] = _normalize(nested, (*path, key))
+                return normalized
+            if isinstance(value, (list, tuple, set)):
+                return [_normalize(v, (*path, idx)) for idx, v in enumerate(value)]
+
+            logging.error(
+                "Ignoring non-serializable BACnet value %r at %s",
+                value,
+                " -> ".join(str(p) for p in path),
+            )
+            return None
+
+        if "name" in obj and isinstance(obj["name"], str):
             # remove trailing/leading whitespace from names
             obj["name"] = obj["name"].strip()
+        for key, value in list(obj.items()):
+            obj[key] = _normalize(value, (obj.get("device"), key))
 
     @cached_property
     def records(self) -> List[Record]:
