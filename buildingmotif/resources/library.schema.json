@@ -1,0 +1,104 @@
+{
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "The name of the library."
+        },
+        "version": {
+            "type": "string",
+            "description": "The version of the library."
+        },
+        "description": {
+            "type": "string",
+            "description": "A brief description of the library."
+        },
+        "authors": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "A list of authors of the library."
+        },
+        "home": {
+            "type": "string",
+            "format": "uri",
+            "description": "The homepage URL of the library."
+        },
+        "dependencies": {
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "directory": {
+                                "type": "string",
+                                "description": "The directory where the dependency is located."
+                            }
+                        },
+                        "required": ["directory"]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "ontology": {
+                                "type": "string",
+                                "format": "uri",
+                                "description": "The URI of the ontology dependency."
+                            }
+                        },
+                        "required": ["ontology"]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "git": {
+                                "type": "object",
+                                "properties": {
+                                    "repo": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "description": "The Git repository URL."
+                                    },
+                                    "path": {
+                                        "type": "string",
+                                        "description": "The path within the Git repository.",
+                                        "default": "."
+                                    },
+                                    "branch": {
+                                        "type": "string",
+                                        "description": "The branch of the Git repository.",
+                                        "default": "main"
+                                    },
+                                    "tag": {
+                                        "type": "string",
+                                        "description": "The tag of the Git repository."
+                                    },
+                                    "commit": {
+                                        "type": "string",
+                                        "description": "The commit hash of the Git repository."
+                                    }
+                                },
+                                "required": ["repo", "path"],
+                                "oneOf": [
+                                    {
+                                        "required": ["branch"]
+                                    },
+                                    {
+                                        "required": ["tag"]
+                                    },
+                                    {
+                                        "required": ["commit"]
+                                    }
+                                ]
+                            }
+                        },
+                        "required": ["git"]
+                    }
+                ]
+            }
+        }
+    },
+    "required": ["name", "version", "description"]
+}

@@ -1,0 +1,17 @@
+name: {{ name }}
+version: '{{ version }}'
+description: |
+  {{ description }}
+{%- if author %}
+authors:
+  - {{ author }}
+{%- endif %}
+{%- if home %}
+home: {{ home }}
+{%- endif %}
+{%- if dependencies %}
+dependencies:
+  {%- for dependency in dependencies %}
+  - {{ dependency }}
+  {%- endfor %}
+{%- endif %}
