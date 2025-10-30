@@ -10,7 +10,7 @@ repos:
     -   id: black
         entry: poetry run black
 -   repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
+    rev: 7.1.2
     hooks:
     -   id: flake8
         entry: poetry run flake8 buildingmotif

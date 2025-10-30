@@ -45,6 +45,9 @@ with-relief-damper:
     args: {"name": "relief-fan"}
   - template: damper
     args: {"name": "relief-damper"}
+  - template: https://brickschema.org/schema/Brick#Air_Handling_Unit
+    library: https://brickschema.org/schema/1.4/Brick
+    args: {"name": "name"}
   - template: https://brickschema.org/schema/Brick#Static_Pressure_Sensor
     library: https://brickschema.org/schema/1.4/Brick
     args: {"name": "sp-sensor"}
@@ -62,6 +65,9 @@ with-return-fan:
     args: {"name": "return-fan"}
   - template: damper
     args: {"name": "relief-damper"}
+  - template: https://brickschema.org/schema/Brick#Air_Handling_Unit
+    library: https://brickschema.org/schema/1.4/Brick
+    args: {"name": "name"}
   - template: https://brickschema.org/schema/Brick#Static_Pressure_Sensor
     library: https://brickschema.org/schema/1.4/Brick
     args: {"name": "sp-sensor"}

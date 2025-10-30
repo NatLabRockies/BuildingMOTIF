@@ -579,8 +579,8 @@ def _inline_sh_qualified_value_shape(sg: Graph):
     for row in sg.query(q):
         parent, child = row  # type: ignore
         sg.remove((parent, SH["qualifiedValueShape"], child))
-        pobjs = sg.predicate_objects(child)
-        for (p, o) in pobjs:
+        pos = sg.predicate_objects(child)
+        for (p, o) in pos:
             sg.add((parent, p, o))
 
 

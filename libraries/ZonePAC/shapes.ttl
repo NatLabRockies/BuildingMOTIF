@@ -23,7 +23,7 @@
     owl:imports <https://brickschema.org/schema/1.4/Brick> ;
 .
 
-:zonepac-zone a sh:NodeShape ;
+:zonepac-zone a sh:NodeShape, owl:Class ;
     sh:targetClass brick:HVAC_Zone ;
     sh:property [
         sh:path brick:hasPoint ;
@@ -37,7 +37,7 @@
     ] ;
 .
 
-:zonepac-vav a sh:NodeShape ;
+:zonepac-vav a sh:NodeShape, owl:Class ;
     sh:targetClass brick:Terminal_Unit ;
     sh:property [
         sh:path brick:hasPart ;
@@ -56,7 +56,7 @@
     ] ;
 .
 
-:heating-coil a sh:NodeShape ;
+:heating-coil a sh:NodeShape, owl:Class ;
     sh:targetClass brick:Heating_Coil ;
     sh:property [
         sh:path brick:hasPoint ;

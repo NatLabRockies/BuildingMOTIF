@@ -34,16 +34,19 @@ class NamingConventionIngress(RecordIngressHandler):
         self.naming_convention = naming_convention
 
     def dump_failed_labels(self):
-        sorted_groups = sorted(
-            analyze_failures(self.failures).items(),
-            key=lambda x: len(x[1]),
-            reverse=True,
-        )
-        for group, failures in sorted_groups:
+        for group, failures in self.sorted_failures:
             print(f"Unparsed label: {group} ({len(failures)} failures)")
             for failure in failures:
                 print(f"\t{failure}")
             print()
+
+    @property
+    def sorted_failures(self) -> list:
+        return sorted(
+            analyze_failures(self.failures).items(),
+            key=lambda x: len(x[1]),
+            reverse=True,
+        )
 
     @cached_property
     def records(self) -> List[Record]:

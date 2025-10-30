@@ -295,6 +295,27 @@ def as_identifier(parser):
     return as_identifier_parser
 
 
+class wrap(Parser):
+    """Wraps the result of a parser with a token."""
+
+    def __init__(self, parser: Parser, type_name: TokenOrConstructor, id=None):
+        self.parser: Parser = parser
+        self.type_name: TokenOrConstructor = type_name
+        self.id = id
+
+    def __call__(self, target) -> List[TokenResult]:
+        result: List[TokenResult] = self.parser(target)
+        if result and not any(r.error for r in result):
+            # glue the results together
+            value = "".join([r.value for r in result])
+            return [
+                TokenResult(
+                    value, ensure_token(self.type_name, value), len(value), id=self.id
+                )
+            ]
+        return result
+
+
 COMMON_EQUIP_ABBREVIATIONS_BRICK = {
     "AHU": BRICK.Air_Handling_Unit,
     "FCU": BRICK.Fan_Coil_Unit,

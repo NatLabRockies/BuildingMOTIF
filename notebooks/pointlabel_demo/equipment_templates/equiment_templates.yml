@@ -1,0 +1,93 @@
+SaTmpEntity:
+  body: >
+    @prefix P: <urn:___param___#> .
+    @prefix brick: <https://brickschema.org/schema/Brick#> .
+    P:name a brick:Fan_Coil_Unit ;
+      brick:hasPoint P:sat .
+    P:sat a brick:Supply_Air_Temperature_Sensor .
+
+fcu:
+  body: >
+    @prefix P: <urn:___param___#> .
+    @prefix brick: <https://brickschema.org/schema/Brick#> .
+    P:name a brick:Fan_Coil_Unit ;
+      brick:hasPoint P:occ_cmd, P:occ_status, P:supply_temp,
+                     P:occ_clg_sp, P:unocc_clg_sp,
+                     P:occ_htg_sp, P:unocc_htg_sp ;
+      brick:feeds P:zone ;
+      brick:hasPart P:hw_coil, P:chw_coil .
+    P:zone a brick:HVAC_Zone ;
+      brick:hasPart P:room .
+  optional: ['occ_cmd','occ_status','occ_clg_sp','unocc_clg_sp','occ_htg_sp','unocc_htg_sp']
+  dependencies:
+    - template:  https://brickschema.org/schema/Brick#Occupancy_Command
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "occ_cmd"}
+    - template:  https://brickschema.org/schema/Brick#Occupancy_Status
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "occ_status"}
+    - template:  https://brickschema.org/schema/Brick#Supply_Air_Temperature_Sensor
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "supply_temp"}
+    - template:  https://brickschema.org/schema/Brick#Occupied_Cooling_Temperature_Setpoint
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "occ_clg_sp"}
+    - template:  https://brickschema.org/schema/Brick#Unoccupied_Cooling_Temperature_Setpoint
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "unocc_clg_sp"}
+    - template:  https://brickschema.org/schema/Brick#Occupied_Heating_Temperature_Setpoint
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "occ_htg_sp"}
+    - template:  https://brickschema.org/schema/Brick#Unoccupied_Heating_Temperature_Setpoint
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "unocc_htg_sp"}
+    - template: heating_coil
+      args: {"name": "hw_coil"}
+    - template: cooling_coil
+      args: {"name": "chw_coil"}
+    - template: room
+      args: {"name": "room"}
+
+room:
+  body: >
+    @prefix P: <urn:___param___#> .
+    @prefix brick: <https://brickschema.org/schema/Brick#> .
+    P:name a brick:Space ;
+      brick:hasPoint P:temp, P:relative_humidity .
+  dependencies:
+    - template:  https://brickschema.org/schema/Brick#Air_Temperature_Sensor
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "temp"}
+    - template:  https://brickschema.org/schema/Brick#Relative_Humidity_Sensor
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "relative_humidity"}
+
+heating_coil:
+  body: >
+    @prefix P: <urn:___param___#> .
+    @prefix brick: <https://brickschema.org/schema/Brick#> .
+    P:name a brick:Heating_Coil ;
+      brick:hasPart P:hw_vlv .
+    P:hw_vlv brick:hasPoint P:position .
+  dependencies:
+    - template:  https://brickschema.org/schema/Brick#Valve_Position_Command
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "position"}
+    - template:  https://brickschema.org/schema/Brick#Hot_Water_Valve
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "hw_vlv"}
+
+cooling_coil:
+  body: >
+    @prefix P: <urn:___param___#> .
+    @prefix brick: <https://brickschema.org/schema/Brick#> .
+    P:name a brick:Cooling_Coil ;
+      brick:hasPart P:chw_vlv .
+    P:chw_vlv brick:hasPoint P:position .
+  dependencies:
+    - template:  https://brickschema.org/schema/Brick#Valve_Position_Command
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "position"}
+    - template:  https://brickschema.org/schema/Brick#Chilled_Water_Valve
+      library: https://brickschema.org/schema/1.4/Brick
+      args: {"name": "chw_vlv"}

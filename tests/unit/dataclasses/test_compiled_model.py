@@ -7,7 +7,7 @@ from buildingmotif.dataclasses import Library, Model
 from buildingmotif.dataclasses.compiled_model import CompiledModel
 
 
-def test_validate(clean_building_motif_topquadrant):
+def test_compiled_model_validation(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
     brick = Library.load(
         ontology_graph="tests/unit/fixtures/Brick.ttl"

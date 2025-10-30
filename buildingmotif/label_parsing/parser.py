@@ -107,7 +107,9 @@ def results_to_tokens(results):
         if first is None:
             # if there are any constants left, add them to the token dictionary with the label
             first = first_true(parts, pred=lambda x: isinstance(x.token, Constant))
-        if first:
+        # need to check this is a Constant because during the while True loop, the first
+        # token could be an Identifier
+        if first and isinstance(first.token, Constant):
             res["tokens"].append(
                 {"identifier": r, "type": first.token.value.toPython()}
             )
