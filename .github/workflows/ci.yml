@@ -21,14 +21,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
       - name: poetry install
-        run: poetry install --all-extras
+        run: | 
+          python -m pip install "poetry~=2.2.1"
+          poetry install --all-extras
       - name: run isort and black
         run: |
           poetry run isort . --check
@@ -91,14 +87,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
       - name: poetry install
-        run: poetry install --all-extras
+        run: |
+          python -m pip install "poetry~=2.2.1"
+          poetry install --all-extras
       - name: install pytest-xdist for parallel tests
         run: poetry run pip install pytest-xdist
       - name: integration tests
@@ -131,14 +123,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
       - name: poetry install
-        run: poetry install --all-extras
+        run: |
+          python -m pip install "poetry~=2.2.1"  
+          poetry install --all-extras
       - name: install pytest-xdist for parallel tests
         run: poetry run pip install pytest-xdist
       - name: library tests
