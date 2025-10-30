@@ -50,12 +50,14 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-      - name: install-poetry
-        uses: abatilo/actions-poetry@v3
+      - name: setup-python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: poetry install
-        run: poetry install --all-extras
+        run: |
+          python3 -m install "poetry~=2.2.1"
+          poetry install --all-extras
       - name: install pytest-xdist for parallel tests
         run: poetry run pip install pytest-xdist
       - name: lint
