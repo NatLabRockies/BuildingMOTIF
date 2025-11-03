@@ -70,8 +70,10 @@ model.graph.parse("tutorial1_model.ttl", format="ttl")
 constraints = Library.load(ontology_graph="../../buildingmotif/libraries/constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.load(ontology_graph="../../libraries/brick/Brick.ttl")
 g36 = Library.load(directory="../../libraries/ashrae/guideline36")
+Library.load(ontology_graph="../../libraries/qudt/VOCAB_QUDT-QUANTITY-KINDS-ALL.ttl")
+Library.load(ontology_graph="../../libraries/qudt/VOCAB_QUDT-UNITS-ALL.ttl")
 ```
 
 ## Model Validation - Ontology
@@ -80,7 +82,7 @@ BuildingMOTIF organizes Shapes into `Shape Collections`. The shape collection as
 
 ```{code-cell}
 # pass a list of shape collections to .validate()
-validation_result = model.validate([brick.get_shape_collection()])
+validation_result = model.validate([brick.get_shape_collection()], error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 ```
 
@@ -243,7 +245,7 @@ to load in the Brick and Guideline36 libraries at the top of this tutorial.
 
 
 ```{code-cell}
-validation_result = model.validate()
+validation_result = model.validate(error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 
 # print reasons
@@ -269,7 +271,7 @@ shape_collections = [
 ]
 
 # pass a list of shape collections to .validate()
-validation_result = model.validate(shape_collections)
+validation_result = model.validate(shape_collections, error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 
 # print reasons
@@ -306,7 +308,7 @@ print(model.graph.serialize())
 We can see that the heating coil was added to the model and connected to the AHU so let's check if the manifest validation failure was fixed.
 
 ```{code-cell}
-validation_result = model.validate()
+validation_result = model.validate(error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 
 # print reasons
@@ -373,7 +375,7 @@ print(f"Model is valid? {validation_result.valid}")
 Now we can run validation to see if our AHU is ready to run the "single zone AHU" control sequence:
 
 ```{code-cell}
-validation_result = model.validate()
+validation_result = model.validate(error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 ```
 

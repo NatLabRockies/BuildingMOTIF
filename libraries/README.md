@@ -58,7 +58,7 @@ libraries/
 │       ├── 4.2-vav-with-reheat.yml
 │       └── 4.3-fan-powered.yml
 └── brick
-    └── Brick-subset.ttl
+    └── Brick.ttl
  ```
 
 ### ASHRAE / Guideline 36

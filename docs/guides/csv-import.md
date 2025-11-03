@@ -67,7 +67,7 @@ tstat2,room345,co2-345,temp-345,sp-345
 tstat3,room567,cow-567,temp-567,sp-567
 ```
 
-We can create a CSV ingress handler using the built-in class ([`CSVIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.csv.html#buildingmotif.ingresses.csv.CSVIngress)):
+We can create a CSV ingress handler using the built-in class ([`CSVIngressHandler`](/reference/apidoc/_autosummary/buildingmotif.ingresses.csvingress.html#buildingmotif.ingresses.csvingress.CSVIngress)):
 
 ```python
 from rdflib import Namespace, Graph

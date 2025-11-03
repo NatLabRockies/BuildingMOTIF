@@ -48,8 +48,10 @@ model = Model.create(BLDG, description="This is a test model for a simple buildi
 constraints = Library.load(ontology_graph="constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.load(ontology_graph="../../libraries/brick/Brick.ttl")
 g36 = Library.load(directory="../../libraries/ashrae/guideline36")
+Library.load(ontology_graph="../../libraries/qudt/VOCAB_QUDT-QUANTITY-KINDS-ALL.ttl")
+Library.load(ontology_graph="../../libraries/qudt/VOCAB_QUDT-UNITS-ALL.ttl")
 
 # load tutorial 2 model and manifest
 model.graph.parse("tutorial2_model.ttl", format="ttl")
@@ -64,7 +66,7 @@ model.update_manifest(manifest.get_shape_collection())
 Let's validate the model again to see what's causing the failure.
 
 ```{code-cell}
-validation_result = model.validate()
+validation_result = model.validate(error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 
 # print reasons
@@ -153,7 +155,7 @@ for templ in generated_templates.get_templates():
 We use the same code as before to ask BuildingMOTIF if the model is now valid:
 
 ```{code-cell}
-validation_result = model.validate()
+validation_result = model.validate(error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 # print reasons
 for uri, diffset in validation_result.diffset.items():
@@ -206,7 +208,7 @@ for templ in generated_templates_sf.get_templates():
 We can re-check the validation of the model now:
 
 ```{code-cell}
-validation_result = model.validate()
+validation_result = model.validate(error_on_missing_imports=False)
 print(f"Model is valid? {validation_result.valid}")
 print(validation_result.report.serialize())
 

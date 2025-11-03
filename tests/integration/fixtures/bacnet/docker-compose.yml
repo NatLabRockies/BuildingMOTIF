@@ -1,4 +1,3 @@
-version: "3.4"
 services:
   device:
     build:
@@ -6,7 +5,7 @@ services:
       dockerfile: Dockerfile
     networks:
       bacnet:
-        ipv4_address: 172.24.0.3
+        ipv4_address: 172.24.0.30
     command: "python3 virtual_bacnet.py"
   buildingmotif:
     build:
@@ -14,7 +13,7 @@ services:
       dockerfile: tests/integration/fixtures/buildingmotif/Dockerfile
     networks:
       bacnet:
-        ipv4_address: 172.24.0.2
+        ipv4_address: 172.24.0.20
 networks:
   bacnet:
     ipam:

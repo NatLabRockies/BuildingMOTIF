@@ -1,70 +1,171 @@
 # configure logging output
+import asyncio
 import logging
 import warnings
 from functools import cached_property
 from typing import Any, Dict, List, Optional, Tuple
 
+from buildingmotif.ingresses.base import Record, RecordIngressHandler
+
 try:
     import BAC0
-    from BAC0.core.devices.Device import Device as BACnetDevice
 except ImportError:
     logging.critical(
         "Install the 'bacnet-ingress' module, e.g. 'pip install buildingmotif[bacnet-ingress]'"
     )
 
 
-from buildingmotif.ingresses.base import Record, RecordIngressHandler
-
-# We do this little rigamarole to avoid BAC0 spitting out a million
-# logging messages warning us that we changed the log level, which
-# happens when we go through the normal BAC0 log level procedure
-logger = logging.getLogger("BAC0_Root.BAC0.scripts.Base.Base")
-logger.setLevel(logging.ERROR)
-
-
 class BACnetNetwork(RecordIngressHandler):
-    def __init__(self, ip: Optional[str] = None):
+    def __init__(
+        self,
+        ip: Optional[str] = None,
+        *,
+        discover_kwargs: Optional[Dict[str, Any]] = None,
+        global_broadcast: bool = True,
+        ping: bool = False,
+        device_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         """
         Reads a BACnet network to discover the devices and objects therein
 
-        :param ip: IP/mask for the host which is canning the networks,
+        :param ip: IP/mask for the host which is scanning the network,
                     defaults to None
         :type ip: Optional[str], optional
+        :param discover_kwargs: Optional kwargs forwarded to BAC0._discover.
+        :type discover_kwargs: Optional[Dict[str, Any]]
+        :param global_broadcast: Whether to issue global broadcast Who-Is requests.
+        :type global_broadcast: bool
+        :param ping: Whether to ping devices during connect; defaults to False.
+        :type ping: bool
+        :param device_kwargs: Optional kwargs forwarded to BAC0.device.
+        :type device_kwargs: Optional[Dict[str, Any]]
         """
-        # create the network object; this will handle scans
-        # Be a good net citizen: do not ping BACnet devices
-        self.network = BAC0.connect(ip=ip, ping=False)
-        # initiate discovery of BACnet networks
-        self.network.discover()
+        self.objects: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+        discover_kwargs = dict(discover_kwargs or {})
+        discover_kwargs.setdefault("global_broadcast", global_broadcast)
+        self._run_async(
+            self._collect_objects(
+                ip=ip,
+                discover_kwargs=discover_kwargs,
+                ping=ping,
+                device_kwargs=device_kwargs or {},
+            )
+        )
 
-        self.devices: List[BACnetDevice] = []
-        self.objects: Dict[Tuple[str, int], List[dict]] = {}
-
-        # for each discovered Device, create a BAC0.device object
-        # This will read the BACnet objects off of the Device.
-        # Save the BACnet objects in the objects dictionary
+    def _run_async(self, coro):
+        loop = asyncio.new_event_loop()
         try:
-            if self.network.discoveredDevices is None:
-                warnings.warn("BACnet ingress could not find any BACnet devices")
-            for (address, device_id) in self.network.discoveredDevices:  # type: ignore
-                # set poll to 0 to avoid reading the points regularly
-                dev = BAC0.device(address, device_id, self.network, poll=0)
-                self.devices.append(dev)
-                self.objects[(address, device_id)] = []
-
-                for bobj in dev.points:
-                    obj = bobj.properties.asdict
-                    self._clean_object(obj)
-                    self.objects[(address, device_id)].append(obj)
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(coro)
+            pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+            if pending:
+                for task in pending:
+                    task.cancel()
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+            loop.run_until_complete(loop.shutdown_asyncgens())
         finally:
-            for dev in self.devices:
-                self.network.unregister_device(dev)
-            self.network.disconnect()
+            asyncio.set_event_loop(None)
+            loop.close()
+
+    async def _collect_objects(
+        self,
+        *,
+        ip: Optional[str],
+        discover_kwargs: Dict[str, Any],
+        ping: bool,
+        device_kwargs: Dict[str, Any],
+    ):
+        device_kwargs.setdefault("poll", -1)
+        device_kwargs.setdefault("auto_save", False)
+
+        async with BAC0.start(ip=ip, ping=ping) as bacnet:
+            await asyncio.sleep(2)
+            await bacnet._discover(**discover_kwargs)
+            await asyncio.sleep(2)
+
+            discovered = getattr(bacnet, "discoveredDevices", None)
+            if not discovered:
+                warnings.warn("BACnet ingress could not find any BACnet devices")
+                return
+
+            discovered_entries: List[Tuple[Any, Any, Dict[str, Any]]] = []
+            if isinstance(discovered, dict):
+                for info in discovered.values():
+                    address = info.get("address")
+                    obj_instance = info.get("object_instance")
+                    device_id = None
+                    if isinstance(obj_instance, tuple) and len(obj_instance) >= 2:
+                        device_id = obj_instance[1]
+                    else:
+                        device_id = info.get("device_id")
+
+                    if address is None or device_id is None:
+                        logging.warning(
+                            "Skipping discovered device with missing address/device_id: %s",
+                            info,
+                        )
+                        continue
+
+                    if hasattr(address, "addr"):
+                        address = address.addr
+                    address = str(address)
+                    discovered_entries.append((address, device_id, info))
+
+            if not discovered_entries:
+                warnings.warn("BACnet ingress could not find any BACnet devices")
+                return
+
+            for (address, device_id, _) in discovered_entries:
+                device = await BAC0.device(address, device_id, bacnet, **device_kwargs)
+                try:
+                    # keep persistence disabled and quiet for one-shot scans
+                    setattr(device.properties, "auto_save", False)
+                    setattr(device.properties, "clear_history_on_save", False)
+                    setattr(device.properties, "history_size", None)
+                    if hasattr(device, "_log"):
+                        device._log.setLevel(logging.ERROR)  # type: ignore[attr-defined]
+
+                    objects: List[Dict[str, Any]] = []
+
+                    for bobj in device.points:
+                        obj = bobj.properties.asdict
+                        self._clean_object(obj)
+                        objects.append(obj)
+
+                    self.objects[(address, device_id)] = objects
+                finally:
+                    disconnect = getattr(
+                        device, "_disconnect", None  # type: ignore[attr-defined]
+                    )
+                    if callable(disconnect):
+                        await disconnect(save_on_disconnect=False, unregister=True)
 
     def _clean_object(self, obj: Dict[str, Any]):
-        if "name" in obj:
+        def _normalize(value: Any, path: Tuple[Any, ...]) -> Any:
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, dict):
+                normalized: Dict[Any, Any] = {}
+                for key, nested in value.items():
+                    normalized[key] = _normalize(nested, (*path, key))
+                return normalized
+            if isinstance(value, (list, tuple, set)):
+                return [_normalize(v, (*path, idx)) for idx, v in enumerate(value)]
+
+            logging.error(
+                "Ignoring non-serializable BACnet value %r at %s",
+                value,
+                " -> ".join(str(p) for p in path),
+            )
+            return None
+
+        if "name" in obj and isinstance(obj["name"], str):
             # remove trailing/leading whitespace from names
             obj["name"] = obj["name"].strip()
+        for key, value in list(obj.items()):
+            obj[key] = _normalize(value, (obj.get("device"), key))
 
     @cached_property
     def records(self) -> List[Record]:

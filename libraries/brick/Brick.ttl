@@ -61,19 +61,19 @@ rec:ActuationEvent a <dtmi:dtdl:class:Component>,
     rdfs:label "Actuation event"^^xsd:string ;
     rdfs:subClassOf rec:PointEvent ;
     sh:property [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:description "The command message/payload of this actuation event."^^xsd:string ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:name "value"^^xsd:string ;
-            sh:path rec:value ],
-        [ a sh:PropertyShape ;
             sh:class brick:Point ;
             sh:description "The brick:Point(s) (e.g., brick:Commands, brick:Setpoints, or brick:Parameters) that the actuation will target/execute."^^xsd:string ;
             sh:minCount 1 ;
             sh:name "target point"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:targetPoint ] .
+            sh:path rec:targetPoint ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:description "The command message/payload of this actuation event."^^xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "value"^^xsd:string ;
+            sh:path rec:value ] .
 
 rec:AdmittingRoom a rdfs:Class,
         sh:NodeShape ;
@@ -86,16 +86,16 @@ rec:Agent a rdfs:Class,
     rdfs:comment "The human, group, or machine that consumes or acts upon an object or data. This higher-level grouping allows properties that are shared among its subclasses (Person, Organization, ....) to be anchored in one joint place, on the Agent class."^^xsd:string ;
     rdfs:subClassOf rdfs:Resource ;
     sh:property [ a sh:PropertyShape ;
+            sh:description "Indicates ownership of some thing, e.g., a building, an asset, an organization, etc."^^xsd:string ;
+            sh:name "owns"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:owns ],
+        [ a sh:PropertyShape ;
             sh:class rec:Organization ;
             sh:description "Indicates membership in an organization. Note that componency (e.g., departments of a corporation) are expressed using the more generic Organization.isPartOf property."^^xsd:string ;
             sh:name "is member of"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:isMemberOf ],
-        [ a sh:PropertyShape ;
-            sh:description "Indicates ownership of some thing, e.g., a building, an asset, an organization, etc."^^xsd:string ;
-            sh:name "owns"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:owns ] .
+            sh:path rec:isMemberOf ] .
 
 rec:AlarmObject a rdfs:Class,
         sh:NodeShape ;
@@ -163,21 +163,10 @@ rec:Architecture a rdfs:Class,
     rdfs:comment "A designed/landscaped (or potentially designed/landscaped) part of the physical world that has a 3D spatial extent. E.g., a building site, a building, levels within the building, rooms, etc."^^xsd:string ;
     rdfs:subClassOf rec:Space ;
     sh:property [ a sh:PropertyShape ;
-            sh:class rec:ArchitectureArea ;
-            sh:maxCount 1 ;
-            sh:name "area"^^xsd:string ;
+            sh:class rec:BuildingElement ;
+            sh:name "intersecting element"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:area ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Agent ;
-            sh:name "operated by"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:operatedBy ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Document ;
-            sh:name "documentation"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:documentation ],
+            sh:path rec:intersectingElement ],
         [ a sh:PropertyShape ;
             sh:class rec:BuildingElement ;
             sh:name "adjacent element"^^xsd:string ;
@@ -185,24 +174,15 @@ rec:Architecture a rdfs:Class,
             sh:path rec:adjacentElement ],
         [ a sh:PropertyShape ;
             sh:class rec:Agent ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:constructedBy ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Agent ;
             sh:name "owned by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:ownedBy ],
         [ a sh:PropertyShape ;
-            sh:class rec:PostalAddress ;
-            sh:description "Physical address of the architecture (site, building, sub-building, entrance room, etc.) in question."^^xsd:string ;
-            sh:name "address"^^xsd:string ;
+            sh:class rec:ArchitectureCapacity ;
+            sh:maxCount 1 ;
+            sh:name "capacity"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:address ],
-        [ a sh:PropertyShape ;
-            sh:class rec:BuildingElement ;
-            sh:name "intersecting element"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:intersectingElement ],
+            sh:path rec:capacity ],
         [ a sh:PropertyShape ;
             sh:class rec:BuildingElement ;
             sh:description "Links an Architecture to BuildingElement that is contained in the Space."^^xsd:string ;
@@ -211,24 +191,45 @@ rec:Architecture a rdfs:Class,
             sh:path rec:containsElement ],
         [ a sh:PropertyShape ;
             sh:class rec:Agent ;
-            sh:name "architected by"^^xsd:string ;
+            sh:name "operated by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:architectedBy ],
+            sh:path rec:operatedBy ],
         [ a sh:PropertyShape ;
             sh:name "is fed by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:isFedBy ],
         [ a sh:PropertyShape ;
-            sh:class rec:ArchitectureCapacity ;
-            sh:maxCount 1 ;
-            sh:name "capacity"^^xsd:string ;
+            sh:class rec:PostalAddress ;
+            sh:description "Physical address of the architecture (site, building, sub-building, entrance room, etc.) in question."^^xsd:string ;
+            sh:name "address"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:capacity ],
+            sh:path rec:address ],
         [ a sh:PropertyShape ;
             sh:class brick:Point ;
             sh:name "has point"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:hasPoint ] .
+            sh:path rec:hasPoint ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Document ;
+            sh:name "documentation"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:documentation ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Agent ;
+            sh:name "architected by"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:architectedBy ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Agent ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:constructedBy ],
+        [ a sh:PropertyShape ;
+            sh:class rec:ArchitectureArea ;
+            sh:maxCount 1 ;
+            sh:name "area"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:area ],
+        bsh:isMeteredByShape .
 
 rec:ArchitectureArea a <dtmi:dtdl:class:Component>,
         rdfs:Class,
@@ -239,18 +240,18 @@ rec:ArchitectureArea a <dtmi:dtdl:class:Component>,
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:float ;
             sh:maxCount 1 ;
+            sh:name "net area"^^xsd:string ;
+            sh:path rec:netArea ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:float ;
+            sh:maxCount 1 ;
             sh:name "gross area"^^xsd:string ;
             sh:path rec:grossArea ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:float ;
             sh:maxCount 1 ;
             sh:name "rentable area"^^xsd:string ;
-            sh:path rec:rentableArea ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:float ;
-            sh:maxCount 1 ;
-            sh:name "net area"^^xsd:string ;
-            sh:path rec:netArea ] .
+            sh:path rec:rentableArea ] .
 
 rec:ArchitectureCapacity a <dtmi:dtdl:class:Component>,
         rdfs:Class,
@@ -289,19 +290,87 @@ rec:Asset a rdfs:Class,
     rdfs:comment "Something which is placed inside of a building, but is not an integral part of that building's structure; e.g., furniture, equipment, systems, etc."^^xsd:string ;
     rdfs:subClassOf rdfs:Resource ;
     sh:property [ a sh:PropertyShape ;
-            sh:class rec:Space ;
-            sh:name "located in"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:locatedIn ],
+            sh:datatype xsd:date ;
+            sh:maxCount 1 ;
+            sh:name "commissioning date"^^xsd:string ;
+            sh:path rec:commissioningDate ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:date ;
+            sh:maxCount 1 ;
+            sh:name "turnover date"^^xsd:string ;
+            sh:path rec:turnoverDate ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:name "IP address"^^xsd:string ;
             sh:path rec:IPAddress ],
         [ a sh:PropertyShape ;
+            sh:class rec:Document ;
+            sh:name "documentation"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:documentation ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:date ;
+            sh:maxCount 1 ;
+            sh:name "installation date"^^xsd:string ;
+            sh:path rec:installationDate ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:name "asset tag"^^xsd:string ;
+            sh:path rec:assetTag ],
+        [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:name "initial cost"^^xsd:string ;
+            sh:nodeKind sh:Literal ;
+            sh:path rec:initialCost ],
+        [ a sh:PropertyShape ;
+            sh:class rec:BuildingElement ;
+            sh:description "An asset may be mounted on some part of the building construction (e.g., a blind on a facade, a camera on a wall, etc)."^^xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "mounted on"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:mountedOn ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:duration ;
+            sh:name "maintenance interval"^^xsd:string ;
+            sh:path rec:maintenanceInterval ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:name "MAC address"^^xsd:string ;
+            sh:path rec:MACAddress ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:name "model number"^^xsd:string ;
+            sh:path rec:modelNumber ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Agent ;
+            sh:name "commissioned by"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:commissionedBy ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:name "serial number"^^xsd:string ;
+            sh:path rec:serialNumber ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Agent ;
+            sh:name "serviced by"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:servicedBy ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Geometry ;
+            sh:description "A GeoJSON Geometry representing the position or extent of the asset."^^xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "geometry"^^xsd:string ;
+            sh:path rec:geometry ],
+        [ a sh:PropertyShape ;
             sh:class rec:Agent ;
             sh:name "manufactured by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:manufacturedBy ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Asset ;
+            sh:name "has part"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:hasPart ],
         [ a sh:PropertyShape ;
             sh:class rec:Asset ;
             sh:name "is part of"^^xsd:string ;
@@ -313,88 +382,20 @@ rec:Asset a rdfs:Class,
             sh:name "weight"^^xsd:string ;
             sh:path rec:weight ],
         [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:name "model number"^^xsd:string ;
-            sh:path rec:modelNumber ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Asset ;
-            sh:name "has part"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:hasPart ],
-        [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:name "initial cost"^^xsd:string ;
-            sh:nodeKind sh:Literal ;
-            sh:path rec:initialCost ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Agent ;
-            sh:name "commissioned by"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:commissionedBy ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:date ;
-            sh:maxCount 1 ;
-            sh:name "commissioning date"^^xsd:string ;
-            sh:path rec:commissioningDate ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:date ;
-            sh:maxCount 1 ;
-            sh:name "turnover date"^^xsd:string ;
-            sh:path rec:turnoverDate ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Document ;
-            sh:name "documentation"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:documentation ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:duration ;
-            sh:name "maintenance interval"^^xsd:string ;
-            sh:path rec:maintenanceInterval ],
-        [ a sh:PropertyShape ;
-            sh:class rec:BuildingElement ;
-            sh:description "An asset may be mounted on some part of the building construction (e.g., a blind on a facade, a camera on a wall, etc)."^^xsd:string ;
-            sh:maxCount 1 ;
-            sh:name "mounted on"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:mountedOn ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:name "serial number"^^xsd:string ;
-            sh:path rec:serialNumber ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:name "asset tag"^^xsd:string ;
-            sh:path rec:assetTag ],
-        [ a sh:PropertyShape ;
             sh:class rec:Agent ;
             sh:name "installed by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:installedBy ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:date ;
-            sh:maxCount 1 ;
-            sh:name "installation date"^^xsd:string ;
-            sh:path rec:installationDate ],
         [ a sh:PropertyShape ;
             sh:class brick:Point ;
             sh:name "has point"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:hasPoint ],
         [ a sh:PropertyShape ;
-            sh:class rec:Geometry ;
-            sh:description "A GeoJSON Geometry representing the position or extent of the asset."^^xsd:string ;
-            sh:maxCount 1 ;
-            sh:name "geometry"^^xsd:string ;
-            sh:path rec:geometry ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:name "MAC address"^^xsd:string ;
-            sh:path rec:MACAddress ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Agent ;
-            sh:name "serviced by"^^xsd:string ;
+            sh:class rec:Space ;
+            sh:name "located in"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:servicedBy ] .
+            sh:path rec:locatedIn ] .
 
 rec:Atrium a rdfs:Class,
         sh:NodeShape ;
@@ -501,12 +502,6 @@ rec:BuildingElement a rdfs:Class,
     rdfs:comment "A part that constitutes a piece of a building's structural makeup. E.g., Facade, Wall, Slab, Roof, etc."^^xsd:string ;
     rdfs:subClassOf rdfs:Resource ;
     sh:property [ a sh:PropertyShape ;
-            sh:class rec:BuildingElement ;
-            sh:maxCount 1 ;
-            sh:name "is part of"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:isPartOf ],
-        [ a sh:PropertyShape ;
             sh:class rec:Document ;
             sh:name "documentation"^^xsd:string ;
             sh:nodeKind sh:IRI ;
@@ -518,6 +513,12 @@ rec:BuildingElement a rdfs:Class,
             sh:name "located in"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:locatedIn ],
+        [ a sh:PropertyShape ;
+            sh:class rec:BuildingElement ;
+            sh:maxCount 1 ;
+            sh:name "is part of"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:isPartOf ],
         [ a sh:PropertyShape ;
             sh:class rec:BuildingElement ;
             sh:name "has part"^^xsd:string ;
@@ -782,13 +783,13 @@ rec:Document a rdfs:Class,
     rdfs:label "Document"^^xsd:string ;
     rdfs:subClassOf rec:Information ;
     sh:property [ a sh:PropertyShape ;
-            sh:name "document topic"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:documentTopic ],
-        [ a sh:PropertyShape ;
             sh:name "URL"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:url ] .
+            sh:path rec:url ],
+        [ a sh:PropertyShape ;
+            sh:name "document topic"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:documentTopic ] .
 
 rec:Door a rdfs:Class,
         sh:NodeShape ;
@@ -866,8 +867,13 @@ rec:ElevatorTrip a rdfs:Class,
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:maxCount 1 ;
-            sh:name "start level"^^xsd:string ;
-            sh:path rec:startLevel ],
+            sh:name "end level"^^xsd:string ;
+            sh:path rec:endLevel ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "current level"^^xsd:string ;
+            sh:path rec:currentLevel ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:in ( "Up"^^xsd:string "Down"^^xsd:string ) ;
@@ -877,13 +883,8 @@ rec:ElevatorTrip a rdfs:Class,
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:maxCount 1 ;
-            sh:name "current level"^^xsd:string ;
-            sh:path rec:currentLevel ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:maxCount 1 ;
-            sh:name "end level"^^xsd:string ;
-            sh:path rec:endLevel ] .
+            sh:name "start level"^^xsd:string ;
+            sh:path rec:startLevel ] .
 
 rec:EndTable a rdfs:Class,
         sh:NodeShape ;
@@ -931,17 +932,17 @@ rec:EthernetPort a rdfs:Class,
     rdfs:subClassOf rec:DataNetworkEquipment ;
     owl:deprecated true ;
     sh:property [ a sh:PropertyShape ;
-            sh:datatype xsd:float ;
-            sh:description "The data rate of the port in Mib/s, i.e. mebibit (2^20 bit) per second."^^xsd:string ;
-            sh:maxCount 1 ;
-            sh:name "Port Speed"^^xsd:string ;
-            sh:path rec:portSpeed ],
-        [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:in ( "Type1"^^xsd:string "Type2"^^xsd:string "Type3"^^xsd:string "Type4"^^xsd:string ) ;
             sh:maxCount 1 ;
             sh:name "PoE Type"^^xsd:string ;
-            sh:path rec:poeType ] ;
+            sh:path rec:poeType ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:float ;
+            sh:description "The data rate of the port in Mib/s, i.e. mebibit (2^20 bit) per second."^^xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "Port Speed"^^xsd:string ;
+            sh:path rec:portSpeed ] ;
     brick:deprecatedInVersion "1.4.0" ;
     brick:deprecationMitigationMessage "REC ICT classes are being phased out in favor of Brick classes. For a replacement, consider brick:Ethernet_Port" ;
     brick:isReplacedBy brick:Ethernet_Port .
@@ -985,20 +986,20 @@ rec:ExceptionEvent a <dtmi:dtdl:class:Component>,
     rdfs:label "Exception event"^^xsd:string ;
     rdfs:subClassOf rec:PointEvent ;
     sh:property [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:description "The message of this exception event."^^xsd:string ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:name "value"^^xsd:string ;
-            sh:path rec:value ],
-        [ a sh:PropertyShape ;
             sh:class brick:Point ;
             sh:description "The brick:Point that emitted this exception."^^xsd:string ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:name "source point"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:sourcePoint ] .
+            sh:path rec:sourcePoint ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:description "The message of this exception event."^^xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "value"^^xsd:string ;
+            sh:path rec:value ] .
 
 rec:ExerciseRoom a rdfs:Class,
         sh:NodeShape ;
@@ -1138,23 +1139,8 @@ rec:Geotransform a rdfs:Class,
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:double ;
             sh:maxCount 1 ;
-            sh:name "width scale factor"^^xsd:string ;
-            sh:path rec:widthScaleFactor ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:double ;
-            sh:maxCount 1 ;
             sh:name "origin y"^^xsd:string ;
             sh:path rec:originY ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:double ;
-            sh:maxCount 1 ;
-            sh:name "origin x"^^xsd:string ;
-            sh:path rec:originX ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:double ;
-            sh:maxCount 1 ;
-            sh:name "height scale factor"^^xsd:string ;
-            sh:path rec:heightScaleFactor ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:double ;
             sh:description "Value will be zero if the local coordinate system is north-aligned."^^xsd:string ;
@@ -1163,10 +1149,25 @@ rec:Geotransform a rdfs:Class,
             sh:path rec:yRotationalScaleFactor ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:double ;
+            sh:maxCount 1 ;
+            sh:name "width scale factor"^^xsd:string ;
+            sh:path rec:widthScaleFactor ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:double ;
+            sh:maxCount 1 ;
+            sh:name "origin x"^^xsd:string ;
+            sh:path rec:originX ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:double ;
             sh:description "Value will be zero if the local coordinate system is north-aligned."^^xsd:string ;
             sh:maxCount 1 ;
             sh:name "x rotational scale factor"^^xsd:string ;
-            sh:path rec:xRotationalScaleFactor ] .
+            sh:path rec:xRotationalScaleFactor ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:double ;
+            sh:maxCount 1 ;
+            sh:name "height scale factor"^^xsd:string ;
+            sh:path rec:heightScaleFactor ] .
 
 rec:GroupRoom a rdfs:Class,
         sh:NodeShape ;
@@ -1210,12 +1211,12 @@ rec:ICTEquipment a rdfs:Class,
     rdfs:subClassOf brick:Equipment ;
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:integer ;
-            sh:name "Number of Ports"^^xsd:string ;
-            sh:path rec:numberOfPorts ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:integer ;
             sh:name "Height (RUs)"^^xsd:string ;
             sh:path rec:heightRUs ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:integer ;
+            sh:name "Number of Ports"^^xsd:string ;
+            sh:path rec:numberOfPorts ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:description "The standard the equipment or device adheres to, e.g. IEEE 802.11."^^xsd:string ;
@@ -1323,19 +1324,6 @@ rec:Lease a rdfs:Class,
     rdfs:label "Lease"^^xsd:string ;
     rdfs:subClassOf rec:Event ;
     sh:property [ a sh:PropertyShape ;
-            sh:description "The object (e.g., property, equipment, etc) that this a lease of."^^xsd:string ;
-            sh:minCount 1 ;
-            sh:name "lease of"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:leaseOf ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Agent ;
-            sh:description "The agent leasing out some leasable object, i.e., the owner of the asset."^^xsd:string ;
-            sh:minCount 1 ;
-            sh:name "leasor"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:leasor ],
-        [ a sh:PropertyShape ;
             sh:class rec:Agent ;
             sh:description "The agent leasing some leasable object, i.e., the user of the asset."^^xsd:string ;
             sh:minCount 1 ;
@@ -1347,7 +1335,20 @@ rec:Lease a rdfs:Class,
             sh:description "Indicates the contract regulating the terms of the lease in question. "^^xsd:string ;
             sh:name "regulated by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:regulatedBy ] .
+            sh:path rec:regulatedBy ],
+        [ a sh:PropertyShape ;
+            sh:description "The object (e.g., property, equipment, etc) that this a lease of."^^xsd:string ;
+            sh:minCount 1 ;
+            sh:name "lease of"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:leaseOf ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Agent ;
+            sh:description "The agent leasing out some leasable object, i.e., the owner of the asset."^^xsd:string ;
+            sh:minCount 1 ;
+            sh:name "leasor"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:leasor ] .
 
 rec:LeaseContract a rdfs:Class,
         sh:NodeShape ;
@@ -1400,9 +1401,21 @@ rec:LoadingReceivingRoom a rdfs:Class,
     rdfs:label "Loading/receiving room"^^xsd:string ;
     rdfs:subClassOf rec:Room .
 
+rec:Lobby a rdfs:Class,
+        sh:NodeShape ;
+    rdfs:label "Lobby" ;
+    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
+    rdfs:subClassOf rec:Room .
+
 rec:LockerRoom a rdfs:Class,
         sh:NodeShape ;
     rdfs:label "Locker room"^^xsd:string ;
+    rdfs:subClassOf rec:Room .
+
+rec:Lounge a rdfs:Class,
+        sh:NodeShape ;
+    rdfs:label "Lounge" ;
+    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
     rdfs:subClassOf rec:Room .
 
 rec:LuminanceObservation a <dtmi:dtdl:class:Component>,
@@ -1647,12 +1660,6 @@ rec:Organization a rdfs:Class,
     rdfs:subClassOf rec:Agent ;
     sh:property [ a sh:PropertyShape ;
             sh:class rec:Organization ;
-            sh:description "Indicates parthood relations in organizations (e.g., departments of a corporation). Note that membership in an organization is expressed using the Agent.isMemberOf property."^^xsd:string ;
-            sh:name "is part of"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:isPartOf ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Organization ;
             sh:description "Indicates parthood relations in organizations (e.g., departments of a corporation). Note that membership in an organization is expressed using the more specific hasMember property."^^xsd:string ;
             sh:name "has part"^^xsd:string ;
             sh:nodeKind sh:IRI ;
@@ -1663,6 +1670,12 @@ rec:Organization a rdfs:Class,
             sh:name "has member"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:hasMember ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Organization ;
+            sh:description "Indicates parthood relations in organizations (e.g., departments of a corporation). Note that membership in an organization is expressed using the Agent.isMemberOf property."^^xsd:string ;
+            sh:name "is part of"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:isPartOf ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:anyURI ;
             sh:description "URL link to an image/logo that represents the organization."^^xsd:string ;
@@ -1711,9 +1724,6 @@ rec:Person a rdfs:Class,
     rdfs:subClassOf rec:Agent ;
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
-            sh:path rec:givenName ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
             sh:path rec:familyName ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:anyURI ;
@@ -1723,7 +1733,10 @@ rec:Person a rdfs:Class,
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:name "gender"^^xsd:string ;
-            sh:path rec:gender ] .
+            sh:path rec:gender ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:path rec:givenName ] .
 
 rec:PersonalHygiene a rdfs:Class,
         sh:NodeShape ;
@@ -1796,18 +1809,13 @@ rec:PostalAddress a rdfs:Class,
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:maxCount 1 ;
-            sh:name "postal code"^^xsd:string ;
-            sh:path rec:postalCode ],
+            sh:name "address line 1"^^xsd:string ;
+            sh:path rec:addressLine1 ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:maxCount 1 ;
             sh:name "region"^^xsd:string ;
             sh:path rec:region ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:maxCount 1 ;
-            sh:name "address line 2"^^xsd:string ;
-            sh:path rec:addressLine2 ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:description "The country, e.g., USA, Sweden, Argentina, or optionally a two-letter ISO 3166-1 alpha-2 country code, e.g., \"SE\", \"US\", etc."^^xsd:string ;
@@ -1817,13 +1825,18 @@ rec:PostalAddress a rdfs:Class,
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:maxCount 1 ;
-            sh:name "address line 1"^^xsd:string ;
-            sh:path rec:addressLine1 ],
+            sh:name "address line 2"^^xsd:string ;
+            sh:path rec:addressLine2 ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:maxCount 1 ;
             sh:name "city"^^xsd:string ;
-            sh:path rec:city ] .
+            sh:path rec:city ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "postal code"^^xsd:string ;
+            sh:path rec:postalCode ] .
 
 rec:PowerObservation a <dtmi:dtdl:class:Component>,
         rdfs:Class,
@@ -2025,11 +2038,6 @@ rec:ServiceObject a rdfs:Class,
     rdfs:label "Service object"^^xsd:string ;
     rdfs:subClassOf rec:Information ;
     sh:property [ a sh:PropertyShape ;
-            sh:datatype xsd:dateTime ;
-            sh:maxCount 1 ;
-            sh:name "closed time"^^xsd:string ;
-            sh:path rec:closedTime ],
-        [ a sh:PropertyShape ;
             sh:class rec:Agent ;
             sh:maxCount 1 ;
             sh:name "closed by"^^xsd:string ;
@@ -2043,26 +2051,8 @@ rec:ServiceObject a rdfs:Class,
         [ a sh:PropertyShape ;
             sh:datatype xsd:dateTime ;
             sh:maxCount 1 ;
-            sh:name "created time"^^xsd:string ;
-            sh:path rec:createdTime ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:string ;
-            sh:in ( "Unacknowledged"^^xsd:string "Acknowledged"^^xsd:string "Closed"^^xsd:string ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:name "status"^^xsd:string ;
-            sh:path rec:status ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Agent ;
-            sh:maxCount 1 ;
-            sh:name "created by"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:createdBy ],
-        [ a sh:PropertyShape ;
-            sh:datatype xsd:dateTime ;
-            sh:maxCount 1 ;
-            sh:name "acknowledged time"^^xsd:string ;
-            sh:path rec:acknowledgedTime ],
+            sh:name "closed time"^^xsd:string ;
+            sh:path rec:closedTime ],
         [ a sh:PropertyShape ;
             sh:datatype xsd:string ;
             sh:in ( "Severe"^^xsd:string "Major"^^xsd:string "Minor"^^xsd:string ) ;
@@ -2080,7 +2070,30 @@ rec:ServiceObject a rdfs:Class,
             sh:maxCount 1 ;
             sh:name "acknowledged by"^^xsd:string ;
             sh:nodeKind sh:IRI ;
-            sh:path rec:acknowledgedBy ] .
+            sh:path rec:acknowledgedBy ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:dateTime ;
+            sh:maxCount 1 ;
+            sh:name "acknowledged time"^^xsd:string ;
+            sh:path rec:acknowledgedTime ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Agent ;
+            sh:maxCount 1 ;
+            sh:name "created by"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:createdBy ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:dateTime ;
+            sh:maxCount 1 ;
+            sh:name "created time"^^xsd:string ;
+            sh:path rec:createdTime ],
+        [ a sh:PropertyShape ;
+            sh:datatype xsd:string ;
+            sh:in ( "Unacknowledged"^^xsd:string "Acknowledged"^^xsd:string "Closed"^^xsd:string ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "status"^^xsd:string ;
+            sh:path rec:status ] .
 
 rec:ServiceShaft a rdfs:Class,
         sh:NodeShape ;
@@ -2152,18 +2165,6 @@ rec:Space a rdfs:Class,
     rdfs:comment "A contiguous part of the physical world that contains or can contain sub-spaces. E.g., a Region can contain many Sites, which in turn can contain many Buildings."^^xsd:string ;
     rdfs:subClassOf rdfs:Resource ;
     sh:property [ a sh:PropertyShape ;
-            sh:class rec:Geometry ;
-            sh:description "Polygon representing the spatial extent of this Space."^^xsd:string ;
-            sh:maxCount 1 ;
-            sh:name "geometry"^^xsd:string ;
-            sh:path rec:geometry ],
-        [ a sh:PropertyShape ;
-            sh:class rec:Space ;
-            sh:maxCount 1 ;
-            sh:name "is part of"^^xsd:string ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:isPartOf ],
-        [ a sh:PropertyShape ;
             sh:class rec:Space ;
             sh:name "has part"^^xsd:string ;
             sh:nodeKind sh:IRI ;
@@ -2175,6 +2176,18 @@ rec:Space a rdfs:Class,
             sh:name "georeference"^^xsd:string ;
             sh:nodeKind sh:IRI ;
             sh:path rec:georeference ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Space ;
+            sh:maxCount 1 ;
+            sh:name "is part of"^^xsd:string ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:isPartOf ],
+        [ a sh:PropertyShape ;
+            sh:class rec:Geometry ;
+            sh:description "Polygon representing the spatial extent of this Space."^^xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "geometry"^^xsd:string ;
+            sh:path rec:geometry ],
         [ a sh:PropertyShape ;
             sh:name "is location of"^^xsd:string ;
             sh:nodeKind sh:IRI ;
@@ -2229,6 +2242,12 @@ rec:Table a rdfs:Class,
         sh:NodeShape ;
     rdfs:label "Table"^^xsd:string ;
     rdfs:subClassOf rec:Furniture .
+
+rec:TeamRoom a rdfs:Class,
+        sh:NodeShape ;
+    rdfs:label "Team Room" ;
+    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
+    rdfs:subClassOf rec:Room .
 
 rec:TelecommunicationRoom a rdfs:Class,
         sh:NodeShape ;
@@ -2419,6 +2438,12 @@ rec:Window a rdfs:Class,
     rdfs:label "Window"^^xsd:string ;
     rdfs:subClassOf rec:BarrierAsset .
 
+rec:Wing a rdfs:Class,
+        sh:NodeShape ;
+    rdfs:label "Wing" ;
+    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
+    rdfs:subClassOf rec:Architecture .
+
 rec:WirelessAccessPoint a rdfs:Class,
         sh:NodeShape ;
     rdfs:label "Wireless Access Point"^^xsd:string ;
@@ -2545,6 +2570,11 @@ brick:Absorption_Chiller a owl:Class,
     brick:hasAssociatedTag tag:Absorption,
         tag:Chiller,
         tag:Equipment .
+
+brick:Acceleration_Time owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Acceleration_Time' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Time' directly." ;
+    brick:isReplacedBy qudtqk:Time .
 
 brick:Acceleration_Time_Setpoint a owl:Class,
         sh:NodeShape ;
@@ -2793,6 +2823,11 @@ brick:Ammonia_Sensor a owl:Class,
         tag:Sensor ;
     brick:hasQuantity brick:Ammonia_Concentration ;
     brick:hasSubstance brick:Air .
+
+brick:Atmospheric_Pressure owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Atmospheric_Pressure' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/AtmosphericPressure' directly." ;
+    brick:isReplacedBy qudtqk:AtmosphericPressure .
 
 brick:Atrium a owl:Class,
         sh:NodeShape ;
@@ -6558,6 +6593,11 @@ brick:Damper_Position_Status a owl:Class,
         tag:Status ;
     brick:hasQuantity brick:Position .
 
+brick:Deceleration_Time owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Deceleration_Time' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Time' directly." ;
+    brick:isReplacedBy qudtqk:Time .
+
 brick:Deceleration_Time_Setpoint a owl:Class,
         sh:NodeShape ;
     rdfs:label "Deceleration Time Setpoint"@en ;
@@ -7779,6 +7819,11 @@ brick:Duct_Air_Static_Pressure_Setpoint a owl:Class,
     brick:hasQuantity qudtqk:StaticPressure ;
     brick:hasSubstance brick:Air .
 
+brick:Dynamic_Pressure owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Dynamic_Pressure' (also referred to as Velocity_Pressure) is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/DynamicPressure' directly." ;
+    brick:isReplacedBy qudtqk:DynamicPressure .
+
 brick:EconCycle_Start_Stop_Status a owl:Class,
         sh:NodeShape ;
     rdfs:label "EconCycle Start Stop Status"@en ;
@@ -8001,6 +8046,11 @@ brick:Electric_Boiler a owl:Class,
     brick:hasAssociatedTag tag:Boiler,
         tag:Electric,
         tag:Equipment .
+
+brick:Electric_Current owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Electric_Current' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/ElectricCurrent' directly." ;
+    brick:isReplacedBy qudtqk:ElectricCurrent .
 
 brick:Electrical_Energy_Usage_Sensor a owl:Class,
         sh:NodeShape ;
@@ -8622,6 +8672,11 @@ brick:Enable_Hot_Water_System_Outside_Air_Temperature_Setpoint a owl:Class,
         tag:Temperature,
         tag:Water ;
     brick:hasQuantity qudtqk:Temperature .
+
+brick:Energy owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Energy' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Energy' directly." ;
+    brick:isReplacedBy qudtqk:Energy .
 
 brick:Energy_Generation_Sensor a owl:Class,
         sh:NodeShape ;
@@ -10916,6 +10971,11 @@ brick:Freezer a owl:Class,
         tag:Room ;
     brick:isReplacedBy rec:Room .
 
+brick:Frequency owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Frequency' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Frequency' directly." ;
+    brick:isReplacedBy qudtqk:Frequency .
+
 brick:Frequency_Setpoint a owl:Class,
         sh:NodeShape ;
     rdfs:label "Frequency Setpoint"@en ;
@@ -11149,6 +11209,11 @@ brick:Gatehouse a owl:Class,
         tag:Location,
         tag:Space ;
     brick:isReplacedBy rec:Building .
+
+brick:Gauge_Pressure owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Gauge_Pressure' is deprecated. Use the QUDT quantity 'qudt:QuantityKind/Pressure' and indicate contextually that it is gauge pressure if necessary." ;
+    brick:isReplacedBy qudtqk:Pressure .
 
 brick:Generator_Room a owl:Class,
         sh:NodeShape ;
@@ -13339,6 +13404,11 @@ brick:Intrusion_Detection_Equipment a owl:Class,
         tag:Equipment,
         tag:Intrusion,
         tag:Security .
+
+brick:Irradiance owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Irradiance' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Irradiance' directly. For specific solar irradiance, use brick:Solar_Irradiance." ;
+    brick:isReplacedBy qudtqk:Irradiance .
 
 brick:Isolation_Damper a owl:Class,
         sh:NodeShape ;
@@ -18831,6 +18901,10 @@ brick:Peak_Demand_Sensor a owl:Class,
         tag:Sensor ;
     brick:hasQuantity qudtqk:Power .
 
+brick:Phasor owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Phasor' is deprecated." .
+
 brick:Phasor_Magnitude a brick:Quantity ;
     rdfs:label "Phasor Magnitude"@en ;
     qudt:applicableUnit unit:ARCMIN,
@@ -18970,6 +19044,11 @@ brick:Portfolio a owl:Class,
     brick:hasAssociatedTag tag:Collection,
         tag:Portfolio ;
     brick:isReplacedBy rec:Portfolio .
+
+brick:Power_Factor owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Power_Factor' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/PowerFactor' directly." ;
+    brick:isReplacedBy qudtqk:PowerFactor .
 
 brick:Power_Factor_Sensor a owl:Class,
         sh:NodeShape ;
@@ -19215,6 +19294,11 @@ brick:Preheat_Hot_Water_Valve a owl:Class,
         tag:Valve,
         tag:Water .
 
+brick:Pressure owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined generic quantity 'Pressure' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Pressure' directly, or more specific QUDT/Brick quantities like qudt:QuantityKind/StaticPressure, qudt:QuantityKind/AtmosphericPressure, brick:Differential_Pressure, etc." ;
+    brick:isReplacedBy qudtqk:Pressure .
+
 brick:Pressurization_Fan a owl:Class,
         sh:NodeShape ;
     rdfs:label "Pressurization Fan"@en ;
@@ -19409,6 +19493,11 @@ brick:Pump_VFD a owl:Class,
         tag:Pump,
         tag:VFD .
 
+brick:Radiance owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Radiance' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Radiance' directly. For specific solar radiance, use brick:Solar_Radiance." ;
+    brick:isReplacedBy qudtqk:Radiance .
+
 brick:Radiant_Temperature a brick:Quantity ;
     rdfs:label "Radiant Temperature"@en ;
     qudt:applicableUnit unit:DEG_C,
@@ -19444,6 +19533,15 @@ brick:Radiation_Hot_Water_System a owl:Class,
         tag:Radiation,
         tag:System,
         tag:Water .
+
+brick:Radioactivity_Concentration owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Radioactivity_Concentration' is deprecated." .
+
+brick:Radioactivity_Concentration_Sensor owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Radioactivity_Concentration_Sensor' is deprecated. Use Air_Quality_Sensor instead, or the provided sensor class for the specific kind or source of radioactivity (e.g. Radon gas)" ;
+    brick:isReplacedBy brick:Air_Quality_Sensor .
 
 brick:Radon_Concentration_Sensor a owl:Class,
         sh:NodeShape ;
@@ -21615,6 +21713,11 @@ brick:Start_Stop_Command a owl:Class,
         tag:Start,
         tag:Stop .
 
+brick:Static_Pressure owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Static_Pressure' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/StaticPressure' directly." ;
+    brick:isReplacedBy qudtqk:StaticPressure .
+
 brick:Static_Transfer_Switch a owl:Class,
         sh:NodeShape ;
     rdfs:label "Static Transfer Switch"@en ;
@@ -22166,6 +22269,11 @@ brick:Team_Room a owl:Class,
         tag:Team ;
     brick:isReplacedBy rec:TeamRoom .
 
+brick:Temperature owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined generic quantity 'Temperature' is deprecated for direct use. Use the equivalent QUDT quantity 'qudt:QuantityKind/Temperature' directly, or more specific Brick quantities like brick:Dry_Bulb_Temperature, brick:Wet_Bulb_Temperature, etc., which now subclass the QUDT quantity." ;
+    brick:isReplacedBy qudtqk:Temperature .
+
 brick:Temperature_Adjust_Sensor a owl:Class,
         sh:NodeShape ;
     rdfs:label "Temperature Adjust Sensor"@en ;
@@ -22276,6 +22384,11 @@ brick:Temporary_Occupancy_Status a owl:Class,
         tag:Point,
         tag:Status,
         tag:Temporary .
+
+brick:Thermal_Energy owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Thermal_Energy' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/ThermalEnergy' directly." ;
+    brick:isReplacedBy qudtqk:ThermalEnergy .
 
 brick:Thermal_Energy_Usage_Sensor a owl:Class,
         sh:NodeShape ;
@@ -22473,6 +22586,11 @@ brick:Ticketing_Booth a owl:Class,
         tag:Space,
         tag:Ticketing ;
     brick:isReplacedBy rec:Building .
+
+brick:Time owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Time' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Time' directly." ;
+    brick:isReplacedBy qudtqk:Time .
 
 brick:Tint_Command a owl:Class,
         sh:NodeShape ;
@@ -23300,6 +23418,11 @@ brick:Valve_Status a owl:Class,
         tag:Status,
         tag:Valve .
 
+brick:Velocity_Pressure owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Velocity_Pressure' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/DynamicPressure' directly." ;
+    brick:isReplacedBy qudtqk:DynamicPressure .
+
 brick:Velocity_Pressure_Setpoint a owl:Class,
         sh:NodeShape ;
     rdfs:label "Velocity Pressure Setpoint"@en ;
@@ -23469,6 +23592,11 @@ brick:Visitor_Lobby a owl:Class,
         tag:Space,
         tag:Visitor ;
     brick:isReplacedBy rec:Lobby .
+
+brick:Voltage owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Voltage' is deprecated. Use the equivalent QUDT quantity 'qudt:QuantityKind/Voltage' directly." ;
+    brick:isReplacedBy qudtqk:Voltage .
 
 brick:Voltage_Angle a brick:Quantity ;
     rdfs:label "Voltage Angle"@en ;
@@ -24050,6 +24178,10 @@ brick:Water_Tank a owl:Class,
         tag:Water ;
     brick:isReplacedBy rec:UtilitiesRoom .
 
+brick:Weather_Condition owl:deprecated true ;
+    brick:deprecatedInVersion "1.4.4" ;
+    brick:deprecationMitigationMessage "Brick-defined quantity 'Weather_Condition' is deprecated." .
+
 brick:Weather_Station a owl:Class,
         sh:NodeShape ;
     rdfs:label "Weather Station"@en ;
@@ -24535,20 +24667,18 @@ ref:hasTimeseriesReference a owl:ObjectProperty ;
     rdfs:subPropertyOf ref:hasExternalReference ;
     skos:definition "Metadata for accessing related timeseries data: Relates a data source (such as a Brick Point or 223 Property) to the TimeseriesReference that indicates where and how the data for this point is stored"@en .
 
-bsh:Active_EnergyQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Active_EnergyQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:W-HR unit:MegaW-HR unit:KiloW-HR ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:KiloW-HR unit:MegaW-HR unit:W-HR ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 bsh:AddDefaultEVSEChargerDirection a sh:NodeShape ;
     sh:rule [ a sh:SPARQLRule ;
@@ -24570,9 +24700,7 @@ bsh:AddDefaultEVSEChargerDirection a sh:NodeShape ;
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetClass brick:Electric_Vehicle_Charging_Station .
 
-bsh:Alternating_Current_FrequencyQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Alternating_Current_FrequencyQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -24580,14 +24708,12 @@ bsh:Alternating_Current_FrequencyQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:KiloHZ unit:GigaHZ unit:MegaHZ unit:HZ ) ;
+            sh:in ( unit:HZ unit:GigaHZ unit:MegaHZ unit:KiloHZ ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Ammonia_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Ammonia_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:PPM unit:PPB ) ;
@@ -24600,12 +24726,10 @@ bsh:Ammonia_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:Apparent_EnergyQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Apparent_EnergyQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:V-A-HR unit:MegaV-A-HR unit:KiloV-A-HR ) ;
+            sh:in ( unit:MegaV-A-HR unit:KiloV-A-HR unit:V-A-HR ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -24633,9 +24757,7 @@ bsh:BuildingMeterRule a sh:NodeShape ;
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetClass brick:Meter .
 
-bsh:CO2_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:CO2_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -24648,9 +24770,7 @@ bsh:CO2_ConcentrationQuantityShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:CO_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:CO_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:PPM unit:PPB ) ;
@@ -24663,20 +24783,18 @@ bsh:CO_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:CloudageQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:CloudageQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:OKTA ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:OKTA ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 bsh:CollectionIncludesEquipment a sh:NodeShape ;
     sh:rule [ a sh:SPARQLRule ;
@@ -24704,27 +24822,10 @@ bsh:CollectionIncludesEquipment a sh:NodeShape ;
         brick:Equipment,
         brick:System .
 
-bsh:Current_AngleQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Current_AngleQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:MIL unit:RAD unit:REV unit:DEG ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
-
-bsh:Current_ImbalanceQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:PERCENT ) ;
+            sh:in ( unit:RAD unit:GON unit:MilliRAD unit:DEG unit:MicroRAD unit:GRAD unit:ARCMIN unit:ARCSEC unit:MilliARCSEC unit:MIL unit:REV ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -24734,9 +24835,20 @@ bsh:Current_ImbalanceQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:Current_Total_Harmonic_DistortionQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Current_ImbalanceQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PERCENT ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
+
+bsh:Current_Total_Harmonic_DistortionQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:PERCENT unit:DeciB_M ) ;
@@ -24777,24 +24889,7 @@ $this a ?class .
 }""" ] ;
     sh:targetClass brick:Entity .
 
-bsh:Differential_CO2_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:PPM unit:PPB ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
-
-bsh:Differential_CO_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Differential_CO2_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:PPM unit:PPB ) ;
@@ -24807,9 +24902,7 @@ bsh:Differential_CO_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:Differential_Dynamic_PressureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Differential_CO_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -24817,14 +24910,12 @@ bsh:Differential_Dynamic_PressureQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:DeciBAR unit:CentiM_H2O_4DEG_C unit:PlanckPressure unit:FT_HG unit:MegaPSI unit:DYN-PER-CentiM2 unit:PicoPA unit:GigaPA unit:IN_H2O unit:MicroBAR unit:PDL-PER-IN2 unit:KiloPA unit:MegaBAR unit:PDL-PER-FT2 unit:MilliM_H2O unit:GM_F-PER-CentiM2 unit:M_H2O unit:CentiM_HG_0DEG_C unit:IN_HG_32DEG_F unit:MicroPA unit:IN_H2O_39dot2DEG_F unit:HectoBAR unit:IN_HG_60DEG_F unit:KiloGM_F-PER-M2 unit:CentiM_H2O unit:DecaPA unit:N-PER-CentiM2 unit:BARYE unit:KiloGM-PER-M-SEC2 unit:FT_H2O unit:N-PER-MilliM2 unit:FT_H2O_39dot2DEG_F unit:CentiBAR unit:KiloLB_F-PER-IN2 unit:KIP_F-PER-IN2 unit:BARAD unit:IN_HG unit:KiloPA_A unit:MilliTORR unit:MilliM_HGA unit:HectoPA unit:IN_H2O_60DEG_F unit:KiloGM_F-PER-CentiM2 unit:KiloGM_F-PER-MilliM2 unit:TORR unit:BAR unit:ATM unit:PSI unit:MegaPA unit:ATM_T unit:N-PER-M2 unit:MicroTORR unit:KiloN-PER-M2 unit:MicroATM unit:CentiM_HG unit:MilliM_HG unit:LB_F-PER-IN2 unit:MilliBAR unit:MilliPA unit:KiloBAR unit:LB_F-PER-FT2 unit:PA ) ;
+            sh:in ( unit:PPM unit:PPB ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Differential_Static_PressureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Differential_Dynamic_PressureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -24832,14 +24923,12 @@ bsh:Differential_Static_PressureQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:DeciBAR unit:CentiM_H2O_4DEG_C unit:MegaPSI unit:DYN-PER-CentiM2 unit:MilliBAR unit:PlanckPressure unit:FT_HG unit:PicoPA unit:GigaPA unit:IN_H2O unit:MicroBAR unit:PDL-PER-IN2 unit:PDL-PER-FT2 unit:KiloPA unit:MegaBAR unit:MilliM_H2O unit:GM_F-PER-CentiM2 unit:M_H2O unit:CentiM_HG_0DEG_C unit:IN_HG_32DEG_F unit:IN_H2O_39dot2DEG_F unit:BARYE unit:DecaPA unit:HectoBAR unit:IN_HG_60DEG_F unit:KiloGM_F-PER-M2 unit:CentiM_H2O unit:MicroPA unit:KiloGM-PER-M-SEC2 unit:FT_H2O unit:N-PER-MilliM2 unit:FT_H2O_39dot2DEG_F unit:CentiBAR unit:KiloLB_F-PER-IN2 unit:KIP_F-PER-IN2 unit:IN_HG unit:BARAD unit:KiloPA_A unit:HectoPA unit:MilliM_HGA unit:MilliTORR unit:KiloGM_F-PER-CentiM2 unit:TORR unit:KiloGM_F-PER-MilliM2 unit:BAR unit:ATM unit:PSI unit:MegaPA unit:ATM_T unit:N-PER-M2 unit:MicroTORR unit:CentiM_HG unit:MicroATM unit:MilliM_HG unit:KiloBAR unit:KiloN-PER-M2 unit:LB_F-PER-IN2 unit:IN_H2O_60DEG_F unit:MilliPA unit:N-PER-CentiM2 unit:LB_F-PER-FT2 unit:PA ) ;
+            sh:in ( unit:CentiM_HG_0DEG_C unit:LB_F-PER-FT2 unit:BARYE unit:KiloGM-PER-M-SEC2 unit:CentiBAR unit:PlanckPressure unit:HectoPA unit:GM_F-PER-CentiM2 unit:BARAD unit:N-PER-MilliM2 unit:IN_HG_60DEG_F unit:KiloGM_F-PER-MilliM2 unit:GigaPA unit:PA unit:MilliM_H2O unit:IN_HG_32DEG_F unit:KiloLB_F-PER-IN2 unit:KiloGM_F-PER-M2 unit:N-PER-CentiM2 unit:HectoBAR unit:DeciBAR unit:CentiM_H2O unit:KIP_F-PER-IN2 unit:PDL-PER-IN2 unit:ATM_T unit:KiloPA unit:TORR unit:KiloN-PER-M2 unit:CentiM_HG unit:MilliTORR unit:MilliBAR unit:FT_H2O unit:IN_H2O_39dot2DEG_F unit:MegaPSI unit:IN_H2O_60DEG_F unit:KiloBAR unit:KiloGM_F-PER-CentiM2 unit:ATM unit:PDL-PER-FT2 unit:MilliM_HGA unit:DecaPA unit:M_H2O unit:MicroATM unit:FT_H2O_39dot2DEG_F unit:MicroBAR unit:MicroTORR unit:KiloPA_A unit:MilliPA unit:MegaBAR unit:BAR unit:FT_HG unit:MicroPA unit:DYN-PER-CentiM2 unit:PicoPA unit:LB_F-PER-IN2 unit:IN_H2O unit:PSI unit:N-PER-M2 unit:CentiM_H2O_4DEG_C unit:IN_HG unit:MilliM_HG unit:MegaPA ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Differential_TemperatureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Differential_Static_PressureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -24847,14 +24936,25 @@ bsh:Differential_TemperatureQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:MilliDEG_C unit:MilliK unit:K unit:DEG_F unit:MegaK unit:PlanckTemperature unit:DEG_R unit:DecaK unit:DEG_C ) ;
+            sh:in ( unit:CentiM_HG_0DEG_C unit:LB_F-PER-FT2 unit:BARYE unit:KiloGM-PER-M-SEC2 unit:CentiBAR unit:PlanckPressure unit:HectoPA unit:GM_F-PER-CentiM2 unit:BARAD unit:N-PER-MilliM2 unit:IN_HG_60DEG_F unit:KiloGM_F-PER-MilliM2 unit:GigaPA unit:PA unit:MilliM_H2O unit:IN_HG_32DEG_F unit:KiloLB_F-PER-IN2 unit:KiloGM_F-PER-M2 unit:N-PER-CentiM2 unit:HectoBAR unit:DeciBAR unit:CentiM_H2O unit:KIP_F-PER-IN2 unit:PDL-PER-IN2 unit:ATM_T unit:KiloPA unit:TORR unit:KiloN-PER-M2 unit:CentiM_HG unit:MilliTORR unit:MilliBAR unit:FT_H2O unit:IN_H2O_39dot2DEG_F unit:MegaPSI unit:IN_H2O_60DEG_F unit:KiloBAR unit:KiloGM_F-PER-CentiM2 unit:ATM unit:PDL-PER-FT2 unit:MilliM_HGA unit:DecaPA unit:M_H2O unit:MicroATM unit:FT_H2O_39dot2DEG_F unit:MicroBAR unit:MicroTORR unit:KiloPA_A unit:MilliPA unit:MegaBAR unit:BAR unit:FT_HG unit:MicroPA unit:DYN-PER-CentiM2 unit:PicoPA unit:LB_F-PER-IN2 unit:IN_H2O unit:PSI unit:N-PER-M2 unit:CentiM_H2O_4DEG_C unit:IN_HG unit:MilliM_HG unit:MegaPA ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Dry_Bulb_TemperatureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Differential_TemperatureQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PlanckTemperature unit:MilliK unit:K unit:DecaK unit:DEG_C unit:DEG_R unit:MilliDEG_C unit:DEG_F unit:MegaK ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
+
+bsh:Dry_Bulb_TemperatureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:DEG_F unit:K unit:DEG_C ) ;
@@ -24867,20 +24967,18 @@ bsh:Dry_Bulb_TemperatureQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:Electric_EnergyQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Electric_EnergyQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
+            sh:in ( unit:MegaW-HR unit:MegaV-A_Reactive-HR unit:V-A_Reactive-HR unit:KiloV-A_Reactive-HR unit:W-HR unit:KiloW-HR unit:MegaV-A-HR unit:KiloV-A-HR unit:V-A-HR unit:J ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ],
+        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:V-A-HR unit:KiloW-HR unit:V-A_Reactive-HR unit:MegaV-A_Reactive-HR unit:W-HR unit:KiloV-A_Reactive-HR unit:MegaW-HR unit:J unit:MegaV-A-HR unit:KiloV-A-HR ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
+            sh:path brick:value ] .
 
 bsh:EquivalentPropertyRule a sh:NodeShape ;
     sh:rule [ a sh:SPARQLRule ;
@@ -24896,9 +24994,7 @@ CONSTRUCT {
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetSubjectsOf owl:equivalentProperty .
 
-bsh:Formaldehyde_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Formaldehyde_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:PPM unit:PPB ) ;
@@ -24911,20 +25007,18 @@ bsh:Formaldehyde_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:GrainsOfMoistureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:GrainsOfMoistureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:GRAIN ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:GRAIN ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 bsh:InferInverseProperties a sh:NodeShape ;
     sh:rule [ a sh:SPARQLRule ;
@@ -25048,27 +25142,23 @@ bsh:LastKnownIntegerShape a owl:Class,
             sh:name "value" ;
             sh:path brick:value ] .
 
-bsh:LevelQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:LevelQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
+            sh:in ( unit:FT unit:IN unit:YD unit:DeciM unit:M unit:CentiM unit:MicroM unit:MilliM unit:KiloM ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ],
+        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:DeciM unit:FT unit:MilliM unit:IN unit:KiloM unit:YD unit:CentiM unit:MicroM unit:M ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
+            sh:path brick:value ] .
 
-bsh:Linear_SpeedQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Linear_SpeedQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:KiloM-PER-HR unit:MI-PER-SEC unit:M-PER-HR unit:FT-PER-HR unit:FT-PER-SEC unit:KiloM-PER-SEC unit:MI-PER-HR unit:M-PER-SEC ) ;
+            sh:in ( unit:M-PER-HR unit:M-PER-SEC unit:MI-PER-SEC unit:FT-PER-SEC unit:KiloM-PER-HR unit:MI-PER-HR unit:KiloM-PER-SEC unit:FT-PER-HR ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25138,35 +25228,31 @@ bsh:MeterRelationshipRule a sh:NodeShape ;
             sh:qualifiedValueShape [ sh:class brick:Meter ] ] ;
     sh:targetClass brick:Meter .
 
-bsh:Methane_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Methane_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:PPM unit:PPB ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PPM unit:PPB ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
-bsh:NO2_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:NO2_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:PPM unit:PPB ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PPM unit:PPB ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 bsh:OWLEquivalentClassRule1 a sh:NodeShape ;
     sh:rule [ a sh:SPARQLRule ;
@@ -25196,9 +25282,7 @@ CONSTRUCT {
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetObjectsOf owl:equivalentClass .
 
-bsh:Occupancy_PercentageQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Occupancy_PercentageQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -25217,24 +25301,20 @@ bsh:OneLastKnownValuePerEntity a sh:NodeShape ;
             sh:path brick:lastKnownValue ] ;
     sh:targetSubjectsOf brick:lastKnownValue .
 
-bsh:Operative_TemperatureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Operative_TemperatureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:DEG_F unit:K unit:DEG_C ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:DEG_F unit:K unit:DEG_C ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
-bsh:Ozone_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Ozone_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( unit:PPM unit:PPB ) ;
@@ -25247,12 +25327,10 @@ bsh:Ozone_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:PM10_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PM10_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:MicroGM-PER-M3 unit:PPM unit:PPB ) ;
+            sh:in ( unit:PPM unit:PPB unit:MicroGM-PER-M3 ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25262,12 +25340,10 @@ bsh:PM10_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:PM1_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PM1_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:MicroGM-PER-M3 unit:PPM unit:PPB ) ;
+            sh:in ( unit:PPM unit:PPB unit:MicroGM-PER-M3 ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25277,12 +25353,10 @@ bsh:PM1_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:PM2.5_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PM2.5_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:MicroGM-PER-M3 unit:PPM unit:PPB ) ;
+            sh:in ( unit:PPM unit:PPB unit:MicroGM-PER-M3 ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25292,9 +25366,7 @@ bsh:PM2.5_ConcentrationQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:Phasor_AngleQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Phasor_AngleQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -25302,25 +25374,23 @@ bsh:Phasor_AngleQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:MIL unit:RAD unit:REV unit:DEG ) ;
+            sh:in ( unit:RAD unit:GON unit:MilliRAD unit:DEG unit:MicroRAD unit:GRAD unit:ARCMIN unit:ARCSEC unit:MilliARCSEC unit:MIL unit:REV ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Phasor_MagnitudeQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Phasor_MagnitudeQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
+            sh:in ( unit:RAD unit:GON unit:MilliRAD unit:DEG unit:MicroRAD unit:GRAD unit:ARCMIN unit:ARCSEC unit:MilliARCSEC unit:MIL unit:REV ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ],
+        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:MIL unit:RAD unit:REV unit:DEG ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
+            sh:path brick:value ] .
 
 bsh:PointsHaveQuantityKinds a sh:NodeShape ;
     sh:property [ sh:class qudt:QuantityKind ;
@@ -25346,27 +25416,23 @@ bsh:PointsHaveQuantityKinds a sh:NodeShape ;
           }
         """ ] .
 
-bsh:PositionQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PositionQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:PERCENT ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PERCENT ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
-bsh:PrecipitationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PrecipitationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:DeciM unit:FT unit:MilliM unit:IN unit:KiloM unit:YD unit:CentiM unit:MicroM unit:M ) ;
+            sh:in ( unit:FT unit:IN unit:YD unit:DeciM unit:M unit:CentiM unit:MicroM unit:MilliM unit:KiloM ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25408,9 +25474,7 @@ bsh:RDFSSubPropertyOfRuleForEntityProperties a sh:NodeShape ;
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetSubjectsOf rdfs:subPropertyOf .
 
-bsh:Radiant_TemperatureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Radiant_TemperatureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -25423,27 +25487,10 @@ bsh:Radiant_TemperatureQuantityShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Radon_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Radon_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
             sh:in ( unit:BQ-PER-M3 ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
-
-bsh:Reactive_EnergyQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:V-A_Reactive-HR unit:MegaV-A_Reactive-HR unit:KiloV-A_Reactive-HR ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25453,9 +25500,20 @@ bsh:Reactive_EnergyQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:Rotational_SpeedQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Reactive_EnergyQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:in ( unit:KiloV-A_Reactive-HR unit:MegaV-A_Reactive-HR unit:V-A_Reactive-HR ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ],
+        [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ] .
+
+bsh:Rotational_SpeedQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -25463,7 +25521,7 @@ bsh:Rotational_SpeedQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:DEG-PER-HR unit:RAD-PER-SEC unit:RAD-PER-MIN unit:DEG-PER-SEC unit:RAD-PER-HR unit:DEG-PER-MIN ) ;
+            sh:in ( unit:RAD-PER-SEC unit:DEG-PER-MIN unit:DEG-PER-SEC unit:RAD-PER-HR unit:RAD-PER-MIN unit:DEG-PER-HR ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
@@ -25491,42 +25549,10 @@ bsh:SensorInheritQuantityKind a sh:NodeShape ;
             }
         """ ] .
 
-bsh:Solar_IrradianceQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Solar_IrradianceQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
             sh:in ( unit:W-PER-M2 ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
-
-bsh:Solar_RadianceQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:W-PER-M2-SR ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
-
-bsh:SpeedQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:KiloM-PER-HR unit:MI-PER-SEC unit:HZ-M unit:YD-PER-SEC unit:RAD-PER-MIN unit:RAD-PER-SEC unit:MicroM-PER-MIN unit:YD-PER-HR unit:FT3-PER-MIN-FT2 unit:KiloM-PER-SEC unit:IN-PER-YR unit:M-PER-SEC unit:DEG-PER-MIN unit:MicroM-PER-SEC unit:BFT unit:DEG-PER-HR unit:YD-PER-MIN unit:M-PER-HR unit:FT-PER-SEC unit:DEG-PER-SEC unit:FT-PER-HR unit:MegaHZ-M unit:RAD-PER-HR unit:GigaHZ-M unit:MI-PER-HR ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25535,6 +25561,32 @@ bsh:SpeedQuantityShape a owl:Class,
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
+
+bsh:Solar_RadianceQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:in ( unit:W-PER-M2-SR ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ],
+        [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ] .
+
+bsh:SpeedQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:RAD-PER-SEC unit:M-PER-HR unit:YD-PER-MIN unit:GigaHZ-M unit:MI-PER-SEC unit:DEG-PER-SEC unit:RAD-PER-MIN unit:DEG-PER-HR unit:YD-PER-HR unit:MI-PER-HR unit:IN-PER-YR unit:BFT unit:FT3-PER-MIN-FT2 unit:MegaHZ-M unit:MicroM-PER-MIN unit:MicroM-PER-SEC unit:M-PER-SEC unit:FT-PER-SEC unit:KiloM-PER-HR unit:DEG-PER-MIN unit:KiloM-PER-SEC unit:HZ-M unit:YD-PER-SEC unit:RAD-PER-HR unit:FT-PER-HR ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 bsh:SubPropertyOfRule a sh:NodeShape ;
     sh:rule [ a sh:SPARQLRule ;
@@ -25548,12 +25600,10 @@ CONSTRUCT {
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetSubjectsOf rdfs:subPropertyOf .
 
-bsh:TVOC_ConcentrationQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:TVOC_ConcentrationQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:MicroGM-PER-M3 unit:PPM unit:PPB ) ;
+            sh:in ( unit:PPM unit:PPB unit:MicroGM-PER-M3 ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -25601,39 +25651,7 @@ bsh:VirtualMeterRule a sh:NodeShape ;
         """ ] ;
     sh:targetClass brick:Entity .
 
-bsh:Voltage_AngleQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:MIL unit:RAD unit:REV unit:DEG ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
-
-bsh:Voltage_ImbalanceQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:PERCENT ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
-
-bsh:VolumeQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Voltage_AngleQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -25641,14 +25659,38 @@ bsh:VolumeQuantityShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:IN3 unit:BBL unit:YD3 unit:MicroM3 unit:TON_Register unit:CentiM3 unit:M3 unit:BBL_UK_PET unit:L unit:NanoL unit:PicoL unit:AC-FT_US unit:PINT unit:MilliL unit:HectoL unit:MilliM3 unit:DecaL unit:PK_UK unit:FemtoL unit:DeciM3 unit:AC-FT unit:TBSP unit:QT_US unit:PINT_UK unit:ANGSTROM3 unit:QT_UK unit:TSP unit:DeciL unit:TON_SHIPPING_US unit:MI_UK3 unit:FBM unit:GT unit:GI_US unit:MegaL unit:DecaM3 unit:KiloCubicFT unit:NT unit:STR unit:FT3 unit:KiloL unit:TON_SHIPPING_UK unit:OZ_VOL_UK unit:BU_US_DRY unit:MI3 unit:STANDARD unit:MicroL unit:GI_UK unit:PlanckVolume ) ;
+            sh:in ( unit:RAD unit:GON unit:MilliRAD unit:DEG unit:MicroRAD unit:GRAD unit:ARCMIN unit:ARCSEC unit:MilliARCSEC unit:MIL unit:REV ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Wet_Bulb_TemperatureQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Voltage_ImbalanceQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PERCENT ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
+
+bsh:VolumeQuantityShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:BU_US_DRY unit:L unit:STANDARD unit:M3 unit:TON_SHIPPING_UK unit:PINT unit:FT3 unit:KiloL unit:MicroL unit:TBSP unit:PK_UK unit:GI_US unit:NT unit:HectoL unit:DecaM3 unit:TON_Register unit:NanoL unit:DecaL unit:QT_US unit:BBL unit:TON_SHIPPING_US unit:PINT_UK unit:MilliL unit:STR unit:DeciL unit:DeciM3 unit:MegaL unit:GI_UK unit:KiloCubicFT unit:AC-FT_US unit:TSP unit:PlanckVolume unit:IN3 unit:YD3 unit:QT_UK unit:AC-FT unit:FemtoL unit:GT unit:ANGSTROM3 unit:BBL_UK_PET unit:MI3 unit:PicoL unit:MI_UK3 unit:CentiM3 unit:OZ_VOL_UK unit:FBM unit:MilliM3 unit:MicroM3 ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
+
+bsh:Wet_Bulb_TemperatureQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -25661,20 +25703,18 @@ bsh:Wet_Bulb_TemperatureQuantityShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:Wind_DirectionQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Wind_DirectionQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:MIL unit:RAD unit:REV unit:DEG ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:RAD unit:GON unit:MilliRAD unit:DEG unit:MicroRAD unit:GRAD unit:ARCMIN unit:ARCSEC unit:MilliARCSEC unit:MIL unit:REV ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 bsh:aggregationFunctionShape a sh:PropertyShape ;
     sh:path brick:aggregationFunction .
@@ -25741,7 +25781,7 @@ bsh:isPartOfShape a sh:PropertyShape ;
 
 <https://w3id.org/rec> rdfs:label "RealEstateCore"^^xsd:string ;
     owl:imports <http://datashapes.org/dash>,
-        <https://brickschema.org/schema/1.3/Brick>,
+        <https://brickschema.org/schema/1.4/Brick>,
         <https://w3id.org/rec/brickpatches> ;
     owl:versionInfo "4.0"^^xsd:string .
 
@@ -25829,11 +25869,6 @@ skos:broader a rdf:Property ;
 skos:narrower a rdf:Property ;
     rdfs:label "has narrower"@en ;
     owl:inverseOf skos:broader .
-
-vcard:Address a owl:Class .
-
-vcard:hasAddress a owl:ObjectProperty ;
-    rdfs:label "hasAddress"@en .
 
 sosa:FeatureOfInterest a owl:Class .
 
@@ -31456,6 +31491,34 @@ brick:panelArea a owl:ObjectProperty,
     rdfs:subPropertyOf brick:area ;
     skos:definition "Surface area of a panel, such as a PV panel" .
 
+brick:powerComplexity owl:deprecated true ;
+    brick:deprecation [ brick:deprecatedInVersion "1.3.1" ;
+            brick:deprecationMitigationMessage "powerComplexity is deprecated in favor of electricalComplexPower because the latter is more clear" ;
+            brick:deprecationMitigationRule [ a sh:NodeShape ;
+                    sh:rule [ a sh:SPARQLRule ;
+                            sh:construct """
+            CONSTRUCT {
+              $this brick:electricalComplexPower ?prop .
+            } WHERE {
+              $this brick:powerComplexity ?prop .
+            }""" ;
+                            sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
+                    sh:targetSubjectsOf brick:powerComplexity ] ] .
+
+brick:powerFlow owl:deprecated true ;
+    brick:deprecation [ brick:deprecatedInVersion "1.3.1" ;
+            brick:deprecationMitigationMessage "powerFlow is deprecated in favor of electricalFlow as the latter is more clear" ;
+            brick:deprecationMitigationRule [ a sh:NodeShape ;
+                    sh:rule [ a sh:SPARQLRule ;
+                            sh:construct """
+            CONSTRUCT {
+              $this brick:electricalFlow ?prop .
+            } WHERE {
+              $this brick:powerFlow ?prop .
+            }""" ;
+                            sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
+                    sh:targetSubjectsOf brick:powerFlow ] ] .
+
 brick:ratedMaximumCurrentInput a owl:ObjectProperty,
         brick:EntityProperty ;
     rdfs:label "Rated maximum current input"@en ;
@@ -31594,24 +31657,20 @@ ref:storedAt a owl:DatatypeProperty ;
     rdfs:label "storedAt" ;
     skos:definition "A reference to where the data for this TimeseriesReference is stored"@en .
 
-bsh:AggregationShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:AggregationShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            skos:definition "The aggregation function applied to data in the interval which produces the value" ;
-            sh:in ( "max" "min" "count" "mean" "sum" "median" "mode" ) ;
-            sh:minCount 1 ;
-            sh:path brick:aggregationFunction ],
-        [ a sh:PropertyShape ;
             skos:definition "Interval expressed in an ISO 8601 Duration string, e.g. RP1D" ;
             sh:datatype xsd:string ;
             sh:minCount 1 ;
-            sh:path brick:aggregationInterval ] .
+            sh:path brick:aggregationInterval ],
+        [ a sh:PropertyShape ;
+            skos:definition "The aggregation function applied to data in the interval which produces the value" ;
+            sh:in ( "max" "min" "count" "mean" "sum" "median" "mode" ) ;
+            sh:minCount 1 ;
+            sh:path brick:aggregationFunction ] .
 
-bsh:AzimuthShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:AzimuthShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -31621,14 +31680,12 @@ bsh:AzimuthShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ],
         [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:REV unit:MIL unit:MIN_Angle unit:RAD unit:2PiRAD unit:DEG ) ;
+            sh:in ( unit:GON unit:MilliRAD unit:ARCSEC unit:DEG unit:MicroRAD unit:2PiRAD unit:GRAD unit:ARCMIN unit:MIN_Angle unit:MIL unit:MilliARCSEC unit:RAD unit:REV ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:BuildingPrimaryFunctionShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:BuildingPrimaryFunctionShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "Adult Education"^^xsd:string "Ambulatory Surgical Center"^^xsd:string "Aquarium"^^xsd:string "Automobile Dealership"^^xsd:string "Bank Branch"^^xsd:string "Bar/Nightclub"^^xsd:string "Barracks"^^xsd:string "Bowling Alley"^^xsd:string "Casino"^^xsd:string "College/University"^^xsd:string "Convenience Store with Gas Station"^^xsd:string "Convenience Store without Gas Station"^^xsd:string "Convention Center"^^xsd:string "Courthouse"^^xsd:string "Data Center"^^xsd:string "Distribution Center"^^xsd:string "Drinking Water Treatment & Distribution"^^xsd:string "Enclosed Mall"^^xsd:string "Energy/Power Station"^^xsd:string "Fast Food Restaurant"^^xsd:string "Financial Office"^^xsd:string "Fire Station"^^xsd:string "Fitness Center/Health Club/Gym"^^xsd:string "Food Sales"^^xsd:string "Food Service"^^xsd:string "Hospital (General Medical & Surgical)"^^xsd:string "Hotel"^^xsd:string "Ice/Curling Rink"^^xsd:string "Indoor Arena"^^xsd:string "K-12 School"^^xsd:string "Laboratory"^^xsd:string "Library"^^xsd:string "Lifestyle Center"^^xsd:string "Mailing Center/Post Office"^^xsd:string "Manufacturing/Industrial Plant"^^xsd:string "Medical Office"^^xsd:string "Mixed Use Property"^^xsd:string "Movie Theater"^^xsd:string "Multifamily Housing"^^xsd:string "Museum"^^xsd:string "Non-Refrigerated Warehouse"^^xsd:string "Office"^^xsd:string "Other - Education"^^xsd:string "Other - Entertainment/Public Assembly"^^xsd:string "Other - Lodging/Residential"^^xsd:string "Other - Mall"^^xsd:string "Other - Public Services"^^xsd:string "Other - Recreation"^^xsd:string "Other - Restaurant/Bar"^^xsd:string "Other - Services"^^xsd:string "Other - Stadium"^^xsd:string "Other - Technology/Science"^^xsd:string "Other - Utility"^^xsd:string "Other"^^xsd:string "Other/Specialty Hospital"^^xsd:string "Outpatient Rehabilitation/Physical Therapy"^^xsd:string "Parking"^^xsd:string "Performing Arts"^^xsd:string "Personal Services (Health/Beauty, Dry Cleaning, etc)"^^xsd:string "Police Station"^^xsd:string "Pre-school/Daycare"^^xsd:string "Prison/Incarceration"^^xsd:string "Race Track"^^xsd:string "Refrigerated Warehouse"^^xsd:string "Repair Services (Vehicle, Shoe, Locksmith, etc)"^^xsd:string "Residence Hall/Dormitory"^^xsd:string "Restaurant"^^xsd:string "Retail Store"^^xsd:string "Roller Rink"^^xsd:string "Self-Storage Facility"^^xsd:string "Senior Care Community"^^xsd:string "Single Family Home"^^xsd:string "Social/Meeting Hall"^^xsd:string "Stadium (Closed)"^^xsd:string "Stadium (Open)"^^xsd:string "Strip Mall"^^xsd:string "Supermarket/Grocery Store"^^xsd:string "Swimming Pool"^^xsd:string "Transportation Terminal/Station"^^xsd:string "Urgent Care/Clinic/Other Outpatient"^^xsd:string "Veterinary Office"^^xsd:string "Vocational School"^^xsd:string "Wastewater Treatment Plant"^^xsd:string "Wholesale Club/Supercenter"^^xsd:string "Worship Facility"^^xsd:string "Zoo"^^xsd:string "Adult Education" "Ambulatory Surgical Center" "Aquarium" "Automobile Dealership" "Bank Branch" "Bar/Nightclub" "Barracks" "Bowling Alley" "Casino" "College/University" "Convenience Store with Gas Station" "Convenience Store without Gas Station" "Convention Center" "Courthouse" "Data Center" "Distribution Center" "Drinking Water Treatment & Distribution" "Enclosed Mall" "Energy/Power Station" "Fast Food Restaurant" "Financial Office" "Fire Station" "Fitness Center/Health Club/Gym" "Food Sales" "Food Service" "Hospital (General Medical & Surgical)" "Hotel" "Ice/Curling Rink" "Indoor Arena" "K-12 School" "Laboratory" "Library" "Lifestyle Center" "Mailing Center/Post Office" "Manufacturing/Industrial Plant" "Medical Office" "Mixed Use Property" "Movie Theater" "Multifamily Housing" "Museum" "Non-Refrigerated Warehouse" "Office" "Other - Education" "Other - Entertainment/Public Assembly" "Other - Lodging/Residential" "Other - Mall" "Other - Public Services" "Other - Recreation" "Other - Restaurant/Bar" "Other - Services" "Other - Stadium" "Other - Technology/Science" "Other - Utility" "Other" "Other/Specialty Hospital" "Outpatient Rehabilitation/Physical Therapy" "Parking" "Performing Arts" "Personal Services (Health/Beauty, Dry Cleaning, etc)" "Police Station" "Pre-school/Daycare" "Prison/Incarceration" "Race Track" "Refrigerated Warehouse" "Repair Services (Vehicle, Shoe, Locksmith, etc)" "Residence Hall/Dormitory" "Restaurant" "Retail Store" "Roller Rink" "Self-Storage Facility" "Senior Care Community" "Single Family Home" "Social/Meeting Hall" "Stadium (Closed)" "Stadium (Open)" "Strip Mall" "Supermarket/Grocery Store" "Swimming Pool" "Transportation Terminal/Station" "Urgent Care/Clinic/Other Outpatient" "Veterinary Office" "Vocational School" "Wastewater Treatment Plant" "Wholesale Club/Supercenter" "Worship Facility" "Zoo" ) ;
@@ -31636,9 +31693,7 @@ bsh:BuildingPrimaryFunctionShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:CoolingCapacityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:CoolingCapacityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -31651,22 +31706,18 @@ bsh:CoolingCapacityShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:hasUnit ] .
 
-bsh:CoordinateShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:CoordinateShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:latitude ],
+            sh:path brick:longitude ],
         [ a sh:PropertyShape ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:longitude ] .
+            sh:path brick:latitude ] .
 
-bsh:CurrentFlowTypeShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:CurrentFlowTypeShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "AC"^^xsd:string "DC"^^xsd:string "AC" "DC" ) ;
@@ -31696,28 +31747,24 @@ bsh:DeprecationRule a sh:NodeShape ;
             sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
     sh:targetSubjectsOf brick:deprecation .
 
-bsh:DeprecationShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:DeprecationShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
+            skos:definition "A SHACL rule which will mitigate the deprecation" ;
+            sh:class sh:NodeShape ;
+            sh:path brick:deprecationMitigationRule ],
+        [ a sh:PropertyShape ;
             skos:definition "The version in which the entity was deprecated" ;
             sh:datatype xsd:string ;
             sh:minCount 1 ;
             sh:path brick:deprecatedInVersion ],
-        [ a sh:PropertyShape ;
-            skos:definition "A SHACL rule which will mitigate the deprecation" ;
-            sh:class sh:NodeShape ;
-            sh:path brick:deprecationMitigationRule ],
         [ a sh:PropertyShape ;
             skos:definition "A message describing how to mitigate or address the deprecation" ;
             sh:datatype xsd:string ;
             sh:minCount 1 ;
             sh:path brick:deprecationMitigationMessage ] .
 
-bsh:ElectricVehicleChargingDirectionalityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ElectricVehicleChargingDirectionalityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "unidirectional"^^xsd:string "bidirectional"^^xsd:string "unidirectional" "bidirectional" ) ;
@@ -31725,9 +31772,7 @@ bsh:ElectricVehicleChargingDirectionalityShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:ElectricVehicleChargingTypeShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ElectricVehicleChargingTypeShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "Level 1"^^xsd:string "Level 2"^^xsd:string "Level 3"^^xsd:string "Level 1" "Level 2" "Level 3" ) ;
@@ -31735,9 +31780,7 @@ bsh:ElectricVehicleChargingTypeShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:ElectricVehicleConnectorTypeShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ElectricVehicleConnectorTypeShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "Type 1 (CSS)"^^xsd:string "Type 2 (CSS)"^^xsd:string "GB/T"^^xsd:string "Type 1 (SAE J1772)"^^xsd:string "Type 2 (IEC 62196)"^^xsd:string "CHAdeMO"^^xsd:string "CCS (Combined Charging System)"^^xsd:string "Tesla Supercharger"^^xsd:string "Wireless"^^xsd:string "Type 1 (CSS)" "Type 2 (CSS)" "GB/T" "Type 1 (SAE J1772)" "Type 2 (IEC 62196)" "CHAdeMO" "CCS (Combined Charging System)" "Tesla Supercharger" "Wireless" ) ;
@@ -31745,9 +31788,7 @@ bsh:ElectricVehicleConnectorTypeShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:ElectricalComplexPowerShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ElectricalComplexPowerShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "real"^^xsd:string "reactive"^^xsd:string "apparent"^^xsd:string "real" "reactive" "apparent" ) ;
@@ -31755,9 +31796,7 @@ bsh:ElectricalComplexPowerShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:ElectricalFlowShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ElectricalFlowShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "import"^^xsd:string "export"^^xsd:string "net"^^xsd:string "absolute"^^xsd:string "import" "export" "net" "absolute" ) ;
@@ -31765,9 +31804,7 @@ bsh:ElectricalFlowShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:PhaseCountShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PhaseCountShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( 1 2 3 "Total" ) ;
@@ -31775,9 +31812,7 @@ bsh:PhaseCountShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:PhasesShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PhasesShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( "A"^^xsd:string "B"^^xsd:string "C"^^xsd:string "AB"^^xsd:string "BC"^^xsd:string "AC"^^xsd:string "ABC"^^xsd:string "A" "B" "C" "AB" "BC" "AC" "ABC" ) ;
@@ -31785,9 +31820,7 @@ bsh:PhasesShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:ResolutionShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ResolutionShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -31796,12 +31829,23 @@ bsh:ResolutionShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:TemperatureCoefficientPerDegreeCelsiusShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:TemperatureCoefficientPerDegreeCelsiusShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
             sh:in ( unit:PERCENT ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
+
+bsh:TiltShape a sh:NodeShape ;
+    rdfs:subClassOf bsh:ValueShape ;
+    sh:property [ a sh:PropertyShape ;
+            sh:in ( unit:GON unit:MilliRAD unit:ARCSEC unit:DEG unit:MicroRAD unit:2PiRAD unit:GRAD unit:ARCMIN unit:MIN_Angle unit:MIL unit:MilliARCSEC unit:RAD unit:REV ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:path brick:hasUnit ],
@@ -31811,24 +31855,7 @@ bsh:TemperatureCoefficientPerDegreeCelsiusShape a owl:Class,
             sh:or bsh:NumericValue ;
             sh:path brick:value ] .
 
-bsh:TiltShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
-    rdfs:subClassOf bsh:ValueShape ;
-    sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
-            sh:in ( unit:GON unit:GRAD unit:MicroRAD unit:ARCSEC unit:MilliRAD unit:ARCMIN unit:MilliARCSEC unit:REV unit:MIL unit:MIN_Angle unit:RAD unit:2PiRAD unit:DEG ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
-
-bsh:VirtualMeterShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:VirtualMeterShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:boolean ;
@@ -31836,24 +31863,20 @@ bsh:VirtualMeterShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:VolumeShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:VolumeShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:or bsh:NumericValue ;
-            sh:path brick:value ],
-        [ a sh:PropertyShape ;
             sh:in ( unit:FT3 unit:M3 ) ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
-            sh:path brick:hasUnit ] .
+            sh:path brick:hasUnit ],
+        [ a sh:PropertyShape ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:or bsh:NumericValue ;
+            sh:path brick:value ] .
 
-bsh:YearBuiltShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:YearBuiltShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:nonNegativeInteger ;
@@ -32156,7 +32179,7 @@ bsh:longitudeShape a sh:PropertyShape ;
     sh:path brick:longitude .
 
 bsh:metersShape a sh:PropertyShape ;
-    sh:or ( [ sh:class brick:Equipment ] [ sh:class brick:Location ] [ sh:class brick:Collection ] ) ;
+    sh:or ( [ sh:class brick:Equipment ] [ sh:class brick:Location ] [ sh:class brick:Collection ] [ sh:class rec:Architecture ] ) ;
     sh:path brick:meters .
 
 bsh:timestampShape a sh:PropertyShape ;
@@ -32172,18 +32195,6 @@ rec:IPAddress a owl:DatatypeProperty ;
 
 rec:MACAddress a owl:DatatypeProperty ;
     rdfs:label "MACAddress"@en .
-
-rec:TeamRoom a rdf:Class,
-        sh:NodeShape ;
-    rdfs:label "Team Room" ;
-    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
-    rdfs:subClassOf rec:Room .
-
-rec:Wing a rdf:Class,
-        sh:NodeShape ;
-    rdfs:label "Wing" ;
-    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
-    rdfs:subClassOf rec:Space .
 
 rec:acknowledgedBy a owl:AsymmetricProperty,
         owl:IrreflexiveProperty,
@@ -39565,66 +39576,14 @@ brick:isTagOf a owl:AsymmetricProperty,
     rdfs:label "Is tag of"@en .
 
 brick:latitude a owl:DatatypeProperty,
-        owl:ObjectProperty,
         brick:Relationship ;
     rdfs:label "Latitude"@en ;
     rdfs:subPropertyOf sdo:latitude .
 
 brick:longitude a owl:DatatypeProperty,
-        owl:ObjectProperty,
         brick:Relationship ;
     rdfs:label "Longitude"@en ;
     rdfs:subPropertyOf sdo:longitude .
-
-brick:powerComplexity brick:deprecation [ brick:deprecatedInVersion "1.3.1" ;
-            brick:deprecationMitigationMessage "powerComplexity is deprecated in favor of electricalComplexPower because the latter is more clear" ;
-            brick:deprecationMitigationRule [ a sh:NodeShape ;
-                    sh:rule [ a sh:SPARQLRule ;
-                            sh:construct """
-            CONSTRUCT {
-              $this brick:electricalComplexPower ?prop .
-            } WHERE {
-              $this brick:powerComplexity ?prop .
-            }""" ;
-                            sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
-                    sh:targetSubjectsOf brick:powerComplexity ] ],
-        [ brick:deprecatedInVersion "1.3.1" ;
-            brick:deprecationMitigationMessage "powerComplexity is deprecated in favor of electricalComplexPower because the latter is more clear" ;
-            brick:deprecationMitigationRule [ a sh:NodeShape ;
-                    sh:rule [ a sh:SPARQLRule ;
-                            sh:construct """
-            CONSTRUCT {
-              $this brick:electricalComplexPower ?prop .
-            } WHERE {
-              $this brick:powerComplexity ?prop .
-            }""" ;
-                            sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
-                    sh:targetSubjectsOf brick:powerComplexity ] ] .
-
-brick:powerFlow brick:deprecation [ brick:deprecatedInVersion "1.3.1" ;
-            brick:deprecationMitigationMessage "powerFlow is deprecated in favor of electricalFlow as the latter is more clear" ;
-            brick:deprecationMitigationRule [ a sh:NodeShape ;
-                    sh:rule [ a sh:SPARQLRule ;
-                            sh:construct """
-            CONSTRUCT {
-              $this brick:electricalFlow ?prop .
-            } WHERE {
-              $this brick:powerFlow ?prop .
-            }""" ;
-                            sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
-                    sh:targetSubjectsOf brick:powerFlow ] ],
-        [ brick:deprecatedInVersion "1.3.1" ;
-            brick:deprecationMitigationMessage "powerFlow is deprecated in favor of electricalFlow as the latter is more clear" ;
-            brick:deprecationMitigationRule [ a sh:NodeShape ;
-                    sh:rule [ a sh:SPARQLRule ;
-                            sh:construct """
-            CONSTRUCT {
-              $this brick:electricalFlow ?prop .
-            } WHERE {
-              $this brick:powerFlow ?prop .
-            }""" ;
-                            sh:prefixes <https://brickschema.org/schema/1.4/Brick> ] ;
-                    sh:targetSubjectsOf brick:powerFlow ] ] .
 
 brick:thermalTransmittance a owl:ObjectProperty,
         brick:EntityProperty ;
@@ -39688,9 +39647,7 @@ ref:IFCReference a owl:Class,
             sh:minCount 1 ;
             sh:path ref:hasIfcProjectReference ] .
 
-bsh:StageShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:StageShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:in ( 1 2 3 4 1 2 3 4 ) ;
@@ -39698,9 +39655,7 @@ bsh:StageShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:ThermalTransmittanceShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:ThermalTransmittanceShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -40444,18 +40399,6 @@ tag:Workshop a brick:Tag ;
 
 tag:Zenith a brick:Tag ;
     rdfs:label "Zenith"@en .
-
-rec:Lobby a rdf:Class,
-        sh:NodeShape ;
-    rdfs:label "Lobby" ;
-    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
-    rdfs:subClassOf rec:Room .
-
-rec:Lounge a rdf:Class,
-        sh:NodeShape ;
-    rdfs:label "Lounge" ;
-    rdfs:comment "This concept definition comes from the Brick distribution until it is added in the REC ontology Turtle distribution." ;
-    rdfs:subClassOf rec:Room .
 
 rec:batteryPercentage a owl:DatatypeProperty ;
     rdfs:label "batteryPercentage"@en .
@@ -42605,9 +42548,7 @@ ref:TimeseriesReference a owl:Class,
             sh:nodeKind sh:IRIOrLiteral ;
             sh:path ref:storedAt ] .
 
-bsh:EfficiencyShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:EfficiencyShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:maxCount 1 ;
@@ -42637,24 +42578,18 @@ bsh:LastKnownDoubleShape a owl:Class,
             sh:name "value" ;
             sh:path brick:value ] .
 
-bsh:TemperatureShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:TemperatureShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:MilliDEG_C unit:MilliK unit:K unit:DEG_F unit:MegaK unit:PlanckTemperature unit:DEG_R unit:DecaK unit:DEG_C ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
-
-bsh:isMeteredByShape a sh:PropertyShape ;
-    sh:class brick:Meter ;
-    sh:path brick:isMeteredBy .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:PlanckTemperature unit:MilliK unit:K unit:DecaK unit:DEG_C unit:DEG_R unit:MilliDEG_C unit:DEG_F unit:MegaK ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
 rec:hasPoint a owl:AsymmetricProperty,
         owl:IrreflexiveProperty,
@@ -43308,10 +43243,10 @@ brick:Lighting_Equipment a owl:Class,
         sh:NodeShape ;
     rdfs:label "Lighting Equipment"@en ;
     rdfs:subClassOf brick:Equipment ;
-    sh:property [ sh:or ( [ sh:class brick:Lighting_Equipment ] [ sh:class rec:Space ] ) ;
-            sh:path brick:feeds ],
-        [ sh:or ( [ sh:class brick:Lighting_Equipment ] [ sh:class brick:Electrical_Equipment ] ) ;
-            sh:path brick:hasPart ] ;
+    sh:property [ sh:or ( [ sh:class brick:Lighting_Equipment ] [ sh:class brick:Electrical_Equipment ] ) ;
+            sh:path brick:hasPart ],
+        [ sh:or ( [ sh:class brick:Lighting_Equipment ] [ sh:class rec:Space ] ) ;
+            sh:path brick:feeds ] ;
     sh:rule [ a sh:TripleRule ;
             sh:object tag:Equipment ;
             sh:predicate brick:hasTag ;
@@ -43827,7 +43762,6 @@ brick:Water_Loop a owl:Class,
         tag:Water .
 
 brick:ambientTemperatureOfMeasurement a owl:AsymmetricProperty,
-        owl:DatatypeProperty,
         owl:IrreflexiveProperty,
         owl:ObjectProperty,
         brick:Relationship ;
@@ -43885,29 +43819,29 @@ ref:ExternalReference a owl:Class,
     rdfs:subClassOf s223:ExternalReference ;
     skos:definition "The parent class of all external reference types" .
 
-bsh:AreaShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:AreaShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
-            sh:in ( unit:FT2 unit:M2 ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:path brick:hasUnit ],
-        [ a sh:PropertyShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:or bsh:NumericValue ;
-            sh:path brick:value ] .
+            sh:path brick:value ],
+        [ a sh:PropertyShape ;
+            sh:in ( unit:FT2 unit:M2 ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path brick:hasUnit ] .
 
-bsh:PowerQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:PowerQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             skos:definition "The ambient temperature at which the power input was measured" ;
             sh:class bsh:TemperatureShape ;
             sh:path brick:ambientTemperatureOfMeasurement ] .
+
+bsh:isMeteredByShape a sh:PropertyShape ;
+    sh:class brick:Meter ;
+    sh:path brick:isMeteredBy .
 
 tag:Aid a brick:Tag ;
     rdfs:label "Aid"@en .
@@ -44943,7 +44877,7 @@ brick:Building_Meter a owl:Class,
     rdfs:label "Building Meter"@en ;
     rdfs:subClassOf brick:Meter ;
     skos:definition "A meter that measures usage or consumption of some media for a whole building"@en ;
-    sh:property [ sh:class brick:Building ;
+    sh:property [ sh:or ( [ sh:class brick:Building ] [ sh:class rec:Building ] ) ;
             sh:path brick:meters ] ;
     sh:rule [ a sh:TripleRule ;
             sh:object tag:Building ;
@@ -46066,18 +46000,14 @@ brick:timestamp a rdf:Property,
         brick:Relationship ;
     rdfs:label "Timestamp"@en .
 
-bsh:Electric_CurrentQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:Electric_CurrentQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             skos:definition "The ambient temperature at which the current input was measured" ;
             sh:class bsh:TemperatureShape ;
             sh:path brick:ambientTemperatureOfMeasurement ] .
 
-bsh:LastKnownValueShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:LastKnownValueShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             sh:datatype xsd:dateTime ;
@@ -46088,9 +46018,7 @@ bsh:LastKnownValueShape a owl:Class,
             sh:minCount 1 ;
             sh:path brick:value ] .
 
-bsh:VoltageQuantityShape a owl:Class,
-        sh:NodeShape,
-        brick:EntityPropertyValue ;
+bsh:VoltageQuantityShape a sh:NodeShape ;
     rdfs:subClassOf bsh:ValueShape ;
     sh:property [ a sh:PropertyShape ;
             skos:definition "The ambient temperature at which the voltage was measured" ;
@@ -46814,39 +46742,6 @@ tag:Wash a brick:Tag ;
 tag:Waste a brick:Tag ;
     rdfs:label "Waste"@en .
 
-brick:Air_Quality_Sensor a owl:Class,
-        sh:NodeShape ;
-    rdfs:label "Air Quality Sensor"@en ;
-    rdfs:subClassOf brick:Sensor ;
-    skos:definition "A sensor which provides a measure of air quality"@en ;
-    sh:property [ a sh:PropertyShape ;
-            sh:class rec:DoubleValueObservation ;
-            sh:maxCount 1 ;
-            sh:name "last known value" ;
-            sh:nodeKind sh:IRI ;
-            sh:path brick:lastKnownValue ] ;
-    sh:rule [ a sh:TripleRule ;
-            sh:object tag:Air ;
-            sh:predicate brick:hasTag ;
-            sh:subject sh:this ],
-        [ a sh:TripleRule ;
-            sh:object tag:Point ;
-            sh:predicate brick:hasTag ;
-            sh:subject sh:this ],
-        [ a sh:TripleRule ;
-            sh:object tag:Quality ;
-            sh:predicate brick:hasTag ;
-            sh:subject sh:this ],
-        [ a sh:TripleRule ;
-            sh:object tag:Sensor ;
-            sh:predicate brick:hasTag ;
-            sh:subject sh:this ] ;
-    brick:hasAssociatedTag tag:Air,
-        tag:Point,
-        tag:Quality,
-        tag:Sensor ;
-    brick:hasQuantity qudtqk:DimensionlessRatio .
-
 brick:CO2_Concentration a brick:Quantity ;
     rdfs:label "CO2 Concentration"@en ;
     qudt:applicableUnit unit:PPB,
@@ -47156,6 +47051,39 @@ brick:Water_Flow_Sensor a owl:Class,
         tag:Water ;
     brick:hasQuantity qudtqk:VolumeFlowRate ;
     brick:hasSubstance brick:Water .
+
+brick:Air_Quality_Sensor a owl:Class,
+        sh:NodeShape ;
+    rdfs:label "Air Quality Sensor"@en ;
+    rdfs:subClassOf brick:Sensor ;
+    skos:definition "A sensor which provides a measure of air quality"@en ;
+    sh:property [ a sh:PropertyShape ;
+            sh:class rec:DoubleValueObservation ;
+            sh:maxCount 1 ;
+            sh:name "last known value" ;
+            sh:nodeKind sh:IRI ;
+            sh:path brick:lastKnownValue ] ;
+    sh:rule [ a sh:TripleRule ;
+            sh:object tag:Air ;
+            sh:predicate brick:hasTag ;
+            sh:subject sh:this ],
+        [ a sh:TripleRule ;
+            sh:object tag:Point ;
+            sh:predicate brick:hasTag ;
+            sh:subject sh:this ],
+        [ a sh:TripleRule ;
+            sh:object tag:Quality ;
+            sh:predicate brick:hasTag ;
+            sh:subject sh:this ],
+        [ a sh:TripleRule ;
+            sh:object tag:Sensor ;
+            sh:predicate brick:hasTag ;
+            sh:subject sh:this ] ;
+    brick:hasAssociatedTag tag:Air,
+        tag:Point,
+        tag:Quality,
+        tag:Sensor ;
+    brick:hasQuantity qudtqk:DimensionlessRatio .
 
 brick:Air_Temperature_Sensor a owl:Class,
         sh:NodeShape ;
@@ -47772,15 +47700,15 @@ brick:Collection a owl:Class,
             sh:not [ sh:class brick:Quantity ] ],
         [ sh:message "Collection is an exclusive top class." ;
             sh:not [ sh:class brick:Point ] ] ;
-    sh:property [ a sh:PropertyShape ;
+    sh:property [ sh:message "A Collection can be associated with Equipments, Locations/Spaces, Points, and other Collections." ;
+            sh:or ( [ sh:class brick:Equipment ] [ sh:class brick:Location ] [ sh:class rec:Space ] [ sh:class brick:Point ] [ sh:class brick:Collection ] ) ;
+            sh:path brick:hasPart ],
+        [ a sh:PropertyShape ;
             sh:minCount 1 ;
             sh:name "includes" ;
             sh:nodeKind sh:IRI ;
             sh:or ( [ sh:class brick:Equipment ] [ sh:class brick:Collection ] ) ;
             sh:path rec:includes ],
-        [ sh:message "A Collection can be associated with Equipments, Locations/Spaces, Points, and other Collections." ;
-            sh:or ( [ sh:class brick:Equipment ] [ sh:class brick:Location ] [ sh:class rec:Space ] [ sh:class brick:Point ] [ sh:class brick:Collection ] ) ;
-            sh:path brick:hasPart ],
         bsh:isMeteredByShape ;
     sh:rule [ a sh:TripleRule ;
             sh:object tag:Collection ;
@@ -47923,6 +47851,17 @@ brick:Valve a owl:Class,
     brick:hasAssociatedTag tag:Equipment,
         tag:Valve .
 
+brick:Entity a owl:Class,
+        sh:NodeShape ;
+    rdfs:label "Entity"@en ;
+    sh:property bsh:aliasOfShape,
+        bsh:hasLocationShape,
+        bsh:hasdeprecationShape,
+        bsh:isReplacedByShape,
+        bsh:latitudeShape,
+        bsh:longitudeShape,
+        bsh:timestampShape .
+
 tag:Bypass a brick:Tag ;
     rdfs:label "Bypass"@en .
 
@@ -47952,17 +47891,6 @@ brick:Discharge_Air a brick:Substance ;
     owl:sameAs brick:Supply_Air ;
     skos:broader brick:Air ;
     skos:definition "the air exiting the registers (vents)."@en .
-
-brick:Entity a owl:Class,
-        sh:NodeShape ;
-    rdfs:label "Entity"@en ;
-    sh:property bsh:aliasOfShape,
-        bsh:hasLocationShape,
-        bsh:hasdeprecationShape,
-        bsh:isReplacedByShape,
-        bsh:latitudeShape,
-        bsh:longitudeShape,
-        bsh:timestampShape .
 
 brick:Supply_Air a brick:Substance ;
     rdfs:label "Supply Air"@en ;
@@ -48013,7 +47941,10 @@ brick:Point a owl:Class,
             sh:message "Instances of Point cannot be Collections." ],
         [ sh:class brick:EntityProperty ;
             sh:message "Instances of Point cannot be EntityProperties." ] ;
-    sh:property [ a sh:PropertyShape ;
+    sh:property [ sh:maxCount 0 ;
+            sh:message "Points cannot have locations; use 'isPointOf' instead" ;
+            sh:path brick:hasLocation ],
+        [ a sh:PropertyShape ;
             sh:class brick:Quantity ;
             sh:name "has quantity" ;
             sh:nodeKind sh:IRI ;
@@ -48027,9 +47958,6 @@ brick:Point a owl:Class,
             sh:name "is point of" ;
             sh:nodeKind sh:IRI ;
             sh:path rec:isPointOf ],
-        [ sh:maxCount 0 ;
-            sh:message "Points cannot have locations; use 'isPointOf' instead" ;
-            sh:path brick:hasLocation ],
         bsh:hasQuantityShape,
         bsh:hasSubstanceShape,
         bsh:hasUnitShape,
@@ -48211,6 +48139,46 @@ tag:Speed a brick:Tag ;
 tag:Tank a brick:Tag ;
     rdfs:label "Tank"@en .
 
+<https://brickschema.org/schema/1.4/Brick> a owl:Ontology ;
+    rdfs:label "Brick" ;
+    dcterms:creator ( [ a sdo:Person ;
+                sdo:email "gtfierro@mines.edu" ;
+                sdo:name "Gabe Fierro" ] [ a sdo:Person ;
+                sdo:email "jbkoh@eng.ucsd.edu" ;
+                sdo:name "Jason Koh" ] ) ;
+    dcterms:issued "2016-11-16" ;
+    dcterms:license <https://github.com/BrickSchema/brick/blob/master/LICENSE> ;
+    dcterms:modified "2025-09-25" ;
+    dcterms:publisher [ a sdo:Consortium ;
+            sdo:legalName "Brick Consortium, Inc" ;
+            sdo:sameAs <https://brickschema.org/consortium/> ] ;
+    rdfs:isDefinedBy <https://brickschema.org/schema/1.4/Brick> ;
+    rdfs:seeAlso <https://brickschema.org> ;
+    owl:imports <http://data.ashrae.org/bacnet/2020>,
+        <http://qudt.org/3.1.0/vocab/quantitykind>,
+        <http://qudt.org/3.1.0/vocab/unit>,
+        <https://brickschema.org/schema/Brick/ref>,
+        <https://w3id.org/rec/recimports> ;
+    owl:versionInfo "1.4.4" ;
+    sh:declare [ sh:namespace "https://brickschema.org/schema/Brick/ref#"^^xsd:anyURI ;
+            sh:prefix "ref" ],
+        [ sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ;
+            sh:prefix "owl" ],
+        [ sh:namespace "http://data.ashrae.org/standard223#"^^xsd:anyURI ;
+            sh:prefix "s223" ],
+        [ sh:namespace "http://www.w3.org/ns/shacl#"^^xsd:anyURI ;
+            sh:prefix "sh" ],
+        [ sh:namespace "https://w3id.org/rec#"^^xsd:anyURI ;
+            sh:prefix "rec" ],
+        [ sh:namespace "http://www.w3.org/2001/XMLSchema#"^^xsd:anyURI ;
+            sh:prefix "xsd" ],
+        [ sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ;
+            sh:prefix "rdf" ],
+        [ sh:namespace "https://brickschema.org/schema/Brick#"^^xsd:anyURI ;
+            sh:prefix "brick" ],
+        [ sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
+            sh:prefix "rdfs" ] .
+
 tag:Damper a brick:Tag ;
     rdfs:label "Damper"@en .
 
@@ -48228,46 +48196,6 @@ tag:On a brick:Tag ;
 
 tag:Power a brick:Tag ;
     rdfs:label "Power"@en .
-
-<https://brickschema.org/schema/1.4/Brick> a owl:Ontology ;
-    rdfs:label "Brick" ;
-    dcterms:creator ( [ a sdo:Person ;
-                sdo:email "gtfierro@mines.edu" ;
-                sdo:name "Gabe Fierro" ] [ a sdo:Person ;
-                sdo:email "jbkoh@eng.ucsd.edu" ;
-                sdo:name "Jason Koh" ] ) ;
-    dcterms:issued "2016-11-16" ;
-    dcterms:license <https://github.com/BrickSchema/brick/blob/master/LICENSE> ;
-    dcterms:modified "2025-04-16" ;
-    dcterms:publisher [ a sdo:Consortium ;
-            sdo:legalName "Brick Consortium, Inc" ;
-            sdo:sameAs <https://brickschema.org/consortium/> ] ;
-    rdfs:isDefinedBy <https://brickschema.org/schema/1.4/Brick> ;
-    rdfs:seeAlso <https://brickschema.org> ;
-    owl:imports <http://data.ashrae.org/bacnet/2020>,
-        <http://qudt.org/3.1.0/vocab/quantitykind>,
-        <http://qudt.org/3.1.0/vocab/unit>,
-        <https://brickschema.org/schema/Brick/ref>,
-        <https://w3id.org/rec/recimports> ;
-    owl:versionInfo "1.4.3" ;
-    sh:declare [ sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
-            sh:prefix "rdfs" ],
-        [ sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ;
-            sh:prefix "rdf" ],
-        [ sh:namespace "https://brickschema.org/schema/Brick/ref#"^^xsd:anyURI ;
-            sh:prefix "ref" ],
-        [ sh:namespace "http://www.w3.org/2001/XMLSchema#"^^xsd:anyURI ;
-            sh:prefix "xsd" ],
-        [ sh:namespace "http://www.w3.org/ns/shacl#"^^xsd:anyURI ;
-            sh:prefix "sh" ],
-        [ sh:namespace "http://data.ashrae.org/standard223#"^^xsd:anyURI ;
-            sh:prefix "s223" ],
-        [ sh:namespace "https://w3id.org/rec#"^^xsd:anyURI ;
-            sh:prefix "rec" ],
-        [ sh:namespace "https://brickschema.org/schema/Brick#"^^xsd:anyURI ;
-            sh:prefix "brick" ],
-        [ sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ;
-            sh:prefix "owl" ] .
 
 tag:Band a brick:Tag ;
     rdfs:label "Band"@en .
@@ -48375,7 +48303,7 @@ brick:HVAC_Equipment a owl:Class,
 
 brick:Relationship a brick:Relationship ;
     rdfs:label "Relationship"@en ;
-    rdfs:subClassOf owl:ObjectProperty ;
+    rdfs:subClassOf rdf:Property ;
     skos:definition "Super-property of all Brick relationships between entities (Equipment, Location, Point)" .
 
 tag:Enable a brick:Tag ;
@@ -48400,15 +48328,7 @@ brick:Equipment a owl:Class,
             sh:message "Instances of Equipment cannot be Points." ],
         [ sh:class brick:EntityProperty ;
             sh:message "Instances of Equipment cannot be EntityProperties." ] ;
-    sh:property [ a sh:PropertyShape ;
-            sh:name "feeds" ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:feeds ],
-        [ a sh:PropertyShape ;
-            sh:name "is fed by" ;
-            sh:nodeKind sh:IRI ;
-            sh:path rec:isFedBy ],
-        [ sh:class brick:Equipment ;
+    sh:property [ sh:class brick:Equipment ;
             sh:message "A piece of Equipment's parts should be always other Equipment." ;
             sh:path brick:hasPart ],
         [ sh:class brick:Point ;
@@ -48423,6 +48343,14 @@ brick:Equipment a owl:Class,
         [ sh:message "A piece of Equipment can feed a Equipment or Location/Space." ;
             sh:or ( [ sh:class brick:Equipment ] [ sh:class brick:Location ] [ sh:class rec:Space ] ) ;
             sh:path brick:feeds ],
+        [ a sh:PropertyShape ;
+            sh:name "feeds" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:feeds ],
+        [ a sh:PropertyShape ;
+            sh:name "is fed by" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rec:isFedBy ],
         bsh:hasInputSubstanceShape,
         bsh:hasOutputSubstanceShape,
         bsh:hasPointShape,
@@ -48543,8 +48471,7 @@ tag:Occupied a brick:Tag ;
 tag:Unoccupied a brick:Tag ;
     rdfs:label "Unoccupied"@en .
 
-brick:EntityProperty a owl:ObjectProperty ;
-    rdfs:label "EntityProperty"@en ;
+brick:EntityProperty a rdf:Property ;
     rdfs:subClassOf brick:Relationship .
 
 tag:Pump a brick:Tag ;
@@ -48635,11 +48562,6 @@ tag:Entering a brick:Tag ;
 
 tag:Leaving a brick:Tag ;
     rdfs:label "Leaving"@en .
-
-brick:EntityPropertyValue a owl:Class,
-        sh:NodeShape ;
-    rdfs:label "EntityPropertyValue"@en ;
-    rdfs:subClassOf brick:Entity .
 
 brick:value a rdf:Property,
         brick:Relationship ;

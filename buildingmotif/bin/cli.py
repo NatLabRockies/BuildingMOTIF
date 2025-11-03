@@ -156,10 +156,17 @@ def app():
 @subcommand(
     arg("-o", "--output_file", help="Output file for BACnet scan", required=True),
     arg("-ip", help="ip address of BACnet network to scan", default=None),
+    arg(
+        "--local-broadcast",
+        action="store_false",
+        dest="global_broadcast",
+        help="Limit discovery to local broadcast; defaults to global broadcast",
+        default=True,
+    ),
 )
 def scan(args):
     """Scans a BACnet network and generates a JSON file for later processing"""
-    bacnet_network = BACnetNetwork(args.ip)
+    bacnet_network = BACnetNetwork(args.ip, global_broadcast=args.global_broadcast)
     bacnet_network.dump(Path(args.output_file))
 
 

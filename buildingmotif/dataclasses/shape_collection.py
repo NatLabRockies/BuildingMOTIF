@@ -472,7 +472,8 @@ def _shape_to_where(
             pshape,
             f"?{get_varname(pshape)}".replace(" ", "_"),
         )
-        path = shacl_path_to_sparql_path(graph, graph.value(pshape, SH.path))
+        shape_graph = ShapesGraph(graph)
+        path = shacl_path_to_sparql_path(shape_graph, graph.value(pshape, SH.path))
         qMinCount = graph.value(pshape, SH.qualifiedMinCount) or 0
 
         pclass = graph.value(
