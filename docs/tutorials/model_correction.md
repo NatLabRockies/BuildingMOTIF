@@ -49,9 +49,9 @@ constraints = Library.load(ontology_graph="constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
 brick = Library.load(ontology_graph="../../libraries/brick/Brick.ttl")
-Library.load(ontology_graph="../../libraries/qudt/unit.ttl")
-Library.load(ontology_graph="../../libraries/qudt/quantitykind.ttl")
 g36 = Library.load(directory="../../libraries/ashrae/guideline36")
+Library.load(ontology_graph="../../libraries/qudt/VOCAB_QUDT-QUANTITY-KINDS-ALL.ttl")
+Library.load(ontology_graph="../../libraries/qudt/VOCAB_QUDT-UNITS-ALL.ttl")
 
 # load tutorial 2 model and manifest
 model.graph.parse("tutorial2_model.ttl", format="ttl")
