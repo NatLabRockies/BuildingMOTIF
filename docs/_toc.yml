@@ -21,7 +21,7 @@ parts:
   - file: guides/csv-import.md
   - file: guides/ingress-bacnet-to-brick.md
   - file: guides/generating-queries.md
-- caption: Explainations
+- caption: Explanations
   chapters:
   - file: explanations/ingresses.md
   - file: explanations/templates.md
