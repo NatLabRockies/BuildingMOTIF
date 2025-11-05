@@ -97,7 +97,7 @@ BuildingMOTIF will create a `name` parameter for the shape automatically. It wil
 that Property Shape has one of `sh:class`, `sh:node` or `sh:datatype` inside; use of `sh:qualifiedValueShape` is permitted.
 Only Property Shapes with a `sh:minCount` or `sh:qualifiedMinCount` greater than 1 will be included.
 If the Property Shape contains a `sh:name` parameter, the string value of `sh:name` will be used as the name of the parameter; otherwise, BuildingMOTIF 
-ll invent a new name (`P:pX` where *X* is an incrementing integer).
+will invent a new name (`P:pX` where *X* is an incrementing integer).
 
 The name of the template is the IRI of the SHACL Node Shape.
 
