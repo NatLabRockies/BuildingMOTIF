@@ -66,7 +66,7 @@ This happens when a Library is loaded into BuildingMOTIF that contains an RDF gr
 or by loading in a directory that contains RDF graphs (via `Library.load(directory="directory with .ttl files")`).
 
 Given an RDF graph, BuildingMOTIF will create a template for each instance of `sh:NodeShape` *provided* that it is also an instance of `owl:Class`.
-In the following RDF graph, BuildingMOTIF would create a tempalte for `vav_shape` but not `sensor_shape`:
+In the following RDF graph, BuildingMOTIF would create a template for `vav_shape` but not `sensor_shape`:
 
 ```ttl
 @prefix brick: <https://brickschema.org/schema/Brick#> .
