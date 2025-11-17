@@ -263,6 +263,16 @@ def get_template_parts_from_shape(
                 break
         return library
 
+    def is_class(node_uri: URIRef) -> bool:
+        for graph in [shape_graph, *depedency_graphs.values()]:
+            if (node_uri, RDF.type, OWL.Class) in graph or (
+                node_uri,
+                RDF.type,
+                RDFS.Class,
+            ) in graph:
+                return True
+        return False
+
     def add_dependency(node_uri: URIRef, param: URIRef):
         if not isinstance(node_uri, URIRef):
             return
@@ -286,9 +296,7 @@ def get_template_parts_from_shape(
             return
         visited.add(key)
 
-        if (shape_node, RDF.type, OWL.Class) in shape_graph and isinstance(
-            shape_node, URIRef
-        ):
+        if isinstance(shape_node, URIRef) and is_class(shape_node):
             body.add((focus_param, RDF.type, shape_node))
 
         for cls in shape_graph.objects(shape_node, SH["class"]):

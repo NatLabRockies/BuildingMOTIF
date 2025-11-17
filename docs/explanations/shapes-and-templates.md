@@ -29,10 +29,10 @@ Evaluating the resulting template will generate a graph that validates against t
 When BuildingMOTIF loads a Library, it makes an attempt to find any shapes defined within it.
 The way this happens depends on how the library is loaded:
 - *Loading library from directory or git repository*: BuildingMOTIF searches for any RDF files in the directory (recursively) and loads them into a Shape Collection; loads any instances of `sh:NodeShape` in the union of these RDF files
-- *Loading library from ontology file*: loads all instances of `sh:NodeShape` in the provided graphc
+- *Loading library from ontology file*: loads all instances of `sh:NodeShape` in the provided graph
 
 ```{important}
-BuildingMOTIF *only* loads shapes which are instances of *both* `sh:NodeShape` **and** `owl:Class`. The assumption is that `owl:Class`-ified shapes could be "instantiated".
+BuildingMOTIF *only* loads shapes which are instances of `sh:NodeShape` **and** either `owl:Class` or `rdfs:Class`. The assumption is that class-ified shapes could be "instantiated".
 ```
 
 Each shape is "decompiled" into components from which a Template can be constructed.

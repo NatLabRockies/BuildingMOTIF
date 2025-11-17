@@ -207,7 +207,9 @@ class ShapeCollection:
                 )
                 continue
 
-        class_candidates = set(self.graph.subjects(rdflib.RDF.type, rdflib.OWL.Class))
+        class_candidates = set(
+            self.graph.subjects(rdflib.RDF.type, rdflib.OWL.Class)
+        ).union(self.graph.subjects(rdflib.RDF.type, rdflib.RDFS.Class))
         shape_candidates = set(
             self.graph.subjects(rdflib.RDF.type, rdflib.SH.NodeShape)
         )

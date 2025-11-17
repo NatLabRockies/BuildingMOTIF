@@ -209,8 +209,8 @@ class Library:
     ) -> "Library":
         """
         Load a library from an ontology graph. This proceeds as follows.
-        First, get all entities in the graph that are instances of *both* owl:Class
-        and sh:NodeShape. (this is "candidates")
+        First, get all entities in the graph that are instances of *both* sh:NodeShape
+        and either owl:Class or rdfs:Class (these are the "candidates").
 
         For each candidate, use the utility function to parse the NodeShape and turn
         it into a Template.

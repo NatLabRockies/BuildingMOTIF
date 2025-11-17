@@ -71,7 +71,11 @@ class _ontology_lookup_cache:
         cache = self.in_cache[id(graph)]
         # populate cache if necessary
         if node not in cache:
-            cache[node] = (node, RDF.type, OWL.Class) in graph
+            cache[node] = (node, RDF.type, OWL.Class) in graph or (
+                node,
+                RDF.type,
+                RDFS.Class,
+            ) in graph
         return cache[node]
 
 

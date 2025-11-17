@@ -8,7 +8,7 @@ from rdflib.namespace import FOAF
 
 from buildingmotif.dataclasses.library import Library
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
-from buildingmotif.namespaces import BMOTIF, BRICK
+from buildingmotif.namespaces import BMOTIF, BRICK, PARAM
 
 
 def test_create_shape_collection(clean_building_motif):
@@ -185,3 +185,44 @@ def test_shape_to_query(clean_building_motif, shape_name, query_clauses):
         assert clause in query, query
     # Validate that the query executes correctly
     g.query(query)
+
+
+def test_infer_templates_accepts_rdfs_class(clean_building_motif):
+    graph = Graph()
+    graph.parse(
+        data="""
+        @prefix : <urn:test#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+        :ontology a owl:Ontology .
+
+        :MyShape a sh:NodeShape, rdfs:Class ;
+            sh:targetClass :MyShape ;
+            sh:property [
+                sh:path :hasChild ;
+                sh:minCount 1 ;
+                sh:name "child" ;
+                sh:class :ChildClass ;
+            ] .
+
+        :ChildShape a sh:NodeShape, rdfs:Class ;
+            sh:targetClass :ChildClass ;
+            sh:property [
+                sh:path :label ;
+                sh:minCount 1 ;
+                sh:datatype xsd:string ;
+            ] .
+
+        :ChildClass a rdfs:Class .
+        """,
+        format="turtle",
+    )
+
+    lib = Library.load(
+        ontology_graph=graph, infer_templates=True, run_shacl_inference=False
+    )
+    template = lib.get_template_by_name("urn:test#MyShape")
+    assert (PARAM["name"], RDF.type, URIRef("urn:test#MyShape")) in template.body
