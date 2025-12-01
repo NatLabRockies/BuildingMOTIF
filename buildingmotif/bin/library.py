@@ -64,9 +64,9 @@ def add_commands(library):
                 optional=True,
                 input_type=str,
             )
-            library_arguments["home"] = get_input(
+            library_arguments["homepage"] = get_input(
                 "Home page URL",
-                default=library_arguments.get("home", None),
+                default=library_arguments.get("homepage", None),
                 optional=True,
                 input_type=str,
             )

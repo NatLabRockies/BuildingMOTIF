@@ -20,7 +20,7 @@
             },
             "description": "A list of authors of the library."
         },
-        "home": {
+        "homepage": {
             "type": "string",
             "format": "uri",
             "description": "The homepage URL of the library."
@@ -37,7 +37,9 @@
                                 "description": "The directory where the dependency is located."
                             }
                         },
-                        "required": ["directory"]
+                        "required": [
+                            "directory"
+                        ]
                     },
                     {
                         "type": "object",
@@ -48,7 +50,9 @@
                                 "description": "The URI of the ontology dependency."
                             }
                         },
-                        "required": ["ontology"]
+                        "required": [
+                            "ontology"
+                        ]
                     },
                     {
                         "type": "object",
@@ -80,25 +84,40 @@
                                         "description": "The commit hash of the Git repository."
                                     }
                                 },
-                                "required": ["repo", "path"],
+                                "required": [
+                                    "repo",
+                                    "path"
+                                ],
                                 "oneOf": [
                                     {
-                                        "required": ["branch"]
+                                        "required": [
+                                            "branch"
+                                        ]
                                     },
                                     {
-                                        "required": ["tag"]
+                                        "required": [
+                                            "tag"
+                                        ]
                                     },
                                     {
-                                        "required": ["commit"]
+                                        "required": [
+                                            "commit"
+                                        ]
                                     }
                                 ]
                             }
                         },
-                        "required": ["git"]
+                        "required": [
+                            "git"
+                        ]
                     }
                 ]
             }
         }
     },
-    "required": ["name", "version", "description"]
+    "required": [
+        "name",
+        "version",
+        "description"
+    ]
 }

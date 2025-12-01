@@ -7,7 +7,7 @@ authors:
   - {{ author }}
 {%- endif %}
 {%- if home %}
-home: {{ home }}
+homepage: {{ homepage }}
 {%- endif %}
 {%- if dependencies %}
 dependencies:
