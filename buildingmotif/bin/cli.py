@@ -6,6 +6,7 @@ from os import getenv
 from pathlib import Path
 
 from buildingmotif import BuildingMOTIF
+from buildingmotif.bin.library import add_commands
 from buildingmotif.dataclasses import Library
 from buildingmotif.ingresses.bacnet import BACnetNetwork
 
@@ -13,6 +14,7 @@ cli = argparse.ArgumentParser(
     prog="buildingmotif", description="CLI Interface for common BuildingMOTIF tasks"
 )
 subparsers = cli.add_subparsers(dest="subcommand")
+
 subcommands = {}
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -35,6 +37,22 @@ def subcommand(*subparser_args, parent=subparsers):
             parser.add_argument(*args, **kwargs)
         parser.set_defaults(func=func)
         subcommands[func] = parser
+
+    return decorator
+
+
+def subparser(*subparser_args, parent=subparsers):
+    """Decorates a function and makes it available as a subparser"""
+
+    def decorator(func):
+        subcommand(*subparser_args, parent=parent)(func)
+
+        subparser = subcommands[func].add_subparsers(dest=f"{func.__name__}_subcommand")
+
+        def subcommand_decorator(*subparser_args, parent=subparser):
+            return subcommand(*subparser_args, parent=parent)
+
+        return subcommand_decorator
 
     return decorator
 
@@ -162,6 +180,13 @@ def scan(args):
     bacnet_network = BACnetNetwork(args.ip)
     bacnet_network.dump(Path(args.output_file))
 
+
+@subparser()
+def library(args):
+    """A collection of commands for working with libraries"""
+
+
+add_commands(library)
 
 # entrypoint is actually defined in pyproject.toml; this is here for convenience/testing
 if __name__ == "__main__":

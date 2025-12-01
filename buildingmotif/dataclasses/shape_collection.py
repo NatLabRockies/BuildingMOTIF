@@ -525,6 +525,62 @@ def _shape_to_where(
     return clauses, list(project)
 
 
+def find_ontology(
+    import_ref: URIRef, containing_graph: Graph = None
+) -> Tuple[Union[Graph, None], str]:
+    """Resolve a single ontology import by URIRef."""
+    if containing_graph is not None:
+        if import_ref in containing_graph.subjects(
+            predicate=RDF.type, object=OWL.Ontology
+        ):
+            return containing_graph, "contained"
+
+    from buildingmotif.dataclasses.library import Library
+
+    bm = get_building_motif()
+    # try to load the library by name
+    try:
+        lib = Library.load(name=import_ref)
+        return lib.get_shape_collection().graph, "library"
+    except Exception:
+        pass
+
+    # search through our shape collections for a graph with the provided name
+    for shape_collection in bm.table_connection.get_all_db_shape_collections():
+        sc = ShapeCollection.load(shape_collection.id)
+        if sc.graph_name == import_ref:
+            return sc.graph, "shape_collection"
+
+    # Try loading from ontology URI
+    try:
+        g = Graph()
+        g.parse(import_ref)
+        return g, "internet"
+    except Exception:
+        pass
+
+    return None, "not found"
+
+
+def find_imports(
+    graph: rdflib.Graph, depth: int = 1, visited: set = set()
+) -> dict[URIRef, Tuple[Tuple[Union[Graph, None], str], dict]]:
+
+    imports = {}
+    for ontology in graph.objects(predicate=OWL.imports):
+        if ontology not in visited:
+            visited.add(ontology)
+            resolved_ontology, source = find_ontology(ontology, graph)
+            if resolved_ontology is not None and source != "contained" and depth > 0:
+                imports[ontology] = (
+                    (resolved_ontology, source),
+                    find_imports(resolved_ontology, depth - 1),
+                )
+            else:
+                imports[ontology] = ((resolved_ontology, source), {})
+    return imports
+
+
 def _resolve_imports(
     graph: rdflib.Graph,
     recursive_limit: int,
