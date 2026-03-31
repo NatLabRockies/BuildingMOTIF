@@ -21,7 +21,7 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
     this initial setup to provide each test with a clean environment.
     """
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
     brick = Library.load(
         ontology_graph="libraries/brick/Brick.ttl", run_shacl_inference=False

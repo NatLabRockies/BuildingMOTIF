@@ -222,3 +222,139 @@ class CompiledModel:
         metadata.columns = [str(col) for col in metadata.columns]
         # convert the rdflib terms to Python types
         return metadata.map(lambda x: x.toPython())
+
+
+class PyshiftyCompiledModel(CompiledModel):
+    """
+    Specialized CompiledModel for the pyshifty SHACL engine.
+    Keeps data and shape graphs separate and avoids shape skolemization.
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        shape_collections: List[ShapeCollection],
+        compiled_graph: rdflib.Graph,
+        shacl_engine: str = "default",
+    ):
+        self.model = model
+        self.shape_collections = shape_collections
+        ontology_graph = rdflib.Graph()
+        for shape_collection in shape_collections:
+            ontology_graph += shape_collection.graph
+
+        ontology_graph = skolemize_shapes(ontology_graph)
+
+        shacl_engine = (
+            self.model._bm.shacl_engine
+            if (shacl_engine == "default" or not shacl_engine)
+            else shacl_engine
+        )
+
+        self._compiled_graph = shacl_inference(
+            compiled_graph, ontology_graph, shacl_engine
+        )
+
+    def _build_shape_graph(self, error_on_missing_imports: bool = True) -> rdflib.Graph:
+        shape_graph = rdflib.Graph()
+        for sc in self.shape_collections:
+            shape_graph += sc.resolve_imports(
+                error_on_missing_imports=error_on_missing_imports
+            ).graph
+        shape_graph = rewrite_shape_graph(shape_graph)
+        shape_graph.remove((None, OWL.imports, None))
+        return skolemize_shapes(shape_graph)
+
+    def validate_model_against_shapes(
+        self,
+        shapes_to_test: List[rdflib.URIRef],
+        target_class: rdflib.URIRef,
+    ) -> Dict[rdflib.URIRef, "ValidationContext"]:
+        """Validates the model against a list of shapes and generates a
+        validation report for each.
+
+        :param shapes_to_test: list of shape URIs to validate the model against
+        :type shapes_to_test: List[URIRef]
+        :param target_class: the class upon which to run the selected shapes
+        :type target_class: URIRef
+        :return: a dictionary that relates each shape to test URIRef to a
+                 ValidationContext
+        :rtype: Dict[URIRef, ValidationContext]
+        """
+        model_graph = copy_graph(self._compiled_graph)
+
+        results = {}
+
+        targets = model_graph.query(
+            f"""
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?target
+            WHERE {{
+                ?target rdf:type/rdfs:subClassOf* <{target_class}>
+
+            }}
+        """
+        )
+
+        shape_graph = rdflib.Graph()
+        for shape_collection in self.shape_collections:
+            shape_graph += shape_collection.graph
+        shape_graph = skolemize_shapes(shape_graph)
+
+        for shape_uri in shapes_to_test:
+            temp_model_graph = copy_graph(model_graph)
+            for (s,) in targets:
+                temp_model_graph.add((URIRef(s), A, shape_uri))
+
+            valid, report_g, report_str = shacl_validate(
+                temp_model_graph, shape_graph, engine=self.model._bm.shacl_engine
+            )
+            results[shape_uri] = ValidationContext(
+                self.shape_collections,
+                shape_graph,
+                valid,
+                report_g,
+                report_str,
+                self.model,
+            )
+
+        return results
+
+    def validate(
+        self,
+        error_on_missing_imports: bool = True,
+    ) -> "ValidationContext":
+        """Validates this model against the given list of ShapeCollections.
+        If no list is provided, the model will be validated against the model's "manifest".
+        If a list of shape collections is provided, the manifest will *not* be automatically
+        included in the set of shape collections.
+
+        Loads all of the ShapeCollections into a single graph.
+
+        :param error_on_missing_imports: if True, raises an error if any of the dependency
+            ontologies are missing (i.e. they need to be loaded into BuildingMOTIF), defaults
+            to True
+        :type error_on_missing_imports: bool, optional
+        :return: An object containing useful properties/methods to deal with
+            the validation results
+        :rtype: ValidationContext
+        """
+        data_graph = copy_graph(self._compiled_graph)
+        data_graph.remove((None, OWL.imports, None))
+
+        shape_graph = self._build_shape_graph(
+            error_on_missing_imports=error_on_missing_imports
+        )
+
+        valid, report_g, report_str = shacl_validate(
+            data_graph, shape_graph, engine=self.model._bm.shacl_engine
+        )
+        return ValidationContext(
+            self.shape_collections,
+            shape_graph,
+            valid,
+            report_g,
+            report_str,
+            self.model,
+        )

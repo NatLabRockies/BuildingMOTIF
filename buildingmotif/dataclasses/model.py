@@ -232,20 +232,30 @@ class Model:
             ShapeCollections
         :rtype: Graph
         """
-        from buildingmotif.dataclasses.compiled_model import CompiledModel
+        from buildingmotif.dataclasses.compiled_model import (
+            CompiledModel,
+            PyshiftyCompiledModel,
+        )
 
-        ontology_graph = rdflib.Graph()
         if shape_collections is None:
             shape_collections = [self.get_manifest()]
+
+        model_graph = copy_graph(self.graph).skolemize()
+        shacl_engine = self._bm.shacl_engine
+
+        if shacl_engine == "pyshifty":
+            return PyshiftyCompiledModel(
+                self, shape_collections, model_graph, shacl_engine=shacl_engine
+            )
+
+        ontology_graph = rdflib.Graph()
         for shape_collection in shape_collections:
             ontology_graph += shape_collection.graph
 
         ontology_graph = skolemize_shapes(ontology_graph)
 
-        model_graph = copy_graph(self.graph).skolemize()
-
         compiled_graph = shacl_inference(
-            model_graph, ontology_graph, engine=self._bm.shacl_engine
+            model_graph, ontology_graph, engine=shacl_engine
         )
         return CompiledModel(self, shape_collections, compiled_graph)
 

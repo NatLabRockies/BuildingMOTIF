@@ -635,7 +635,8 @@ def shacl_validate(
     """
     Validate the data graph against the shape graph.
     Uses the fastest validation method available. Use the 'topquadrant' feature
-    to use TopQuadrant's SHACL engine. Defaults to using PySHACL.
+    to use TopQuadrant's SHACL engine. Use 'pyshifty' to use the pyshifty engine.
+    Defaults to using PySHACL.
 
     :param data_graph: the graph to validate
     :type data_graph: Graph
@@ -659,6 +660,18 @@ def shacl_validate(
                 "TopQuadrant SHACL engine not available. Using PySHACL instead."
             )
             pass
+    elif engine == "pyshifty":
+        try:
+            import shifty  # type: ignore
+
+            return shifty.validate(
+                data_graph,
+                shape_graph or Graph(),
+                run_inference=True,
+            )
+        except ImportError:
+            logging.info("PyShifty SHACL engine not available. Using PySHACL instead.")
+            pass
 
     data_graph = data_graph + (shape_graph or Graph())
     return pyshacl.validate(
@@ -679,8 +692,8 @@ def shacl_inference(
     """
     Infer new triples in the data graph using the shape graph.
     Edits the data graph in place. Uses the fastest inference method available.
-    Use the 'topquadrant' feature to use TopQuadrant's SHACL engine. Defaults to
-    using PySHACL.
+    Use the 'topquadrant' feature to use TopQuadrant's SHACL engine. Use
+    'pyshifty' to use the pyshifty engine. Defaults to using PySHACL.
 
     :param data_graph: the graph to infer new triples in
     :type data_graph: Graph
@@ -700,6 +713,19 @@ def shacl_inference(
             logging.info(
                 "TopQuadrant SHACL engine not available. Using PySHACL instead."
             )
+            pass
+    elif engine == "pyshifty":
+        try:
+            import shifty  # type: ignore
+
+            o = shifty.infer(
+                data_graph,
+                shape_graph or Graph(),
+                union=True,
+            )
+            return o
+        except ImportError:
+            logging.info("PyShifty SHACL engine not available. Using PySHACL instead.")
             pass
 
     # We use a fixed-point computation approach to 'compiling' RDF models.

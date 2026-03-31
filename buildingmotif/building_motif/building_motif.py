@@ -35,9 +35,10 @@ class BuildingMOTIF(metaclass=Singleton):
 
         :param db_uri: database URI
         :type db_uri: str
-        :param shacl_engine: the name of the engine to use for validation: "pyshacl" or "topquadrant". Using topquadrant
-            requires Java to be installed on this machine, and the "topquadrant" feature on BuildingMOTIF,
-            defaults to "pyshacl"
+        :param shacl_engine: the name of the engine to use for validation: "pyshacl",
+            "topquadrant", or "pyshifty". Using topquadrant requires Java to be
+            installed on this machine, and the "topquadrant" feature on
+            BuildingMOTIF, defaults to "pyshacl"
         :type shacl_engine: str, optional
         :param log_level: logging level of detail
         :type log_level: int

@@ -1,3 +1,4 @@
+import importlib.util
 import pathlib
 from typing import Optional
 
@@ -103,4 +104,6 @@ def pytest_generate_tests(metafunc):
 
     if "shacl_engine" in metafunc.fixturenames:
         shacl_engine = ["pyshacl", "topquadrant"]
+        if importlib.util.find_spec("shifty") is not None:
+            shacl_engine.append("pyshifty")
         metafunc.parametrize("shacl_engine", shacl_engine)
