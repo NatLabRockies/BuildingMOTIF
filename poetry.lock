@@ -1448,7 +1448,7 @@ description = "IPython: Productive Interactive Computing"
 optional = false
 python-versions = ">=3.12"
 groups = ["main", "dev"]
-markers = "python_version == \"3.12\""
+markers = "python_version >= \"3.12\""
 files = [
     {file = "ipython-9.12.0-py3-none-any.whl", hash = "sha256:0f2701e8ee86e117e37f50563205d36feaa259d2e08d4a6bc6b6d74b18ce128d"},
     {file = "ipython-9.12.0.tar.gz", hash = "sha256:01daa83f504b693ba523b5a407246cabde4eb4513285a3c6acaff11a66735ee4"},
@@ -5351,5 +5351,5 @@ xlsx-ingress = []
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.11, <3.13"
-content-hash = "877fb9797324f22a6d3d9915df6d853a62e98ad4560c74843f74582f1a1a0acb"
+python-versions = ">=3.11, <3.14"
+content-hash = "6c7361aa1a21f78d25bce579fe3c85370e69b25f40b2c2a8e3802cef777c8019"

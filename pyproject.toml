@@ -19,7 +19,7 @@ documentation = "https://buildingmotif.readthedocs.io/"
 buildingmotif = 'buildingmotif.bin.cli:app'
 
 [tool.poetry.dependencies]
-python = ">=3.11, <3.13"
+python = ">=3.11, <3.14"
 rdflib = ">=7.0"
 SQLAlchemy = {extras = ["mypy"], version = "^1.4.44"}
 pyaml = "^21.10.1"

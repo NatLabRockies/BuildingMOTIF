@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - name: install-poetry
@@ -45,13 +45,13 @@ jobs:
         python-version: ['3.11', '3.12', '3.13']
     steps:
       - name: checkout
-        uses: actions/checkout@v4
-      - uses: actions/setup-java@v4 # for topquadrant shacl support
+        uses: actions/checkout@v5
+      - uses: actions/setup-java@v5 # for topquadrant shacl support
         with:
           distribution: 'temurin'
           java-version: '21'
       - name: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: install-poetry
@@ -86,13 +86,13 @@ jobs:
         python-version: ['3.11']
     steps:
       - name: checkout
-        uses: actions/checkout@v4
-      - uses: actions/setup-java@v4 # for topquadrant shacl support
+        uses: actions/checkout@v5
+      - uses: actions/setup-java@v5 # for topquadrant shacl support
         with:
           distribution: 'temurin'
           java-version: '21'
       - name: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: install-poetry
@@ -126,13 +126,13 @@ jobs:
         python-version: ['3.11']
     steps:
       - name: checkout
-        uses: actions/checkout@v4
-      - uses: actions/setup-java@v4 # for topquadrant shacl support
+        uses: actions/checkout@v5
+      - uses: actions/setup-java@v5 # for topquadrant shacl support
         with:
           distribution: 'temurin'
           java-version: '21'
       - name: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: install-poetry
