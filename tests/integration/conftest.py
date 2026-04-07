@@ -16,7 +16,7 @@ def bm():
     BuildingMotif instance for tests involving dataclasses and API calls
     """
     BuildingMOTIF.clean()
-    bm = BuildingMOTIF("sqlite://")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     # add tables to db
     bm.setup_tables()
 

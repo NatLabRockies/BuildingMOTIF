@@ -1,4 +1,5 @@
 import logging
+import os
 import secrets
 from collections import defaultdict
 from copy import copy
@@ -14,13 +15,96 @@ from rdflib.paths import ZeroOrOne
 from rdflib.term import Node
 
 from buildingmotif.database.errors import TemplateNotFound
-from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
+from buildingmotif.namespaces import CONSTRAINT, OWL, PARAM, RDF, SH, XSD, bind_prefixes
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Template
 
 Triple = Tuple[Node, Node, Node]
 _gensym_counter = 0
+
+
+def _maybe_dump_pyshifty_graphs(
+    stage: str,
+    data_graph: Graph,
+    shape_graph: Optional[Graph] = None,
+) -> None:
+    """
+    Optionally dump the exact graphs provided to pyshifty when debugging.
+
+    Set BUILDINGMOTIF_PYSHIFTY_DEBUG_DIR to a writable directory to enable this.
+    """
+    debug_dir = os.getenv("BUILDINGMOTIF_PYSHIFTY_DEBUG_DIR")
+    if not debug_dir:
+        return
+
+    try:
+        out_dir = Path(debug_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        dump_id = secrets.token_hex(4)
+        data_path = out_dir / f"{stage}-{dump_id}-data.ttl"
+        meta_path = out_dir / f"{stage}-{dump_id}-meta.txt"
+        latest_data_path = out_dir / f"{stage}-latest-data.ttl"
+        latest_meta_path = out_dir / f"{stage}-latest-meta.txt"
+        data_graph.serialize(destination=str(data_path), format="turtle")
+        data_graph.serialize(destination=str(latest_data_path), format="turtle")
+
+        meta_lines = [
+            f"stage={stage}",
+            f"dump_id={dump_id}",
+            f"data_triples={len(data_graph)}",
+            f"data_path={data_path}",
+            f"latest_data_path={latest_data_path}",
+        ]
+
+        if shape_graph is not None:
+            shape_path = out_dir / f"{stage}-{dump_id}-shape.ttl"
+            latest_shape_path = out_dir / f"{stage}-latest-shape.ttl"
+            shape_graph.serialize(destination=str(shape_path), format="turtle")
+            shape_graph.serialize(destination=str(latest_shape_path), format="turtle")
+            meta_lines.extend(
+                [
+                    f"shape_triples={len(shape_graph)}",
+                    f"shape_path={shape_path}",
+                    f"latest_shape_path={latest_shape_path}",
+                ]
+            )
+
+        meta_text = "\n".join(meta_lines) + "\n"
+        meta_path.write_text(meta_text)
+        latest_meta_path.write_text(meta_text)
+        logging.warning("Dumped pyshifty %s graphs to %s", stage, meta_path)
+    except Exception as err:
+        logging.warning("Failed to dump pyshifty %s graphs: %s", stage, err)
+
+
+def _graph_uses_buildingmotif_constraints(graph: Optional[Graph]) -> bool:
+    """Return True when the graph uses BuildingMOTIF custom SHACL components."""
+    if graph is None:
+        return False
+
+    constraint_ns = str(CONSTRAINT)
+    for subj, pred, obj in graph:
+        if isinstance(subj, URIRef) and str(subj).startswith(constraint_ns):
+            return True
+        if isinstance(pred, URIRef) and str(pred).startswith(constraint_ns):
+            return True
+        if isinstance(obj, URIRef) and str(obj).startswith(constraint_ns):
+            return True
+    return False
+
+
+def _pyshifty_report_needs_pyshacl_fallback(report_graph: Graph) -> bool:
+    """
+    Pyshifty can return reports whose source shapes are anonymous placeholders,
+    which makes downstream diff interpretation impossible. Fall back to PySHACL
+    for a richer report in that case.
+    """
+    for result in report_graph.subjects(RDF.type, SH.ValidationResult):
+        source_shape = report_graph.value(result, SH.sourceShape)
+        if isinstance(source_shape, BNode):
+            return True
+    return False
 
 
 def _strip_param(param: Union[Node, str]) -> str:
@@ -664,11 +748,27 @@ def shacl_validate(
         try:
             import shifty  # type: ignore
 
-            return shifty.validate(
-                data_graph,
-                shape_graph or Graph(),
-                run_inference=True,
-            )
+            if _graph_uses_buildingmotif_constraints(shape_graph):
+                logging.info(
+                    "BuildingMOTIF custom constraint components are not handled by "
+                    "pyshifty; using PySHACL instead."
+                )
+            else:
+                _maybe_dump_pyshifty_graphs(
+                    "validate", data_graph, shape_graph or Graph()
+                )
+                valid, report_g, report_str = shifty.validate(
+                    data_graph,
+                    shape_graph or Graph(),
+                    run_inference=True,
+                )
+                if valid or not _pyshifty_report_needs_pyshacl_fallback(report_g):
+                    return valid, report_g, report_str
+                logging.info(
+                    "Pyshifty produced an incomplete validation report; using "
+                    "PySHACL to generate interpretable diagnostics."
+                )
+
         except ImportError:
             logging.info("PyShifty SHACL engine not available. Using PySHACL instead.")
             pass
@@ -718,12 +818,19 @@ def shacl_inference(
         try:
             import shifty  # type: ignore
 
-            o = shifty.infer(
-                data_graph,
-                shape_graph or Graph(),
-                union=True,
-            )
-            return o
+            if _graph_uses_buildingmotif_constraints(shape_graph):
+                logging.info(
+                    "BuildingMOTIF custom constraint components are not handled by "
+                    "pyshifty inference; using PySHACL instead."
+                )
+            else:
+                _maybe_dump_pyshifty_graphs("infer", data_graph, shape_graph or Graph())
+                o = shifty.infer(
+                    data_graph,
+                    shape_graph or Graph(),
+                    union=False,
+                )
+                return data_graph + o
         except ImportError:
             logging.info("PyShifty SHACL engine not available. Using PySHACL instead.")
             pass

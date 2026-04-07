@@ -12,7 +12,7 @@ def test_database_persistence(tmpdir):
     # create bm
     db_path = f"sqlite:///{tmpdir}/db.db"
 
-    bm = BuildingMOTIF(db_path)
+    bm = BuildingMOTIF(db_path, shacl_engine="pyshifty")
 
     bm.setup_tables()
 
@@ -31,7 +31,7 @@ def test_database_persistence(tmpdir):
     del bm
 
     # reopen bm and ensure the object are preserved
-    BuildingMOTIF(db_path)
+    BuildingMOTIF(db_path, shacl_engine="pyshifty")
     reloaded_library = Library.load(library.id)
     reloaded_template = reloaded_library.get_templates()[0]
     reloaded_model = Model.load(model.id)
