@@ -61,6 +61,24 @@ class GraphConnection:
 
         return g
 
+    def add_graph(
+        self, identifier: str, graph: Graph, overwrite: bool = False
+    ) -> Graph:
+        """Add or replace the contents of a graph in the database."""
+        g = Graph(self.store, identifier=identifier)
+        if overwrite:
+            self.logger.debug(f"Overwriting graph: '{identifier}'")
+            self.store.remove((None, None, None), g)
+        elif identifier in self.get_all_graph_identifiers() and len(g) > 0:
+            self.logger.debug(
+                f"Graph '{identifier}' already exists and overwrite=False; leaving as-is"
+            )
+            return g
+
+        new_triples = [(s, o, p, g) for (s, o, p) in graph]
+        g.addN(new_triples)
+        return g
+
     def get_all_graph_identifiers(self) -> List[str]:
         """Get all graph identifiers.
 
@@ -93,3 +111,21 @@ class GraphConnection:
         self.logger.debug(f"Deleting graph: '{identifier}'")
         g = Graph(self.store, identifier=identifier)
         self.store.remove((None, None, None), g)
+
+    def remove_graph(self, identifier: str) -> None:
+        """Alias for OntoEnv's graph-store interface."""
+        self.delete_graph(identifier)
+
+    def graph_ids(self) -> List[str]:
+        """Alias for OntoEnv's graph-store interface."""
+        return self.get_all_graph_identifiers()
+
+    def size(self) -> dict[str, int]:
+        """Return the number of stored graphs and triples."""
+        graph_identifiers = self.get_all_graph_identifiers()
+        return {
+            "num_graphs": len(graph_identifiers),
+            "num_triples": sum(
+                len(self.get_graph(identifier)) for identifier in graph_identifiers
+            ),
+        }

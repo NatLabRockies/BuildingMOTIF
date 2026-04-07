@@ -1,7 +1,6 @@
 import logging
-import os
 from contextlib import contextmanager
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from rdflib import Graph
 from rdflib.namespace import NamespaceManager
@@ -19,6 +18,7 @@ from buildingmotif.database.utils import (
     _custom_json_deserializer,
     _custom_json_serializer,
 )
+from buildingmotif.dependency_resolver import build_dependency_resolver
 from buildingmotif.namespaces import bind_prefixes
 
 
@@ -28,7 +28,9 @@ class BuildingMOTIF(metaclass=Singleton):
     def __init__(
         self,
         db_uri: str,
-        shacl_engine: Optional[str] = "pyshacl",
+        shacl_engine: Optional[str] = "pyshifty",
+        dependency_resolver: str = "ontoenv",
+        ontoenv_kwargs: Optional[Dict[str, Any]] = None,
         log_level=logging.WARNING,
     ) -> None:
         """Class constructor.
@@ -45,7 +47,9 @@ class BuildingMOTIF(metaclass=Singleton):
         :default log_level: INFO
         """
         self.db_uri = db_uri
-        self.shacl_engine = shacl_engine or "pyshacl"
+        self.shacl_engine = shacl_engine or "pyshifty"
+        self.log_level = log_level
+        self.dependency_resolver_name = dependency_resolver
         self.engine = create_engine(
             db_uri,
             echo=False,
@@ -55,8 +59,6 @@ class BuildingMOTIF(metaclass=Singleton):
         self.session_factory = sessionmaker(bind=self.engine, autoflush=True)
         self.Session = scoped_session(self.session_factory)
 
-        self.setup_logging(log_level)
-
         # setup tables automatically if using a in-memory sqlite database
         if self._is_in_memory_sqlite():
             self.setup_tables()
@@ -64,6 +66,11 @@ class BuildingMOTIF(metaclass=Singleton):
         self.table_connection = TableConnection(self.engine, self)
         self.graph_connection = GraphConnection(
             BuildingMotifEngine(self.engine, self.Session)
+        )
+        self.ontology_resolver = build_dependency_resolver(
+            self,
+            resolver_name=dependency_resolver,
+            ontoenv_kwargs=ontoenv_kwargs,
         )
 
         g = Graph()
@@ -77,6 +84,76 @@ class BuildingMOTIF(metaclass=Singleton):
     def setup_tables(self):
         """Creates all tables in the underlying database."""
         BuildingMOTIFBase.metadata.create_all(self.engine)
+        if hasattr(self, "ontology_resolver"):
+            self.ontology_resolver.rebuild_from_graph_store()
+
+    def _scope_ontology_graphs(self, library=None, model=None):
+        from buildingmotif.dataclasses.library import Library
+        from buildingmotif.dataclasses.model import Model
+
+        if library is not None and model is not None:
+            raise ValueError("Pass only one of 'library' or 'model'")
+
+        if library is not None:
+            graph = library.get_shape_collection().graph
+            return [(graph, str(library.name))]
+
+        if model is not None:
+            manifest = model.get_manifest()
+            manifest_name = manifest.graph_name
+            return [
+                (model.graph, str(model.name)),
+                (
+                    manifest.graph,
+                    str(manifest_name) if manifest_name is not None else None,
+                ),
+            ]
+
+        graphs = []
+        for db_library in self.table_connection.get_all_db_libraries():
+            scoped_library = Library.load(db_id=db_library.id)
+            graphs.append(
+                (scoped_library.get_shape_collection().graph, str(scoped_library.name))
+            )
+
+        for db_model in self.table_connection.get_all_db_models():
+            scoped_model = Model.load(id=db_model.id)
+            manifest = scoped_model.get_manifest()
+            manifest_name = manifest.graph_name
+            graphs.extend(
+                [
+                    (scoped_model.graph, str(scoped_model.name)),
+                    (
+                        manifest.graph,
+                        str(manifest_name) if manifest_name is not None else None,
+                    ),
+                ]
+            )
+
+        return graphs
+
+    def list_ontology_closure(self, library=None, model=None) -> list[str]:
+        """List resolved ontology imports for a specific library or model."""
+        scoped_graphs = self._scope_ontology_graphs(library=library, model=model)
+        if library is None and model is None:
+            raise ValueError("Pass either 'library' or 'model'")
+
+        closure = set()
+        for graph, graph_name in scoped_graphs:
+            closure.update(
+                self.ontology_resolver.get_closure(
+                    graph,
+                    graph_name=graph_name,
+                    error_on_missing_imports=False,
+                )
+            )
+        return sorted(closure)
+
+    def list_missing_ontologies(self, library=None, model=None) -> list[str]:
+        """List missing ontology imports globally or for a specific library/model."""
+        scoped_graphs = self._scope_ontology_graphs(library=library, model=model)
+        graphs = [graph for graph, _graph_name in scoped_graphs]
+        return self.ontology_resolver.get_missing_ontologies(graphs)
 
     def _is_in_memory_sqlite(self) -> bool:
         """Returns true if the BuildingMOTIF instance uses an in-memory SQLite
@@ -94,40 +171,9 @@ class BuildingMOTIF(metaclass=Singleton):
         # length is 0 if the db is in-memory
         return not len(filename[0])
 
-    def setup_logging(self, log_level):
-        """Create log file with DEBUG level and stdout handler with specified
-        logging level.
-
-        :param log_level: logging level of detail
-        :type log_level: int
-        """
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            "%(asctime)s | %(name)s |  %(levelname)s: %(message)s"
-        )
-
-        log_file_handler = logging.FileHandler(
-            os.path.join(os.getcwd(), "BuildingMOTIF.log"), mode="w"
-        )
-        log_file_handler.setLevel(logging.DEBUG)
-        log_file_handler.setFormatter(formatter)
-
-        engine_logger = logging.getLogger("sqlalchemy.engine")
-        pool_logger = logging.getLogger("sqlalchemy.pool")
-
-        engine_logger.setLevel(logging.WARN)
-        pool_logger.setLevel(logging.WARN)
-
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(log_level)
-        stream_handler.setFormatter(formatter)
-
-        root_logger.addHandler(log_file_handler)
-        root_logger.addHandler(stream_handler)
-
     def close(self) -> None:
         """Close session and engine."""
+        self.ontology_resolver.close()
         self.session.close()
         self.engine.dispose()
 

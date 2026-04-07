@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -10,6 +11,15 @@ from buildingmotif.api.views.model import blueprint as model_blueprint
 from buildingmotif.api.views.parser import blueprint as parsers_blueprint
 from buildingmotif.api.views.template import blueprint as template_blueprint
 from buildingmotif.building_motif.building_motif import BuildingMOTIF
+
+
+def configure_logging(level: int = logging.INFO) -> None:
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s | %(name)s |  %(levelname)s: %(message)s",
+    )
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARN)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARN)
 
 
 def _after_request(response):
@@ -80,5 +90,6 @@ if __name__ == "__main__":
     if db_uri is None:
         raise ValueError("Environment variable DB_URI not set.")
 
+    configure_logging()
     app = create_app(db_uri)
     app.run(debug=True, host="0.0.0.0", threaded=False)

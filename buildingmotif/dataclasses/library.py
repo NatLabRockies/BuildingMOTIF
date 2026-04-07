@@ -223,7 +223,9 @@ class Library:
         shape_col_id = lib.get_shape_collection().id
         assert shape_col_id is not None  # should always pass
         shape_col = ShapeCollection.load(shape_col_id)
-        shape_col.add_graph(ontology)
+        lib._bm.ontology_resolver.register_ontology(
+            str(ontology_name), ontology, overwrite=True
+        )
 
         if infer_templates:
             # infer shapes from any class/nodeshape candidates in the graph

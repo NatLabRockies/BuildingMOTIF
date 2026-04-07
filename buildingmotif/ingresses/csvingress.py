@@ -21,14 +21,16 @@ class CSVIngress(RecordIngressHandler):
             raise ValueError("Both filename and data are defined.")
 
         if filename:
-            self.dict_reader = DictReader(open(filename))
+            self.filename: Optional[Path] = filename
+            self.data = None
             self.rtype = str(filename)
 
         elif data:
+            self.filename = None
             # if data is a string, convert to StringIO
             if isinstance(data, str):
                 data = StringIO(data)
-            self.dict_reader = DictReader(data, delimiter=",")
+            self.data = data
             self.rtype = "data stream"
 
         else:
@@ -37,7 +39,21 @@ class CSVIngress(RecordIngressHandler):
     @cached_property
     def records(self) -> List[Record]:
         records = []
-        for row in self.dict_reader:
+
+        if self.filename is not None:
+            with open(self.filename, newline="", encoding="utf-8") as csv_file:
+                dict_reader = DictReader(csv_file)
+                for row in dict_reader:
+                    rec = Record(
+                        rtype=self.rtype,
+                        fields=row,
+                    )
+                    records.append(rec)
+            return records
+
+        assert self.data is not None
+        dict_reader = DictReader(self.data, delimiter=",")
+        for row in dict_reader:
             rec = Record(
                 rtype=self.rtype,
                 fields=row,

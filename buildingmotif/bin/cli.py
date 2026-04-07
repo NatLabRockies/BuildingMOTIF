@@ -14,10 +14,18 @@ cli = argparse.ArgumentParser(
 )
 subparsers = cli.add_subparsers(dest="subcommand")
 subcommands = {}
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = logging.getLogger(__name__)
 
 ONTOLOGY_FILE_SUFFIXES = ["ttl", "n3", "ntriples", "xml"]
+
+
+def _configure_logging(level: int = logging.INFO) -> None:
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s | %(name)s |  %(levelname)s: %(message)s",
+    )
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARN)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARN)
 
 
 # borrowing some ideas from https://gist.github.com/mivade/384c2c41c3a29c637cb6c603d4197f9f
@@ -146,6 +154,7 @@ def serve(args):
 
 
 def app():
+    _configure_logging()
     args = cli.parse_args()
     if args.subcommand is None:
         cli.print_help()
