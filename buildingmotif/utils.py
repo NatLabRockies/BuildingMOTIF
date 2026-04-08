@@ -1,5 +1,4 @@
 import logging
-import os
 import secrets
 from collections import defaultdict
 from copy import copy
@@ -8,103 +7,19 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-import pyshacl  # type: ignore
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.compare import _TripleCanonicalizer
 from rdflib.paths import ZeroOrOne
 from rdflib.term import Node
 
 from buildingmotif.database.errors import TemplateNotFound
-from buildingmotif.namespaces import CONSTRAINT, OWL, PARAM, RDF, SH, XSD, bind_prefixes
+from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Template
 
 Triple = Tuple[Node, Node, Node]
 _gensym_counter = 0
-
-
-def _maybe_dump_pyshifty_graphs(
-    stage: str,
-    data_graph: Graph,
-    shape_graph: Optional[Graph] = None,
-) -> None:
-    """
-    Optionally dump the exact graphs provided to pyshifty when debugging.
-
-    Set BUILDINGMOTIF_PYSHIFTY_DEBUG_DIR to a writable directory to enable this.
-    """
-    debug_dir = os.getenv("BUILDINGMOTIF_PYSHIFTY_DEBUG_DIR")
-    if not debug_dir:
-        return
-
-    try:
-        out_dir = Path(debug_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        dump_id = secrets.token_hex(4)
-        data_path = out_dir / f"{stage}-{dump_id}-data.ttl"
-        meta_path = out_dir / f"{stage}-{dump_id}-meta.txt"
-        latest_data_path = out_dir / f"{stage}-latest-data.ttl"
-        latest_meta_path = out_dir / f"{stage}-latest-meta.txt"
-        data_graph.serialize(destination=str(data_path), format="turtle")
-        data_graph.serialize(destination=str(latest_data_path), format="turtle")
-
-        meta_lines = [
-            f"stage={stage}",
-            f"dump_id={dump_id}",
-            f"data_triples={len(data_graph)}",
-            f"data_path={data_path}",
-            f"latest_data_path={latest_data_path}",
-        ]
-
-        if shape_graph is not None:
-            shape_path = out_dir / f"{stage}-{dump_id}-shape.ttl"
-            latest_shape_path = out_dir / f"{stage}-latest-shape.ttl"
-            shape_graph.serialize(destination=str(shape_path), format="turtle")
-            shape_graph.serialize(destination=str(latest_shape_path), format="turtle")
-            meta_lines.extend(
-                [
-                    f"shape_triples={len(shape_graph)}",
-                    f"shape_path={shape_path}",
-                    f"latest_shape_path={latest_shape_path}",
-                ]
-            )
-
-        meta_text = "\n".join(meta_lines) + "\n"
-        meta_path.write_text(meta_text)
-        latest_meta_path.write_text(meta_text)
-        logging.warning("Dumped pyshifty %s graphs to %s", stage, meta_path)
-    except Exception as err:
-        logging.warning("Failed to dump pyshifty %s graphs: %s", stage, err)
-
-
-def _graph_uses_buildingmotif_constraints(graph: Optional[Graph]) -> bool:
-    """Return True when the graph uses BuildingMOTIF custom SHACL components."""
-    if graph is None:
-        return False
-
-    constraint_ns = str(CONSTRAINT)
-    for subj, pred, obj in graph:
-        if isinstance(subj, URIRef) and str(subj).startswith(constraint_ns):
-            return True
-        if isinstance(pred, URIRef) and str(pred).startswith(constraint_ns):
-            return True
-        if isinstance(obj, URIRef) and str(obj).startswith(constraint_ns):
-            return True
-    return False
-
-
-def _pyshifty_report_needs_pyshacl_fallback(report_graph: Graph) -> bool:
-    """
-    Pyshifty can return reports whose source shapes are anonymous placeholders,
-    which makes downstream diff interpretation impossible. Fall back to PySHACL
-    for a richer report in that case.
-    """
-    for result in report_graph.subjects(RDF.type, SH.ValidationResult):
-        source_shape = report_graph.value(result, SH.sourceShape)
-        if isinstance(source_shape, BNode):
-            return True
-    return False
 
 
 def _strip_param(param: Union[Node, str]) -> str:
@@ -709,164 +624,6 @@ def skip_uri(uri: URIRef) -> bool:
         if uri.startswith(ns):
             return True
     return False
-
-
-def shacl_validate(
-    data_graph: Graph,
-    shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
-) -> Tuple[bool, Graph, str]:
-    """
-    Validate the data graph against the shape graph.
-    Uses the fastest validation method available. Use the 'topquadrant' feature
-    to use TopQuadrant's SHACL engine. Use 'pyshifty' to use the pyshifty engine.
-    Defaults to using PySHACL.
-
-    :param data_graph: the graph to validate
-    :type data_graph: Graph
-    :param shape_graph: the shape graph to validate against
-    :type shape_graph: Graph, optional
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
-    :type engine: str, optional
-    :return: a tuple containing the validation result, the validation report, and the validation report string
-    :rtype: Tuple[bool, Graph, str]
-    """
-
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import (
-                validate as tq_validate,  # type: ignore
-            )
-
-            return tq_validate(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-    elif engine == "pyshifty":
-        try:
-            import shifty  # type: ignore
-
-            if _graph_uses_buildingmotif_constraints(shape_graph):
-                logging.info(
-                    "BuildingMOTIF custom constraint components are not handled by "
-                    "pyshifty; using PySHACL instead."
-                )
-            else:
-                _maybe_dump_pyshifty_graphs(
-                    "validate", data_graph, shape_graph or Graph()
-                )
-                valid, report_g, report_str = shifty.validate(
-                    data_graph,
-                    shape_graph or Graph(),
-                    run_inference=True,
-                )
-                if valid or not _pyshifty_report_needs_pyshacl_fallback(report_g):
-                    return valid, report_g, report_str
-                logging.info(
-                    "Pyshifty produced an incomplete validation report; using "
-                    "PySHACL to generate interpretable diagnostics."
-                )
-
-        except ImportError:
-            logging.info("PyShifty SHACL engine not available. Using PySHACL instead.")
-            pass
-
-    data_graph = data_graph + (shape_graph or Graph())
-    return pyshacl.validate(
-        data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        js=True,
-        allow_warnings=True,
-    )  # type: ignore
-
-
-def shacl_inference(
-    data_graph: Graph,
-    shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
-) -> Graph:
-    """
-    Infer new triples in the data graph using the shape graph.
-    Edits the data graph in place. Uses the fastest inference method available.
-    Use the 'topquadrant' feature to use TopQuadrant's SHACL engine. Use
-    'pyshifty' to use the pyshifty engine. Defaults to using PySHACL.
-
-    :param data_graph: the graph to infer new triples in
-    :type data_graph: Graph
-    :param shape_graph: the shape graph to use for inference
-    :type shape_graph: Optional[Graph]
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
-    :type engine: str, optional
-    :return: the data graph with inferred triples
-    :rtype: Graph
-    """
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import infer as tq_infer
-
-            return tq_infer(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-    elif engine == "pyshifty":
-        try:
-            import shifty  # type: ignore
-
-            if _graph_uses_buildingmotif_constraints(shape_graph):
-                logging.info(
-                    "BuildingMOTIF custom constraint components are not handled by "
-                    "pyshifty inference; using PySHACL instead."
-                )
-            else:
-                _maybe_dump_pyshifty_graphs("infer", data_graph, shape_graph or Graph())
-                o = shifty.infer(
-                    data_graph,
-                    shape_graph or Graph(),
-                    union=False,
-                )
-                return data_graph + o
-        except ImportError:
-            logging.info("PyShifty SHACL engine not available. Using PySHACL instead.")
-            pass
-
-    # We use a fixed-point computation approach to 'compiling' RDF models.
-    # We accomlish this by keeping track of the size of the graph before and after
-    # the inference step. If the size of the graph changes, then we know that the
-    # inference has had some effect. We do this at most 3 times to avoid looping
-    # forever.
-    pre_compile_length = len(data_graph)  # type: ignore
-    pyshacl.validate(
-        data_graph=data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        inplace=True,
-        js=True,
-        allow_warnings=True,
-    )
-    post_compile_length = len(data_graph)  # type: ignore
-
-    attempts = 3
-    while attempts > 0 and post_compile_length != pre_compile_length:
-        pre_compile_length = len(data_graph)  # type: ignore
-        pyshacl.validate(
-            data_graph=data_graph,
-            shacl_graph=shape_graph,
-            ont_graph=shape_graph,
-            advanced=True,
-            inplace=True,
-            js=True,
-            allow_warnings=True,
-        )
-        post_compile_length = len(data_graph)  # type: ignore
-        attempts -= 1
-    return data_graph - (shape_graph or Graph())
 
 
 def skolemize_shapes(g: Graph) -> Graph:

@@ -1,10 +1,12 @@
 from typing import Tuple
 
+import pytest
 from rdflib import Graph, Namespace, URIRef
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
 from buildingmotif.namespaces import RDF, S223, bind_prefixes
+from buildingmotif.shacl_backends import shacl_backend_available
 
 libraries = [
     "libraries/ashrae/223p/nrel-templates",
@@ -30,6 +32,8 @@ to_skip = {
 
 
 def setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
+    if not shacl_backend_available("topquadrant"):
+        pytest.skip("TopQuadrant SHACL engine is not installed")
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
     bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant")
     bm.setup_tables()

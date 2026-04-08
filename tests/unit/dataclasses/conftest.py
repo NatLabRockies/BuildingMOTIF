@@ -4,6 +4,7 @@ import tempfile
 import pytest
 
 from buildingmotif import BuildingMOTIF
+from buildingmotif.shacl_backends import shacl_backend_available
 
 
 @pytest.fixture
@@ -25,6 +26,8 @@ def clean_building_motif():
 
 @pytest.fixture
 def clean_building_motif_topquadrant():
+    if not shacl_backend_available("topquadrant"):
+        pytest.skip("TopQuadrant SHACL engine is not installed")
     BuildingMOTIF.clean()
     with tempfile.TemporaryDirectory() as tempdir:
         temp_db_path = os.path.join(tempdir, "temp.db")

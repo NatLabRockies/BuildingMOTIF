@@ -11,6 +11,7 @@ from buildingmotif import BuildingMOTIF, get_building_motif
 from buildingmotif.database.tables import Base as BuildingMotif_tables_base
 from buildingmotif.dataclasses.library import Library
 from buildingmotif.dataclasses.template import Template
+from buildingmotif.shacl_backends import shacl_backend_available
 
 
 class MockBuildingMotif:
@@ -103,7 +104,9 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("builtin_ontology", builtin_ontology)
 
     if "shacl_engine" in metafunc.fixturenames:
-        shacl_engine = ["pyshacl", "topquadrant"]
+        shacl_engine = ["pyshacl"]
+        if shacl_backend_available("topquadrant"):
+            shacl_engine.append("topquadrant")
         if importlib.util.find_spec("shifty") is not None:
             shacl_engine.append("pyshifty")
         metafunc.parametrize("shacl_engine", shacl_engine)

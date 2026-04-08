@@ -4,6 +4,7 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model, ShapeCollection
 from buildingmotif.namespaces import BRICK, SH, XSD, A
+from buildingmotif.shacl_backends import shacl_validate
 from buildingmotif.utils import (
     PARAM,
     _guarantee_unique_template_name,
@@ -14,7 +15,6 @@ from buildingmotif.utils import (
     graph_hash,
     replace_nodes,
     rewrite_shape_graph,
-    shacl_validate,
     skip_uri,
 )
 

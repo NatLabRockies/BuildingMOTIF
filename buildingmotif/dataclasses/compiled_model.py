@@ -11,11 +11,10 @@ from buildingmotif.dataclasses.model import Model
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
 from buildingmotif.namespaces import OWL, SH, A
+from buildingmotif.shacl_backends import shacl_validate
 from buildingmotif.utils import (
     copy_graph,
     rewrite_shape_graph,
-    shacl_inference,
-    shacl_validate,
     skolemize_shapes,
 )
 
@@ -35,25 +34,10 @@ class CompiledModel:
         model: Model,
         shape_collections: List[ShapeCollection],
         compiled_graph: rdflib.Graph,
-        shacl_engine: str = "default",
     ):
         self.model = model
         self.shape_collections = shape_collections
-        ontology_graph = rdflib.Graph()
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
-
-        ontology_graph = skolemize_shapes(ontology_graph)
-
-        shacl_engine = (
-            self.model._bm.shacl_engine
-            if (shacl_engine == "default" or not shacl_engine)
-            else shacl_engine
-        )
-
-        self._compiled_graph = shacl_inference(
-            compiled_graph, ontology_graph, shacl_engine
-        )
+        self._compiled_graph = compiled_graph
 
     @cached_property
     def graph(self) -> rdflib.Graph:
@@ -229,31 +213,6 @@ class PyshiftyCompiledModel(CompiledModel):
     Specialized CompiledModel for the pyshifty SHACL engine.
     Keeps data and shape graphs separate and avoids shape skolemization.
     """
-
-    def __init__(
-        self,
-        model: Model,
-        shape_collections: List[ShapeCollection],
-        compiled_graph: rdflib.Graph,
-        shacl_engine: str = "default",
-    ):
-        self.model = model
-        self.shape_collections = shape_collections
-        ontology_graph = rdflib.Graph()
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
-
-        ontology_graph = skolemize_shapes(ontology_graph)
-
-        shacl_engine = (
-            self.model._bm.shacl_engine
-            if (shacl_engine == "default" or not shacl_engine)
-            else shacl_engine
-        )
-
-        self._compiled_graph = shacl_inference(
-            compiled_graph, ontology_graph, shacl_engine
-        )
 
     def _build_shape_graph(self, error_on_missing_imports: bool = True) -> rdflib.Graph:
         shape_graph = rdflib.Graph()

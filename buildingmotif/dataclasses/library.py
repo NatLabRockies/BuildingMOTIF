@@ -18,8 +18,9 @@ from buildingmotif.database.tables import DBLibrary, DBTemplate
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.template import Template
 from buildingmotif.schemas import validate_libraries_yaml
+from buildingmotif.shacl_backends import shacl_inference
 from buildingmotif.template_compilation import compile_template_spec
-from buildingmotif.utils import get_ontology_files, shacl_inference
+from buildingmotif.utils import get_ontology_files
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
