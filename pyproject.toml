@@ -19,7 +19,7 @@ documentation = "https://buildingmotif.readthedocs.io/"
 buildingmotif = 'buildingmotif.bin.cli:app'
 
 [tool.poetry.dependencies]
-python = ">=3.10, <3.13"
+python = ">=3.11, <3.13"
 rdflib = ">=7.0"
 SQLAlchemy = {extras = ["mypy"], version = "^1.4.44"}
 pyaml = "^21.10.1"
@@ -41,6 +41,7 @@ werkzeug="^2.3.7"
 types-jsonschema = "^4.21.0.20240311"
 matplotlib = "^3.9.2"
 pandas = "^2.2.3"
+ontoenv = "0.6.0-a3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.3.0"

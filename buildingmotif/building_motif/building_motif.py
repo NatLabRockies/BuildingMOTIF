@@ -1,7 +1,8 @@
 import logging
 import os
 from contextlib import contextmanager
-from typing import Optional
+from pathlib import Path
+from typing import Iterable, Optional, Union
 
 from rdflib import Graph
 from rdflib.namespace import NamespaceManager
@@ -20,6 +21,7 @@ from buildingmotif.database.utils import (
     _custom_json_serializer,
 )
 from buildingmotif.namespaces import bind_prefixes
+from buildingmotif.ontology_environment import OntologyEnvironment
 
 
 class BuildingMOTIF(metaclass=Singleton):
@@ -30,6 +32,11 @@ class BuildingMOTIF(metaclass=Singleton):
         db_uri: str,
         shacl_engine: Optional[str] = "pyshacl",
         log_level=logging.WARNING,
+        ontology_cache_path: Optional[Union[str, Path]] = None,
+        ontology_search_directories: Optional[Iterable[Union[str, Path]]] = None,
+        ontology_fetch_imports: bool = True,
+        ontology_offline: bool = False,
+        ontology_strict: bool = False,
     ) -> None:
         """Class constructor.
 
@@ -42,9 +49,18 @@ class BuildingMOTIF(metaclass=Singleton):
         :param log_level: logging level of detail
         :type log_level: int
         :default log_level: INFO
+        :param ontology_cache_path: path to the ontoenv workspace. If omitted,
+            an in-memory temporary environment is used.
+        :param ontology_search_directories: directories ontoenv should scan when
+            resolving imports.
+        :param ontology_fetch_imports: default for whether library loading should
+            fetch owl:imports dependencies.
+        :param ontology_offline: if true, ontoenv will not fetch remote imports.
+        :param ontology_strict: if true, ontoenv treats missing imports as errors.
         """
         self.db_uri = db_uri
         self.shacl_engine = shacl_engine or "pyshacl"
+        self.ontology_fetch_imports = ontology_fetch_imports
         self.engine = create_engine(
             db_uri,
             echo=False,
@@ -68,6 +84,12 @@ class BuildingMOTIF(metaclass=Singleton):
         g = Graph()
         bind_prefixes(g)
         self.template_ns_mgr: NamespaceManager = NamespaceManager(g)
+        self.ontology_environment = OntologyEnvironment(
+            path=ontology_cache_path,
+            search_directories=ontology_search_directories,
+            offline=ontology_offline,
+            strict=ontology_strict,
+        )
 
     @property
     def session(self):
@@ -127,6 +149,7 @@ class BuildingMOTIF(metaclass=Singleton):
 
     def close(self) -> None:
         """Close session and engine."""
+        self.ontology_environment.close()
         self.session.close()
         self.engine.dispose()
 
