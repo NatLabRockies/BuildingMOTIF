@@ -31,7 +31,7 @@ to_skip = {
 
 def setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="shifty")
     bm.setup_tables()
     # bm = get_building_motif()
     s223 = Library.load(

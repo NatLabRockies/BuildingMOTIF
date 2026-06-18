@@ -102,5 +102,5 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("builtin_ontology", builtin_ontology)
 
     if "shacl_engine" in metafunc.fixturenames:
-        shacl_engine = ["pyshacl", "topquadrant"]
+        shacl_engine = ["pyshacl", "topquadrant", "shifty"]
         metafunc.parametrize("shacl_engine", shacl_engine)
