@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
 
@@ -14,6 +17,7 @@ from buildingmotif.utils import (
     graph_hash,
     replace_nodes,
     rewrite_shape_graph,
+    shacl_inference,
     shacl_validate,
     skip_uri,
 )
@@ -329,6 +333,99 @@ def test_param_name():
     bad_p = BRICK["abc"]
     with pytest.raises(AssertionError):
         _param_name(bad_p)
+
+
+def test_pyshifty_validate_precomputes_closure(monkeypatch):
+    data_graph = Graph()
+    shape_graph = Graph()
+    shape_graph.add((URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class")))
+    inferred_graph = Graph()
+    report_graph = Graph()
+    calls = []
+
+    def infer(*args):
+        calls.append(("infer", args, {}))
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    def validate(*args, **kwargs):
+        calls.append(("validate", args, kwargs))
+        return True, report_graph, "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "shifty",
+        SimpleNamespace(infer=infer, validate=validate),
+    )
+
+    assert shacl_validate(data_graph, shape_graph, engine="pyshifty") == (
+        True,
+        report_graph,
+        "ok",
+    )
+    assert calls == [
+        ("infer", (data_graph, shape_graph), {}),
+        (
+            "validate",
+            (inferred_graph, shape_graph),
+            {"infer": False, "minimum_severity": "violation"},
+        ),
+    ]
+
+
+def test_pyshifty_validate_omits_empty_shape_graph(monkeypatch):
+    data_graph = Graph()
+    empty_shape_graph = Graph()
+    inferred_graph = Graph()
+    report_graph = Graph()
+    calls = []
+
+    def infer(*args):
+        calls.append(("infer", args, {}))
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    def validate(*args, **kwargs):
+        calls.append(("validate", args, kwargs))
+        return True, report_graph, "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "shifty",
+        SimpleNamespace(infer=infer, validate=validate),
+    )
+
+    assert shacl_validate(data_graph, empty_shape_graph, engine="pyshifty") == (
+        True,
+        report_graph,
+        "ok",
+    )
+    assert calls == [
+        ("infer", (data_graph,), {}),
+        (
+            "validate",
+            (inferred_graph,),
+            {"infer": False, "minimum_severity": "violation"},
+        ),
+    ]
+
+
+def test_pyshifty_inference_removes_shape_graph(monkeypatch):
+    data_triple = (URIRef("urn:data"), SH.path, URIRef("urn:value"))
+    shape_triple = (URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class"))
+    data_graph = Graph()
+    data_graph.add(data_triple)
+    shape_graph = Graph()
+    shape_graph.add(shape_triple)
+    inferred_graph = data_graph + shape_graph
+
+    def infer(*args):
+        assert args == (data_graph, shape_graph)
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
+
+    closure = shacl_inference(data_graph, shape_graph, engine="pyshifty")
+    assert data_triple in closure
+    assert shape_triple not in closure
 
 
 def test_skip_uri():

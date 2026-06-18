@@ -660,6 +660,13 @@ def shacl_validate(
             )
             pass
 
+    if engine == "pyshifty":
+        try:
+            return _shifty_validate(data_graph, shape_graph)
+        except ImportError:
+            logging.info("pyshifty SHACL engine not available. Using PySHACL instead.")
+            pass
+
     data_graph = data_graph + (shape_graph or Graph())
     return pyshacl.validate(
         data_graph,
@@ -669,6 +676,35 @@ def shacl_validate(
         js=True,
         allow_warnings=True,
     )  # type: ignore
+
+
+def _shifty_infer(data_graph: Graph, shape_graph: Optional[Graph] = None) -> Graph:
+    import shifty  # type: ignore
+
+    if shape_graph is None or len(shape_graph) == 0:  # type: ignore
+        return shifty.infer(data_graph).graph()  # type: ignore
+    return shifty.infer(data_graph, shape_graph).graph()  # type: ignore
+
+
+def _shifty_validate(
+    data_graph: Graph,
+    shape_graph: Optional[Graph] = None,
+) -> Tuple[bool, Graph, str]:
+    import shifty  # type: ignore
+
+    closed_data_graph = _shifty_infer(data_graph, shape_graph)
+    if shape_graph is None or len(shape_graph) == 0:  # type: ignore
+        return shifty.validate(  # type: ignore
+            closed_data_graph,
+            infer=False,
+            minimum_severity="violation",
+        )
+    return shifty.validate(  # type: ignore
+        closed_data_graph,
+        shape_graph,
+        infer=False,
+        minimum_severity="violation",
+    )
 
 
 def shacl_inference(
@@ -700,6 +736,13 @@ def shacl_inference(
             logging.info(
                 "TopQuadrant SHACL engine not available. Using PySHACL instead."
             )
+            pass
+
+    if engine == "pyshifty":
+        try:
+            return _shifty_infer(data_graph, shape_graph) - (shape_graph or Graph())
+        except ImportError:
+            logging.info("pyshifty SHACL engine not available. Using PySHACL instead.")
             pass
 
     # We use a fixed-point computation approach to 'compiling' RDF models.

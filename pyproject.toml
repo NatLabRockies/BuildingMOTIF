@@ -37,6 +37,7 @@ psycopg2 = {version="^2.9.5", optional=true}
 pygit2 = "~1.17"
 jsonschema = "^4.21.1"
 brick-tq-shacl = {optional = true, version="0.3.4a2"}
+pyshifty = {optional = true, version="0.1.7"}
 werkzeug="^2.3.7"
 types-jsonschema = "^4.21.0.20240311"
 matplotlib = "^3.9.2"
@@ -67,6 +68,7 @@ tomlkit = "^0.13.2"
 all = ["BAC0", "openpyxl", "netifaces", "pytz", "psycopg2"]
 postgres = ["psycopg2"]
 topquadrant = ["brick-tq-shacl"]
+pyshifty = ["pyshifty"]
 # dependencies for ingresses (e.g. BAC0, openpyxl) should be included in dev dependencies
 bacnet-ingress = ["BAC0", "netifaces", "pytz"]
 xlsx-ingress = ["openpyxl"]
