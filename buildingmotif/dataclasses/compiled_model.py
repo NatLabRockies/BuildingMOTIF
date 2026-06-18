@@ -10,14 +10,9 @@ from rdflib import URIRef
 from buildingmotif.dataclasses.model import Model
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
-from buildingmotif.namespaces import OWL, SH, A
-from buildingmotif.utils import (
-    copy_graph,
-    rewrite_shape_graph,
-    shacl_inference,
-    shacl_validate,
-    skolemize_shapes,
-)
+from buildingmotif.namespaces import SH, A
+from buildingmotif.shacl import get_shacl_backend
+from buildingmotif.utils import copy_graph
 
 
 @dataclass
@@ -39,21 +34,12 @@ class CompiledModel:
     ):
         self.model = model
         self.shape_collections = shape_collections
-        ontology_graph = rdflib.Graph()
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
-
-        ontology_graph = skolemize_shapes(ontology_graph)
-
-        shacl_engine = (
+        self.shacl_engine = (
             self.model._bm.shacl_engine
             if (shacl_engine == "default" or not shacl_engine)
             else shacl_engine
         )
-
-        self._compiled_graph = shacl_inference(
-            compiled_graph, ontology_graph, shacl_engine
-        )
+        self._compiled_graph = compiled_graph
 
     @cached_property
     def graph(self) -> rdflib.Graph:
@@ -96,14 +82,15 @@ class CompiledModel:
         # skolemize the shape graph so we have consistent identifiers across
         # validation through the interpretation of the validation report
         ontology_graph = self.graph.skolemize()
+        backend = get_shacl_backend(self.shacl_engine)
 
         for shape_uri in shapes_to_test:
             temp_model_graph = copy_graph(model_graph)
             for (s,) in targets:
                 temp_model_graph.add((URIRef(s), A, shape_uri))
 
-            valid, report_g, report_str = shacl_validate(
-                temp_model_graph, ontology_graph, engine=self.model._bm.shacl_engine
+            valid, report_g, report_str = backend.validate(
+                temp_model_graph, ontology_graph
             )
 
             results[shape_uri] = ValidationContext(
@@ -120,6 +107,7 @@ class CompiledModel:
     def validate(
         self,
         error_on_missing_imports: bool = True,
+        shacl_engine: Optional[str] = "default",
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -136,35 +124,20 @@ class CompiledModel:
             the validation results
         :rtype: ValidationContext
         """
-        # TODO: determine the return types; At least a bool for valid/invalid,
-        # but also want a report. Is this the base pySHACL report? Or a useful
-        # transformation, like a list of deltas for potential fixes?
-        shapeg = copy_graph(self._compiled_graph)
-        # aggregate shape graphs
-        for sc in self.shape_collections:
-            shapeg += sc.resolve_imports(
-                error_on_missing_imports=error_on_missing_imports
-            ).graph
-        # inline sh:node for interpretability
-        shapeg = rewrite_shape_graph(shapeg)
-
-        # remove imports from sg
-        shapeg.remove((None, OWL.imports, None))
-
-        # skolemize the shape graph so we have consistent identifiers across
-        # validation through the interpretation of the validation report
-        shapeg = skolemize_shapes(shapeg)
-
-        # remove imports from data graph
-        shapeg.remove((None, OWL.imports, None))
-
-        # validate the data graph
-        valid, report_g, report_str = shacl_validate(
-            shapeg, engine=self.model._bm.shacl_engine
+        shacl_engine = (
+            self.shacl_engine
+            if (shacl_engine == "default" or not shacl_engine)
+            else shacl_engine
+        )
+        backend = get_shacl_backend(shacl_engine)
+        (valid, report_g, report_str), context_graph = backend.validate_compiled_model(
+            self._compiled_graph,
+            self.shape_collections,
+            error_on_missing_imports=error_on_missing_imports,
         )
         return ValidationContext(
             self.shape_collections,
-            shapeg,
+            context_graph,
             valid,
             report_g,
             report_str,

@@ -7,7 +7,6 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-import pyshacl  # type: ignore
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.compare import _TripleCanonicalizer
 from rdflib.paths import ZeroOrOne
@@ -15,6 +14,7 @@ from rdflib.term import Node
 
 from buildingmotif.database.errors import TemplateNotFound
 from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
+from buildingmotif.shacl import normalize_shacl_engine
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Template
@@ -646,65 +646,9 @@ def shacl_validate(
     :return: a tuple containing the validation result, the validation report, and the validation report string
     :rtype: Tuple[bool, Graph, str]
     """
+    from buildingmotif.shacl import get_shacl_backend
 
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import (
-                validate as tq_validate,  # type: ignore
-            )
-
-            return tq_validate(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-
-    if engine == "pyshifty":
-        try:
-            return _shifty_validate(data_graph, shape_graph)
-        except ImportError:
-            logging.info("pyshifty SHACL engine not available. Using PySHACL instead.")
-            pass
-
-    data_graph = data_graph + (shape_graph or Graph())
-    return pyshacl.validate(
-        data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        js=True,
-        allow_warnings=True,
-    )  # type: ignore
-
-
-def _shifty_infer(data_graph: Graph, shape_graph: Optional[Graph] = None) -> Graph:
-    import shifty  # type: ignore
-
-    if shape_graph is None or len(shape_graph) == 0:  # type: ignore
-        return shifty.infer(data_graph).graph()  # type: ignore
-    return shifty.infer(data_graph, shape_graph).graph()  # type: ignore
-
-
-def _shifty_validate(
-    data_graph: Graph,
-    shape_graph: Optional[Graph] = None,
-) -> Tuple[bool, Graph, str]:
-    import shifty  # type: ignore
-
-    closed_data_graph = _shifty_infer(data_graph, shape_graph)
-    if shape_graph is None or len(shape_graph) == 0:  # type: ignore
-        return shifty.validate(  # type: ignore
-            closed_data_graph,
-            infer=False,
-            minimum_severity="violation",
-        )
-    return shifty.validate(  # type: ignore
-        closed_data_graph,
-        shape_graph,
-        infer=False,
-        minimum_severity="violation",
-    )
+    return get_shacl_backend(engine).validate(data_graph, shape_graph)
 
 
 def shacl_inference(
@@ -727,56 +671,9 @@ def shacl_inference(
     :return: the data graph with inferred triples
     :rtype: Graph
     """
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import infer as tq_infer
+    from buildingmotif.shacl import get_shacl_backend
 
-            return tq_infer(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-
-    if engine == "pyshifty":
-        try:
-            return _shifty_infer(data_graph, shape_graph) - (shape_graph or Graph())
-        except ImportError:
-            logging.info("pyshifty SHACL engine not available. Using PySHACL instead.")
-            pass
-
-    # We use a fixed-point computation approach to 'compiling' RDF models.
-    # We accomlish this by keeping track of the size of the graph before and after
-    # the inference step. If the size of the graph changes, then we know that the
-    # inference has had some effect. We do this at most 3 times to avoid looping
-    # forever.
-    pre_compile_length = len(data_graph)  # type: ignore
-    pyshacl.validate(
-        data_graph=data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        inplace=True,
-        js=True,
-        allow_warnings=True,
-    )
-    post_compile_length = len(data_graph)  # type: ignore
-
-    attempts = 3
-    while attempts > 0 and post_compile_length != pre_compile_length:
-        pre_compile_length = len(data_graph)  # type: ignore
-        pyshacl.validate(
-            data_graph=data_graph,
-            shacl_graph=shape_graph,
-            ont_graph=shape_graph,
-            advanced=True,
-            inplace=True,
-            js=True,
-            allow_warnings=True,
-        )
-        post_compile_length = len(data_graph)  # type: ignore
-        attempts -= 1
-    return data_graph - (shape_graph or Graph())
+    return get_shacl_backend(engine).compile(data_graph, shape_graph)
 
 
 def skolemize_shapes(g: Graph) -> Graph:

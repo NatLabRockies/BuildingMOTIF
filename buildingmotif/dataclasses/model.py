@@ -9,7 +9,8 @@ import rfc3987
 from buildingmotif import get_building_motif
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
-from buildingmotif.utils import Triple, copy_graph, shacl_inference, skolemize_shapes
+from buildingmotif.shacl import get_shacl_backend
+from buildingmotif.utils import Triple
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
@@ -214,11 +215,15 @@ class Model:
 
         :rtype: ValidationContext
         """
-        compiled_model = self.compile(shape_collections or [self.get_manifest()])
-        return compiled_model.validate(error_on_missing_imports)
+        compiled_model = self.compile(
+            shape_collections or [self.get_manifest()], shacl_engine=shacl_engine
+        )
+        return compiled_model.validate(error_on_missing_imports, shacl_engine)
 
     def compile(
-        self, shape_collections: Optional[List["ShapeCollection"]] = None
+        self,
+        shape_collections: Optional[List["ShapeCollection"]] = None,
+        shacl_engine: Optional[str] = None,
     ) -> "CompiledModel":
         """Compile the graph of a model against a set of ShapeCollections.
 
@@ -234,20 +239,16 @@ class Model:
         """
         from buildingmotif.dataclasses.compiled_model import CompiledModel
 
-        ontology_graph = rdflib.Graph()
         if shape_collections is None:
             shape_collections = [self.get_manifest()]
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
-
-        ontology_graph = skolemize_shapes(ontology_graph)
-
-        model_graph = copy_graph(self.graph).skolemize()
-
-        compiled_graph = shacl_inference(
-            model_graph, ontology_graph, engine=self._bm.shacl_engine
+        backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
+        compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
+        return CompiledModel(
+            self,
+            shape_collections,
+            compiled_graph,
+            shacl_engine=shacl_engine or "default",
         )
-        return CompiledModel(self, shape_collections, compiled_graph)
 
     def get_manifest(self) -> ShapeCollection:
         """Get ShapeCollection from model.

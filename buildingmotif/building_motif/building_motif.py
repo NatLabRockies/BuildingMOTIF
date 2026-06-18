@@ -20,6 +20,7 @@ from buildingmotif.database.utils import (
     _custom_json_serializer,
 )
 from buildingmotif.namespaces import bind_prefixes
+from buildingmotif.shacl import normalize_shacl_engine
 
 
 class BuildingMOTIF(metaclass=Singleton):
@@ -35,7 +36,7 @@ class BuildingMOTIF(metaclass=Singleton):
 
         :param db_uri: database URI
         :type db_uri: str
-        :param shacl_engine: the name of the engine to use for validation: "pyshacl" or "topquadrant". Using topquadrant
+        :param shacl_engine: the name of the engine to use for validation: "pyshacl", "shifty", or "topquadrant". Using topquadrant
             requires Java to be installed on this machine, and the "topquadrant" feature on BuildingMOTIF,
             defaults to "pyshacl"
         :type shacl_engine: str, optional
@@ -44,7 +45,7 @@ class BuildingMOTIF(metaclass=Singleton):
         :default log_level: INFO
         """
         self.db_uri = db_uri
-        self.shacl_engine = shacl_engine or "pyshacl"
+        self.shacl_engine = shacl_engine
         self.engine = create_engine(
             db_uri,
             echo=False,
@@ -68,6 +69,14 @@ class BuildingMOTIF(metaclass=Singleton):
         g = Graph()
         bind_prefixes(g)
         self.template_ns_mgr: NamespaceManager = NamespaceManager(g)
+
+    @property
+    def shacl_engine(self) -> str:
+        return self._shacl_engine
+
+    @shacl_engine.setter
+    def shacl_engine(self, engine: Optional[str]) -> None:
+        self._shacl_engine = normalize_shacl_engine(engine)
 
     @property
     def session(self):
