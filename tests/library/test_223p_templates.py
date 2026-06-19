@@ -1,5 +1,8 @@
-from typing import Tuple
+import pathlib
+from typing import Any, Dict, Tuple
 
+import pytest
+import yaml
 from rdflib import Graph, Namespace, URIRef
 
 from buildingmotif import BuildingMOTIF
@@ -29,11 +32,24 @@ to_skip = {
 }
 
 
-def setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
+def _cheap_template_names(library_path: str):
+    """Return sorted list of template names from YAML keys only (no TTL infer for 223p).
+    No DB or BuildingMOTIF setup required."""
+    path = pathlib.Path(library_path)
+    lib_short = path.name
+    names = []
+    for f in path.rglob("*.yml"):
+        contents = yaml.safe_load(open(f))
+        if contents:
+            names.extend(contents.keys())
+    skip = to_skip.get(lib_short, [])
+    return sorted(n for n in names if n not in skip)
+
+
+def _setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
     bm = BuildingMOTIF("sqlite://", shacl_engine="topquadrant")
     bm.setup_tables()
-    # bm = get_building_motif()
     s223 = Library.load(
         ontology_graph="libraries/ashrae/223p/ontology/223p.ttl",
         run_shacl_inference=False,
@@ -71,9 +87,28 @@ def plug_223_connection_points(g: Graph):
         g.add((e, RDF.type, S223.Connectable))
 
 
-def test_223p_template(bm, s223, library, template):
-    # set the module to this file; this helps the monkeypatch determine which BuildingMOTIF instance to use
+@pytest.fixture(scope="session")
+def s223_setup() -> Tuple[BuildingMOTIF, Library, Dict[Tuple[str, str], Any]]:
+    """Session-scoped fixture: loads 223p + test libraries once, builds template lookup."""
+    bm, s223 = _setup_building_motif_s223()
     BuildingMOTIF.instance = bm
+    template_map: Dict[Tuple[str, str], Any] = {}
+    for lib_name in libraries:
+        lib = Library.load(
+            directory=lib_name,
+            run_shacl_inference=False,
+            infer_templates=False,
+        )
+        for t in lib.get_templates():
+            template_map[(lib_name, t.name)] = t
+    BuildingMOTIF.clean()
+    return bm, s223, template_map
+
+
+def test_223p_template(s223_setup, library_name, template_name):
+    bm, s223, template_map = s223_setup
+    BuildingMOTIF.instance = bm
+    template = template_map[(library_name, template_name)]
     try:
         MODEL = Namespace("urn:ex/")
         m = Model.create(MODEL)
@@ -90,26 +125,12 @@ def test_223p_template(bm, s223, library, template):
 
 
 def pytest_generate_tests(metafunc):
-    # setup building motif
-    bm, s223 = setup_building_motif_s223()
-    BuildingMOTIF.instance = bm
     if "test_223p_template" == metafunc.function.__name__:
         params = []
         ids = []
-        for library_name in libraries:
-            library = Library.load(
-                directory=library_name,
-                run_shacl_inference=False,
-                infer_templates=False,
-            )
-            templates = templates = sorted(
-                library.get_templates(), key=lambda t: t.name
-            )
-            params.extend([(bm, s223, library, template) for template in templates])
-
-        # remove all templates in 'to skip'
-        params = [p for p in params if p[3].name not in to_skip[p[2].name]]
-        # library name - template name
-        ids = [f"{p[2].name}-{p[3].name}" for p in params]
-        metafunc.parametrize("bm,s223,library,template", params, ids=ids)
-    BuildingMOTIF.clean()
+        for lib_name in libraries:
+            lib_short = pathlib.Path(lib_name).name
+            for tmpl_name in _cheap_template_names(lib_name):
+                params.append((lib_name, tmpl_name))
+                ids.append(f"{lib_short}-{tmpl_name}")
+        metafunc.parametrize("library_name,template_name", params, ids=ids)
