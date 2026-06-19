@@ -15,6 +15,7 @@ from rdflib.term import Node
 
 from buildingmotif import get_building_motif
 from buildingmotif.namespaces import BMOTIF, OWL, SH
+from buildingmotif.ontology_environment import OntologyImportsNotFound
 from buildingmotif.utils import Triple, copy_graph, get_template_parts_from_shape
 
 if TYPE_CHECKING:
@@ -133,13 +134,49 @@ class ShapeCollection:
         :return: a new ShapeCollection with the types resolved
         :rtype: ShapeCollection
         """
-        resolved_namespaces: Set[rdflib.URIRef] = set()
-        resolved = _resolve_imports(
-            self.graph,
-            recursive_limit,
-            resolved_namespaces,
-            error_on_missing_imports=error_on_missing_imports,
-        )
+        bm = get_building_motif()
+        if recursive_limit == 0:
+            resolved = copy_graph(self.graph)
+        else:
+            graph_name = str(self.graph_name) if self.graph_name else None
+            if graph_name is not None:
+                try:
+                    if graph_name not in bm.ontology_environment.ontology_names():
+                        bm.ontology_environment.add(
+                            self.graph,
+                            fetch_imports=bm.ontology_fetch_imports,
+                            overwrite=True,
+                        )
+                    resolved, _ = bm.ontology_environment.closure_copy(
+                        graph_name, recursion_depth=recursive_limit
+                    )
+                except Exception:
+                    resolved, _ = bm.ontology_environment.dependencies_copy(
+                        self.graph,
+                        graph_name=graph_name,
+                        recursion_depth=recursive_limit,
+                        fetch_missing=bm.ontology_fetch_imports,
+                    )
+                    resolved += self.graph
+            else:
+                resolved, _ = bm.ontology_environment.dependencies_copy(
+                    self.graph,
+                    recursion_depth=recursive_limit,
+                    fetch_missing=bm.ontology_fetch_imports,
+                )
+                resolved += self.graph
+
+            missing_imports = bm.ontology_environment.missing_imports(
+                graph_name or self.graph
+            )
+            if missing_imports and error_on_missing_imports:
+                raise OntologyImportsNotFound(missing_imports)
+            if missing_imports:
+                logging.getLogger(__name__).warning(
+                    "Could not resolve ontology imports: %s",
+                    ", ".join(missing_imports),
+                )
+
         new_sc = ShapeCollection.create()
         new_sc.add_graph(resolved)
         return new_sc
@@ -188,18 +225,47 @@ class ShapeCollection:
         :param library: The library to add inferred templates to
         :type library: Library
         """
-        # we need to do the Library import here to avoid circular imports
-        from buildingmotif.dataclasses.library import Library
+        bm = get_building_motif()
+        logger = logging.getLogger(__name__)
+        graph_name = str(self.graph_name) if self.graph_name else None
+        if graph_name is not None:
+            try:
+                if graph_name not in bm.ontology_environment.ontology_names():
+                    bm.ontology_environment.add(
+                        self.graph,
+                        fetch_imports=bm.ontology_fetch_imports,
+                        overwrite=True,
+                    )
+                imports_closure, _ = bm.ontology_environment.closure_copy(graph_name)
+            except Exception as e:
+                logger.warning(
+                    "Could not resolve imports for %s through ontoenv (%s). "
+                    "Inferring templates from the local graph only.",
+                    graph_name,
+                    e,
+                )
+                imports_closure = copy_graph(self.graph)
+        else:
+            try:
+                imports_closure, _ = bm.ontology_environment.dependencies_copy(
+                    self.graph,
+                    fetch_missing=bm.ontology_fetch_imports,
+                )
+                imports_closure += self.graph
+            except Exception as e:
+                logger.warning(
+                    "Could not resolve imports through ontoenv (%s). "
+                    "Inferring templates from the local graph only.",
+                    e,
+                )
+                imports_closure = copy_graph(self.graph)
 
-        imports_closure = copy_graph(self.graph)
         dependency_graphs: dict[str, Graph] = {}
 
         for dependency in self.graph.objects(predicate=rdflib.OWL.imports):
             try:
-                lib = Library.load(name=str(dependency))
-                imports_closure += lib.get_shape_collection().graph
-                dependency_graphs[str(dependency)] = copy_graph(
-                    lib.get_shape_collection().graph
+                dependency_graphs[str(dependency)] = bm.ontology_environment.graph_copy(
+                    str(dependency)
                 )
             except Exception as e:
                 logging.warning(
@@ -523,62 +589,3 @@ def _shape_to_where(
             clauses += f"{root_var} {path} {name} .\n"
 
     return clauses, list(project)
-
-
-def _resolve_imports(
-    graph: rdflib.Graph,
-    recursive_limit: int,
-    seen: Set[rdflib.URIRef],
-    error_on_missing_imports: bool = True,
-) -> rdflib.Graph:
-    from buildingmotif.dataclasses.library import Library
-
-    bm = get_building_motif()
-
-    logger = logging.getLogger(__name__)
-
-    if recursive_limit == 0:
-        return graph
-    new_g = copy_graph(graph)
-    for ontology in graph.objects(predicate=OWL.imports):
-        if ontology in seen:
-            continue
-        seen.add(ontology)
-
-        # go find the graph definition from our libraries
-        try:
-            lib = Library.load(name=ontology)
-            sc_to_add = lib.get_shape_collection()
-        except Exception as e:
-            logger.warning(
-                "Could not resolve import of %s from Libraries (%s). Trying shape collections",
-                ontology,
-                e,
-            )
-            sc_to_add = None
-
-        # search through our shape collections for a graph with the provided name
-        if sc_to_add is None:
-            for shape_collection in bm.table_connection.get_all_db_shape_collections():
-                sc = ShapeCollection.load(shape_collection.id)
-                if sc.graph_name == ontology:
-                    sc_to_add = sc
-                    break
-            logger.warning(
-                "Could not resolve import of %s from Libraries. Trying shape collections",
-                ontology,
-            )
-
-        if sc_to_add is None:
-            if error_on_missing_imports:
-                raise Exception("Could not resolve import of %s", ontology)
-            continue
-
-        dependency = _resolve_imports(
-            sc_to_add.graph,
-            recursive_limit - 1,
-            seen,
-            error_on_missing_imports=error_on_missing_imports,
-        )
-        new_g += dependency
-    return new_g

@@ -81,6 +81,7 @@ class Library:
         overwrite: Optional[bool] = True,
         infer_templates: Optional[bool] = True,
         run_shacl_inference: Optional[bool] = True,
+        fetch_imports: Optional[bool] = None,
     ) -> "Library":
         """Loads a library from the database or an external source.
         When specifying a path to load a library or ontology_graph from,
@@ -108,27 +109,77 @@ class Library:
         :param run_shacl_inference: if true, run SHACL inference on the ontology graph,
             using the BuildingMOTIF SHACL engine, defaults to True
         :type run_shacl_inference: Optional[bool], optional
+        :param fetch_imports: if true, use ontoenv to fetch owl:imports dependencies
+            and create BuildingMOTIF Library rows for the resolved imported ontologies.
+            If None, uses the active BuildingMOTIF default.
+        :type fetch_imports: Optional[bool], optional
         :return: the loaded library
         :rtype: Library
         :raises Exception: if the library cannot be loaded
         """
+        bm = get_building_motif()
+        if fetch_imports is None:
+            fetch_imports = bm.ontology_fetch_imports
+
         if db_id is not None:
             return cls._load_from_db(db_id)
         elif ontology_graph is not None:
             if isinstance(ontology_graph, str):
                 ontology_graph_path = ontology_graph
-                if resource_exists("buildingmotif.libraries", ontology_graph_path):
+                if not pathlib.Path(
+                    ontology_graph_path
+                ).is_absolute() and resource_exists(
+                    "buildingmotif.libraries", ontology_graph_path
+                ):
                     logging.debug(f"Loading builtin library: {ontology_graph_path}")
                     ontology_graph_path = resource_filename(
                         "buildingmotif.libraries", ontology_graph_path
                     )
-                ontology_graph = rdflib.Graph()
-                ontology_graph.parse(
-                    ontology_graph_path, format=guess_format(ontology_graph_path)
+                ontology_name = bm.ontology_environment.add(
+                    ontology_graph_path,
+                    fetch_imports=fetch_imports,
+                    overwrite=overwrite is not False,
                 )
+                if not overwrite and cls._library_exists(ontology_name):
+                    return cls.load(name=ontology_name)
+                ontology_graph = bm.ontology_environment.graph_copy(ontology_name)
+                closure_names = [ontology_name]
+                if fetch_imports:
+                    _, closure_names = bm.ontology_environment.closure_copy(
+                        ontology_name
+                    )
+                lib = cls._load_from_ontology(
+                    ontology_graph,
+                    overwrite=overwrite,
+                    infer_templates=False,
+                    run_shacl_inference=run_shacl_inference,
+                )
+                cls._load_imported_ontology_libraries(
+                    root_name=lib.name,
+                    closure_names=closure_names,
+                    infer_templates=False,
+                    run_shacl_inference=run_shacl_inference,
+                )
+                if infer_templates:
+                    cls._infer_templates_for_libraries(closure_names)
+                return lib
+            ontology_name = bm.ontology_environment.add(
+                ontology_graph,
+                fetch_imports=fetch_imports,
+                overwrite=overwrite is not False,
+            )
+            if not overwrite and cls._library_exists(ontology_name):
+                return cls.load(name=ontology_name)
+            closure_names = [ontology_name]
+            if fetch_imports:
+                _, closure_names = bm.ontology_environment.closure_copy(ontology_name)
             return cls._load_from_ontology(
                 ontology_graph,
                 overwrite=overwrite,
+                infer_templates=False,
+                run_shacl_inference=run_shacl_inference,
+            )._load_imports_and_return(
+                closure_names,
                 infer_templates=infer_templates,
                 run_shacl_inference=run_shacl_inference,
             )
@@ -154,6 +205,59 @@ class Library:
             return cls(_id=db_library.id, _name=db_library.name, _bm=bm)
         else:
             raise Exception("No library information provided")
+
+    def _load_imports_and_return(
+        self,
+        closure_names: List[str],
+        infer_templates: Optional[bool] = True,
+        run_shacl_inference: Optional[bool] = True,
+    ) -> "Library":
+        self._load_imported_ontology_libraries(
+            root_name=self.name,
+            closure_names=closure_names,
+            infer_templates=False,
+            run_shacl_inference=run_shacl_inference,
+        )
+        if infer_templates:
+            self._infer_templates_for_libraries(closure_names)
+        return self
+
+    @classmethod
+    def _load_imported_ontology_libraries(
+        cls,
+        root_name: str,
+        closure_names: List[str],
+        infer_templates: Optional[bool] = True,
+        run_shacl_inference: Optional[bool] = True,
+    ) -> None:
+        bm = get_building_motif()
+        for ontology_name in closure_names:
+            if ontology_name == root_name:
+                continue
+            if cls._library_exists(ontology_name):
+                continue
+            graph = bm.ontology_environment.graph_copy(ontology_name)
+            cls._load_from_ontology(
+                graph,
+                overwrite=False,
+                infer_templates=infer_templates,
+                run_shacl_inference=False,
+            )
+
+    @classmethod
+    def _infer_templates_for_libraries(cls, library_names: List[str]) -> None:
+        inferred_library_ids = set()
+        for library_name in reversed(library_names):
+            try:
+                lib = cls.load(name=library_name)
+            except LibraryNotFound:
+                continue
+            if lib.id in inferred_library_ids:
+                continue
+            inferred_library_ids.add(lib.id)
+            if lib.get_templates():
+                continue
+            lib.get_shape_collection().infer_templates(lib)
 
     @classmethod
     def _load_from_db(cls, id: int) -> "Library":
@@ -223,6 +327,7 @@ class Library:
         shape_col_id = lib.get_shape_collection().id
         assert shape_col_id is not None  # should always pass
         shape_col = ShapeCollection.load(shape_col_id)
+        shape_col.graph.remove((None, None, None))
         shape_col.add_graph(ontology)
 
         if infer_templates:
