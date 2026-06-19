@@ -5,9 +5,7 @@ from rdflib import RDF, Graph, URIRef
 from rdflib.compare import isomorphic
 from rdflib.namespace import FOAF
 
-from buildingmotif.building_motif.building_motif import BuildingMotifEngine
 from buildingmotif.database.graph_connection import GraphConnection
-from tests.unit.conftest import MockBuildingMotif
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 SMALL_OFFICE_BRICK_TTL = FIXTURES_DIR / "smallOffice_brick.ttl"
@@ -16,13 +14,9 @@ DB_FILE = FIXTURES_DIR / "smallOffice.db"
 
 @pytest.fixture
 def graph_connection():
-    bm = MockBuildingMotif()
-
-    graph_connection = GraphConnection(BuildingMotifEngine(bm.engine, bm.Session))
+    graph_connection = GraphConnection()
     yield graph_connection
-
-    bm.session.commit()
-    bm.close()
+    graph_connection.close()
 
 
 def test_create_graph(graph_connection):
@@ -36,7 +30,6 @@ def test_create_graph(graph_connection):
     assert graph_connection.get_all_graph_identifiers() == ["my_graph"]
 
 
-@pytest.mark.skip(reason="empty graphs can't be entered")
 def test_create_empty_graph(graph_connection):
     g = Graph()
 
@@ -71,3 +64,34 @@ def test_delete_graph(graph_connection):
     assert graph_connection.get_all_graph_identifiers() == ["my_graph"]
     graph_connection.delete_graph("my_graph")
     assert graph_connection.get_all_graph_identifiers() == []
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "2b4c6511-2ad9-4df7-b038-d0887d63dc78",
+        "https://example.com/ontology/my-ontology#v1",
+    ],
+)
+def test_graph_identifier_round_trips(graph_connection, identifier):
+    graph_connection.create_graph(identifier, Graph())
+
+    assert graph_connection.get_all_graph_identifiers() == [identifier]
+
+
+def test_persistent_graph_store_survives_reopen(tmp_path):
+    store_path = tmp_path / "oxigraph"
+    g = Graph()
+    hannahs_personhood = (URIRef("http://example.org/hannah"), RDF.type, FOAF.Person)
+    g.add(hannahs_personhood)
+
+    graph_connection = GraphConnection(store_path)
+    graph_connection.create_graph("my_graph", g)
+    graph_connection.close()
+
+    reopened = GraphConnection(store_path)
+    try:
+        assert reopened.get_all_graph_identifiers() == ["my_graph"]
+        assert isomorphic(reopened.get_graph("my_graph"), g)
+    finally:
+        reopened.close()

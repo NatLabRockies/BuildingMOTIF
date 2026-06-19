@@ -55,6 +55,10 @@ def get_db_uri(args) -> str:
     sys.exit(1)
 
 
+def get_graph_store_path(args):
+    return getattr(args, "graph_store_path", None)
+
+
 @subcommand(
     arg(
         "-d",
@@ -81,6 +85,11 @@ def get_db_uri(args) -> str:
         nargs="+",
         dest="library_manifest_file",
     ),
+    arg(
+        "--graph-store-path",
+        help="Directory for the Oxigraph graph store. Defaults to $GRAPH_STORE_PATH "
+        "or BuildingMOTIF's database-derived default.",
+    ),
 )
 def load(args):
     """
@@ -91,7 +100,7 @@ def load(args):
       Use 'get_default_libraries_yml' for the format of the expected libraries.yml file
     """
     db_uri = get_db_uri(args)
-    bm = BuildingMOTIF(db_uri)
+    bm = BuildingMOTIF(db_uri, graph_store_path=get_graph_store_path(args))
     bm.setup_tables()
     for directory in args.dir or []:
         Library.load(directory=directory)
@@ -133,6 +142,11 @@ def get_default_libraries_yml(_args):
         help="Database URI of the BuildingMOTIF installation. "
         'Defaults to $DB_URI and then contents of "config.py"',
     ),
+    arg(
+        "--graph-store-path",
+        help="Directory for the Oxigraph graph store. Defaults to $GRAPH_STORE_PATH "
+        "or BuildingMOTIF's database-derived default.",
+    ),
 )
 def serve(args):
     """
@@ -141,8 +155,8 @@ def serve(args):
     from buildingmotif.api.app import create_app
 
     db_uri = get_db_uri(args)
-    webapp = create_app(db_uri)
-    webapp.run(host=args.host, port=args.port, threaded=False)
+    webapp = create_app(db_uri, graph_store_path=get_graph_store_path(args))
+    webapp.run(host=args.bind, port=args.port, threaded=False)
 
 
 def app():

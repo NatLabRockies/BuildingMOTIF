@@ -25,6 +25,7 @@ services:
     container_name: buildingmotif-api
     environment:
       - "DB_URI=${DB_URI}"
+      - "GRAPH_STORE_PATH=/var/lib/buildingmotif/oxigraph"
     depends_on: # require that the db is up and listening
       db:
         condition: service_healthy
@@ -37,6 +38,9 @@ services:
       - type: bind
         source: ./buildingmotif
         target: /opt/buildingmotif
+      - type: volume
+        source: buildingmotif-graph-store
+        target: /var/lib/buildingmotif/oxigraph
     ports:
       - target: 5000
         published: 5000
@@ -63,3 +67,4 @@ services:
 volumes:
   buildingmotif-db:
     external: true
+  buildingmotif-graph-store:
