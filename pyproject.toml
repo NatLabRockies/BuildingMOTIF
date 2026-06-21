@@ -37,7 +37,7 @@ psycopg2 = {version="^2.9.5", optional=true}
 pygit2 = "~1.17"
 jsonschema = "^4.21.1"
 brick-tq-shacl = {optional = true, version="0.3.4a2"}
-pyshifty = {optional = true, version="0.1.7"}
+pyshifty = {optional = true, version="0.2.0"}
 werkzeug="^2.3.7"
 types-jsonschema = "^4.21.0.20240311"
 matplotlib = "^3.9.2"

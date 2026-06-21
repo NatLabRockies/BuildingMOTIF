@@ -1,0 +1,323 @@
+"""Tests for the algebraic validation report and template-guided repair
+(:mod:`buildingmotif.dataclasses.algebraic_validation`).
+
+These exercise the thesis of the design: shifty's gate is a rigorous soundness
+oracle, and BuildingMOTIF templates + VF2 monomorphism are a smarter candidate
+generator than shifty's naive ``Hole.candidates`` -- so the template-guided path
+produces *sound + progress-making* repairs where stock shifty cannot.
+"""
+import pytest
+import rdflib
+from rdflib import Graph, Literal, Namespace
+
+from buildingmotif import BuildingMOTIF
+from buildingmotif.dataclasses import (
+    AlgebraicValidationContext,
+    Library,
+    Model,
+)
+from buildingmotif.dataclasses.template import Template
+from buildingmotif.namespaces import PARAM, SH, A
+
+pytest.importorskip("shifty")
+
+EX = Namespace("http://ex/")
+BLDG = Namespace("urn:bldg/")
+
+
+def _thing_template(lib: Library) -> Template:
+    """A template that mints a correctly typed ``ex:Thing`` rooted at ``name``."""
+    body = Graph()
+    body.add((PARAM["name"], A, EX.Thing))
+    return lib.create_template("thing", body)
+
+
+def _mincount_class_shapes() -> Graph:
+    return Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        ex:S a sh:NodeShape ; sh:targetNode bldg:x ;
+          sh:property [ sh:path ex:p ; sh:minCount 1 ; sh:class ex:Thing ] .
+        """,
+        format="turtle",
+    )
+
+
+def test_template_mint_beats_naive_shifty_candidate(bm: BuildingMOTIF):
+    """A minCount+class failure: the template-guided proposal mints a *typed*
+    instance (sound + progress) and ranks first, whereas shifty's own
+    candidates are at best sound-but-not-progress."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)
+
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    assert not ctx.conforms
+    witnesses = ctx.witnesses
+    assert len(witnesses) == 1
+    rw = witnesses[0]
+    assert rw.focus == BLDG["x"]
+    assert not rw.is_blocked
+
+    proposals = rw.proposals()
+    assert proposals, "expected at least one gated proposal"
+    # every returned proposal is sound (the gate rejected the rest)
+    assert all(p.is_sound for p in proposals)
+    # the best proposal makes progress and materializes a correctly typed value
+    best = proposals[0]
+    assert best.is_progress
+    assert best.origin.startswith("template:") or best.origin == "synthesized"
+    assert any(o == EX.Thing for (_, _, o) in best.additions)
+
+    # the naive shifty candidates (flat reuse-first guesses) still cannot make
+    # progress on a typed-value requirement on their own...
+    flat = [p for p in proposals if p.origin == "shifty-candidate"]
+    assert flat, "shifty should still offer flat candidates"
+    assert not any(p.is_progress for p in flat)
+    # ...but recursive synthesis makes progress even without any templates
+    ctx_no_tmpl = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[]
+    )
+    no_tmpl = ctx_no_tmpl.witnesses[0].proposals()
+    synthesized = [p for p in no_tmpl if p.origin == "synthesized"]
+    assert synthesized, "recursive synthesis should produce a candidate"
+    assert synthesized[0].is_sound and synthesized[0].is_progress
+    assert any(o == EX.Thing for (_, _, o) in synthesized[0].additions)
+
+
+def test_recursive_synthesis_builds_deep_sh_node(bm: BuildingMOTIF):
+    """A nested ``sh:node`` over a multi-step path is repaired by recursive
+    synthesis: the engine mints a node and recursively builds it out against the
+    sub-shape (no templates required), gated sound."""
+    shapes = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix : <urn:shapes/> .
+        : a owl:Ontology .
+        ex:Sub a sh:NodeShape ;
+            sh:property [ sh:path ex:q ; sh:minCount 1 ; sh:class ex:Widget ] .
+        ex:S a sh:NodeShape ; sh:targetNode ex:root ;
+            sh:property [ sh:path ex:p ; sh:minCount 1 ; sh:node ex:Sub ] .
+        """,
+        format="turtle",
+    )
+    data = Graph().parse(
+        data="@prefix ex: <http://ex/> .\nex:root a ex:Root .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+    best = ctx.witnesses[0].proposals()[0]
+    assert best.origin == "synthesized"
+    assert best.is_sound and best.is_progress
+    # the deep chain is fully materialized: root -p-> n -q-> w, w a Widget
+    assert any(p == EX.p for (_, p, _) in best.additions)
+    assert any(p == EX.q for (_, p, _) in best.additions)
+    assert any(o == EX.Widget for (_, _, o) in best.additions)
+    # applying it clears the violation with nothing new introduced
+    assert best.outcome.is_sound and best.outcome.is_progress
+    assert len(best.advance(ctx.session).witnesses()) == 0
+
+
+def test_reuse_existing_node_via_monomorphism(bm: BuildingMOTIF):
+    """If the model already contains a node monomorphic to the template, the
+    engine reuses it rather than minting a new one."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)
+
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data=(
+            "@prefix bldg: <urn:bldg/> .\n@prefix ex: <http://ex/> .\n"
+            "bldg:x a bldg:Foo . bldg:existing a ex:Thing ."
+        ),
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    best = ctx.witnesses[0].proposals()[0]
+    assert best.is_sound and best.is_progress
+    # the top proposal reuses the existing typed instance (no new typed node)
+    assert BLDG["existing"] in best.reused_nodes
+    assert (BLDG["x"], EX.p, BLDG["existing"]) in best.additions
+
+
+def test_deletion_direction_for_sh_not(bm: BuildingMOTIF):
+    """An ``sh:not`` violation is repaired by *deletion*, gated sound."""
+    shapes = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        ex:S a sh:NodeShape ; sh:targetNode bldg:acct ;
+          sh:not [ sh:path ex:status ; sh:hasValue "banned" ] .
+        """,
+        format="turtle",
+    )
+    data = Graph().parse(
+        data=(
+            '@prefix bldg: <urn:bldg/> .\n@prefix ex: <http://ex/> .\n'
+            'bldg:acct ex:status "banned" .'
+        ),
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+    assert not ctx.conforms
+    proposals = ctx.witnesses[0].proposals()
+    assert proposals
+    best = proposals[0]
+    assert best.is_sound and best.is_progress
+    assert (BLDG["acct"], EX.status, Literal("banned")) in best.deletions
+    assert len(best.additions) == 0
+
+
+def test_as_templates_resolves_violation(bm: BuildingMOTIF):
+    """``as_templates`` lifts the best sound repair into a BuildingMOTIF
+    template whose body fixes the failure when merged into the model."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    templates = ctx.as_templates()
+    assert templates, "expected at least one reconciling template"
+    # applying the repair makes the model conform
+    patched = Graph()
+    patched += data
+    for templ in templates:
+        result = templ.evaluate(
+            {p: rdflib.URIRef(f"urn:bldg/fill_{p}") for p in templ.parameters},
+            warn_unused=False,
+        )
+        assert isinstance(result, Graph)
+        patched += result
+    re_ctx = AlgebraicValidationContext.from_compiled([], shapes, patched, model)
+    assert re_ctx.conforms
+
+
+def test_any_sound_repair_can_be_lifted_to_template(bm: BuildingMOTIF):
+    """Any sound proposal -- not just the best -- can be lifted via
+    ``RepairProposal.as_template`` (with no library supplied), and every lifted
+    alternative resolves the violation."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    witness = ctx.witnesses[0]
+    sound_progress = [
+        p for p in witness.proposals() if p.is_sound and p.is_progress
+    ]
+    # there is more than one sound, progress-making alternative (synthesized +
+    # template), and each can be lifted on its own without passing a library
+    assert len(sound_progress) >= 2
+    for proposal in sound_progress:
+        templ = proposal.as_template()  # lib defaults to a fresh resolve library
+        assert templ is not None
+        patched = Graph() + data
+        patched += templ.evaluate(
+            {p: rdflib.URIRef(f"urn:bldg/fill_{p}") for p in templ.parameters},
+            warn_unused=False,
+        )
+        assert AlgebraicValidationContext.from_compiled(
+            [], shapes, patched, model
+        ).conforms
+
+
+def test_all_repair_templates_returns_alternatives(bm: BuildingMOTIF):
+    """``all_repair_templates`` returns every sound repair as a separate
+    template, grouped by focus (unlike ``as_templates``, which keeps only the
+    best per failure)."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    grouped = ctx.all_repair_templates()
+    assert set(grouped.keys()) == {BLDG["x"]}
+    alternatives = grouped[BLDG["x"]]
+    # more alternatives than the single best that as_templates would keep
+    assert len(alternatives) >= 2
+    assert len(alternatives) > len(ctx.as_templates())
+    # and per-witness access agrees
+    witness_alts = ctx.witnesses[0].repair_templates()
+    assert witness_alts
+    assert len(witness_alts) == len(alternatives)
+
+
+def test_auto_route_shifty_engine_returns_algebraic_context(bm: BuildingMOTIF):
+    """Model.validate with the shifty engine returns the new context and keeps
+    the legacy ``diffset`` / ``failed_component`` surface working."""
+    bm.shacl_engine = "shifty"
+    shape_graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix bldg: <urn:bldg/> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix : <urn:shapes/> .
+        : a owl:Ontology .
+        :zone a sh:NodeShape ; sh:targetClass bldg:Zone ;
+          sh:property [ sh:path rdfs:label ; sh:minCount 1 ] .
+        """,
+        format="turtle",
+    )
+    shape_lib = Library.load(ontology_graph=shape_graph)
+
+    model = Model.create(BLDG)
+    model.add_triples((BLDG["z1"], A, BLDG["Zone"]))
+
+    ctx = model.validate([shape_lib.get_shape_collection()])
+    assert isinstance(ctx, AlgebraicValidationContext)
+    assert not ctx.valid
+    # legacy-compatible diffset surface
+    assert len(ctx.diffset) == 1
+    witness = next(iter(ctx.diffset.values())).pop()
+    assert witness.failed_component == SH.MinCountConstraintComponent
+    assert BLDG["z1"] in ctx.get_broken_entities()
+
+    # repairing the label makes it conform
+    model.add_triples((BLDG["z1"], rdflib.RDFS.label, Literal("zone one")))
+    ctx2 = model.validate([shape_lib.get_shape_collection()])
+    assert ctx2.valid

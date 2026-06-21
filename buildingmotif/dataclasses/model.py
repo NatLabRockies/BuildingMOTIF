@@ -15,6 +15,7 @@ from buildingmotif.utils import Triple
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
     from buildingmotif.dataclasses.compiled_model import CompiledModel
+    from buildingmotif.dataclasses.library import Library
 
 
 def _validate_uri(uri: str):
@@ -191,6 +192,7 @@ class Model:
         shape_collections: Optional[List[ShapeCollection]] = None,
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = None,
+        repair_libraries: Optional[List["Library"]] = None,
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -212,13 +214,21 @@ class Model:
         :param shacl_engine: the SHACL engine to use for validation, defaults to whatever
             is set in the BuildingMOTIF object
         :type shacl_engine: str, optional
+        :param repair_libraries: libraries whose templates seed template-guided,
+            soundness-gated repair (only used by the ``shifty`` engine, which
+            returns an
+            :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`).
+            Defaults to no template guidance.
+        :type repair_libraries: Optional[List[Library]]
 
         :rtype: ValidationContext
         """
         compiled_model = self.compile(
             shape_collections or [self.get_manifest()], shacl_engine=shacl_engine
         )
-        return compiled_model.validate(error_on_missing_imports, shacl_engine)
+        return compiled_model.validate(
+            error_on_missing_imports, shacl_engine, repair_libraries=repair_libraries
+        )
 
     def compile(
         self,

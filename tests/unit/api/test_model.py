@@ -285,10 +285,18 @@ def test_validate_model(client, building_motif, shacl_engine):
     assert isinstance(results.get_json()["message"], str)
     response = results.get_json()
     assert "urn:building/vav1" in response["reasons"], "vav1 should be in the response"
-    assert set(response["reasons"]["urn:building/vav1"]) == {
-        "urn:building/vav1 expected at least 1 instance(s) of brick:Temperature_Sensor on path brick:hasPoint",
-        "urn:building/vav1 expected at least 1 instance(s) of brick:Air_Flow_Sensor on path brick:hasPoint",
-    }
+    if shacl_engine == "shifty":
+        # the shifty engine returns an AlgebraicValidationContext whose reasons
+        # are derived from the algebra (witness atoms) rather than the legacy
+        # GraphDiff messages, so assert on structure rather than exact strings
+        vav1_reasons = response["reasons"]["urn:building/vav1"]
+        assert len(vav1_reasons) >= 1
+        assert all(isinstance(r, str) and r for r in vav1_reasons)
+    else:
+        assert set(response["reasons"]["urn:building/vav1"]) == {
+            "urn:building/vav1 expected at least 1 instance(s) of brick:Temperature_Sensor on path brick:hasPoint",
+            "urn:building/vav1 expected at least 1 instance(s) of brick:Air_Flow_Sensor on path brick:hasPoint",
+        }
     assert not results.get_json()["valid"]
 
     # Set up

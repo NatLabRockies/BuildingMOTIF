@@ -52,21 +52,32 @@ def _param_name(param: URIRef) -> str:
 
 def _guarantee_unique_template_name(library: "Library", name: str) -> str:
     """
-    Ensure that the template name is unique in the library by appending an increasing
-    number. This is only called when we are generating templates from GraphDiffs and
-    the names are local to the Library. The Library is intended to be ephemeral so these
-    names will not be around for long.
+    Ensure that the template name is unique by appending an increasing number.
+    This is only called when we are generating templates from GraphDiffs / repair
+    proposals. The Library is intended to be ephemeral so these names will not be
+    around for long.
+
+    Template names are unique across the whole BuildingMOTIF database, not just
+    within a single library, so a name already taken by *another* (e.g. an
+    earlier ephemeral resolve) library must also be skipped. ``get_template_by_name``
+    raises :class:`TemplateNotFound` when the name is entirely free and
+    ``ValueError`` when it is taken by a different library; both are handled here.
     """
     idx = 1
     original_name = name
-    try:
-        while library.get_template_by_name(name):
-            name = f"{original_name}_{idx}"
-            idx += 1
-    except TemplateNotFound:
-        # this means that the template does not exist and we can use the original name
-        pass
-    return name
+    while True:
+        try:
+            existing = library.get_template_by_name(name)
+        except TemplateNotFound:
+            # the name is entirely free -- use it
+            return name
+        except ValueError:
+            # the name is taken by a *different* library -- keep searching
+            existing = True
+        if not existing:
+            return name
+        name = f"{original_name}_{idx}"
+        idx += 1
 
 
 def copy_graph(g: Graph, preserve_blank_nodes: bool = True) -> Graph:

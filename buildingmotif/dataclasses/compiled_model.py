@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pandas as pd
 import rdflib
@@ -13,6 +13,9 @@ from buildingmotif.dataclasses.validation import ValidationContext
 from buildingmotif.namespaces import SH, A
 from buildingmotif.shacl import get_shacl_backend
 from buildingmotif.utils import copy_graph
+
+if TYPE_CHECKING:
+    from buildingmotif.dataclasses.library import Library
 
 
 @dataclass
@@ -108,6 +111,7 @@ class CompiledModel:
         self,
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = "default",
+        repair_libraries: Optional[List["Library"]] = None,
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -130,6 +134,32 @@ class CompiledModel:
             else shacl_engine
         )
         backend = get_shacl_backend(shacl_engine)
+
+        # The shifty engine exposes a native algebraic + symbolic-repair API.
+        # Auto-route it to the AlgebraicValidationContext, which computes repairs
+        # by abduction over the algebra and gates every one for soundness, rather
+        # than re-parsing a flattened W3C report. Other engines keep the legacy
+        # GraphDiff-based ValidationContext.
+        if shacl_engine == "shifty":
+            from buildingmotif.dataclasses.algebraic_validation import (
+                AlgebraicValidationContext,
+            )
+
+            graphs = backend.validation_graphs(
+                self._compiled_graph,
+                self.shape_collections,
+                error_on_missing_imports=error_on_missing_imports,
+            )
+            return AlgebraicValidationContext.from_compiled(
+                self.shape_collections,
+                graphs.shape_graph
+                if graphs.shape_graph is not None
+                else rdflib.Graph(),
+                graphs.data_graph,
+                self.model,
+                libraries=repair_libraries,
+            )
+
         (valid, report_g, report_str), context_graph = backend.validate_compiled_model(
             self._compiled_graph,
             self.shape_collections,
