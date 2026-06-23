@@ -110,7 +110,7 @@ class CompiledModel:
     def validate(
         self,
         error_on_missing_imports: bool = True,
-        shacl_engine: Optional[str] = "default",
+        shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
@@ -128,11 +128,14 @@ class CompiledModel:
             the validation results
         :rtype: ValidationContext
         """
-        shacl_engine = (
-            self.shacl_engine
-            if (shacl_engine == "default" or not shacl_engine)
-            else shacl_engine
-        )
+        import warnings
+
+        shacl_engine = shacl_engine or self.shacl_engine
+        if repair_libraries is not None and shacl_engine != "shifty":
+            warnings.warn(
+                "repair_libraries is only used by the 'shifty' engine and will be ignored.",
+                stacklevel=3,
+            )
         backend = get_shacl_backend(shacl_engine)
 
         # The shifty engine exposes a native algebraic + symbolic-repair API.

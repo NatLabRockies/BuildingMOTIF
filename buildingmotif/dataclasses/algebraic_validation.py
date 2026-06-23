@@ -26,6 +26,7 @@ proposals are ranked by maximal reuse / minimal additions.
 The library decides nothing: :class:`AlgebraicValidationContext` only *proposes*
 ranked, gated repairs. Applying one is always the caller's choice.
 """
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import product
@@ -39,8 +40,9 @@ from typing import (
     Union,
 )
 
-from rdflib import BNode, Graph, Literal, Namespace, URIRef
+from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
+from rdflib.util import from_n3
 
 from buildingmotif.namespaces import PARAM, SH
 from buildingmotif.utils import copy_graph, replace_nodes
@@ -63,38 +65,29 @@ def _mint_uri() -> URIRef:
 
 def _node_to_nt(node: Node) -> str:
     """Render an rdflib node in the N-Triples term syntax shifty expects."""
-    if isinstance(node, URIRef):
-        return f"<{node}>"
-    if isinstance(node, BNode):
-        return f"_:{node}"
-    if isinstance(node, Literal):
-        return node.n3()
-    return str(node)
+    return node.n3()
 
 
 def _nt_to_node(term: str) -> Node:
     """Parse an N-Triples term (as emitted by shifty) into an rdflib node."""
-    term = term.strip()
-    if term.startswith("<") and term.endswith(">"):
-        return URIRef(term[1:-1])
-    if term.startswith("_:"):
-        return BNode(term[2:])
-    # literal: round-trip through a one-triple N-Triples document
-    g = Graph()
-    g.parse(data=f"<urn:s> <urn:p> {term} .", format="nt")
-    value = g.value(URIRef("urn:s"), URIRef("urn:p"))
-    assert value is not None
-    return value
+    return from_n3(term.strip())
 
 
 def _triples_to_graph(triples) -> Graph:
     """Build a graph from shifty (s, p, o) N-Triples-string tuples."""
     g = Graph()
-    if not triples:
-        return g
-    doc = "\n".join(f"{s} {p} {o} ." for (s, p, o) in triples)
-    g.parse(data=doc, format="nt")
+    for s_nt, p_nt, o_nt in triples:
+        g.add((_nt_to_node(s_nt), _nt_to_node(p_nt), _nt_to_node(o_nt)))
     return g
+
+
+def _make_resolve_library() -> "Library":
+    """Create a throwaway library for ephemeral repair/resolve templates."""
+    from secrets import token_hex
+
+    from buildingmotif.dataclasses import Library
+
+    return Library.create(f"resolve_{token_hex(4)}")
 
 
 @dataclass
@@ -182,15 +175,12 @@ class RepairProposal:
         :return: the lifted template, or ``None`` if there is nothing to add
         :rtype: Optional[Template]
         """
-        from secrets import token_hex
-
-        from buildingmotif.dataclasses import Library
         from buildingmotif.utils import _gensym, _guarantee_unique_template_name
 
         if len(self.additions) == 0:
             return None
         if lib is None:
-            lib = Library.create(f"resolve_{token_hex(4)}")
+            lib = _make_resolve_library()
         body = copy_graph(self.additions)
         # parameterize minted repair individuals (unique names so merging
         # several proposals for the same focus never collides)
@@ -243,6 +233,12 @@ class RepairWitness:
     # back-reference to the owning context (holds the session + repair engine)
     context: "AlgebraicValidationContext"
 
+    def _get_summary(self):
+        try:
+            return self.witness.summary()
+        except Exception:
+            return None
+
     @property
     def failed_component(self) -> Optional[URIRef]:
         """Best-effort SHACL constraint component for legacy compatibility.
@@ -251,12 +247,7 @@ class RepairWitness:
         ``WitnessKind`` discriminants), which pyshifty keeps stable -- rather
         than from any rendered/display string, whose format is not guaranteed.
         """
-        summary = getattr(self.witness, "summary", None)
-        if callable(summary):
-            try:
-                summary = summary()
-            except Exception:
-                summary = None
+        summary = self._get_summary()
         kinds = {
             str(getattr(atom, "kind", "")).split(".")[-1]
             for atom in (summary or [])
@@ -295,12 +286,7 @@ class RepairWitness:
     def reason(self) -> str:
         """Human-readable explanation of this failure (mirrors
         :meth:`buildingmotif.dataclasses.validation.GraphDiff.reason`)."""
-        summary = getattr(self.witness, "summary", None)
-        if callable(summary):
-            try:
-                summary = summary()
-            except Exception:
-                summary = None
+        summary = self._get_summary()
         if isinstance(summary, (list, tuple)) and summary:
             parts = []
             for atom in summary:
@@ -316,12 +302,10 @@ class RepairWitness:
             return "; ".join(parts)
         if summary:
             return str(summary)
-        target = getattr(self.witness, "target", "")
-        if callable(target):
-            try:
-                target = target()
-            except Exception:
-                target = ""
+        try:
+            target = self.witness.target()
+        except Exception:
+            target = ""
         return f"{self.focus} failed {target}".strip()
 
     def proposals(self, limit: int = 8) -> List[RepairProposal]:
@@ -354,12 +338,8 @@ class RepairWitness:
         :return: one template per qualifying sound repair (the alternatives)
         :rtype: List[Template]
         """
-        from secrets import token_hex
-
-        from buildingmotif.dataclasses import Library
-
         if lib is None:
-            lib = Library.create(f"resolve_{token_hex(4)}")
+            lib = _make_resolve_library()
         templates: List["Template"] = []
         for proposal in self.proposals(limit=limit):
             if proposal.is_blocked or not proposal.is_sound:
@@ -883,10 +863,10 @@ class AlgebraicValidationContext:
         return out
 
     def witnesses_by_focus(self) -> Dict[Optional[URIRef], List[RepairWitness]]:
-        grouped: Dict[Optional[URIRef], List[RepairWitness]] = {}
+        grouped: Dict[Optional[URIRef], List[RepairWitness]] = defaultdict(list)
         for rw in self.witnesses:
-            grouped.setdefault(rw.focus, []).append(rw)
-        return grouped
+            grouped[rw.focus].append(rw)
+        return dict(grouped)
 
     @cached_property
     def diffset(self) -> Dict[Optional[URIRef], Set[RepairWitness]]:
@@ -899,12 +879,12 @@ class AlgebraicValidationContext:
     # -- ValidationContext-compatible surface -----------------------------
 
     def get_broken_entities(self) -> Set[Optional[URIRef]]:
-        return {rw.focus for rw in self.witnesses}
+        return set(self.diffset.keys())
 
     def get_diffs_for_entity(
         self, entity: Optional[URIRef]
     ) -> List[RepairWitness]:
-        return [rw for rw in self.witnesses if rw.focus == entity]
+        return list(self.diffset.get(entity, set()))
 
     def get_reasons_with_severity(
         self, severity: Union[URIRef, str]
@@ -914,8 +894,6 @@ class AlgebraicValidationContext:
         ``SH.Info``). Mirrors
         :meth:`buildingmotif.dataclasses.validation.ValidationContext.get_reasons_with_severity`;
         each value is the list of shifty ``Reason`` objects at that severity."""
-        from collections import defaultdict
-
         if isinstance(severity, URIRef):
             severity_name = str(severity).split("#")[-1]
         else:
@@ -959,12 +937,9 @@ class AlgebraicValidationContext:
         :return: the merged reconciling templates, one group per focus
         :rtype: List[Template]
         """
-        from secrets import token_hex
-
-        from buildingmotif.dataclasses import Library
         from buildingmotif.dataclasses.validation import merge_templates_for_focus
 
-        lib = Library.create(f"resolve_{token_hex(4)}")
+        lib = _make_resolve_library()
         templates: List["Template"] = []
         for focus, rws in self.witnesses_by_focus().items():
             focus_templates: List["Template"] = []
@@ -1008,11 +983,7 @@ class AlgebraicValidationContext:
             templates (focus ``None`` holds graph-level repairs)
         :rtype: Dict[Optional[URIRef], List[Template]]
         """
-        from secrets import token_hex
-
-        from buildingmotif.dataclasses import Library
-
-        lib = Library.create(f"resolve_{token_hex(4)}")
+        lib = _make_resolve_library()
         grouped: Dict[Optional[URIRef], List["Template"]] = {}
         for rw in self.witnesses:
             templates = rw.repair_templates(

@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type
 
 import pyshacl  # type: ignore
 from rdflib import Graph
@@ -12,15 +12,14 @@ if TYPE_CHECKING:
 
 
 ValidationResult = Tuple[bool, Graph, str]
-SHACL_ENGINES = {"pyshacl", "topquadrant", "shifty"}
 
 
 def normalize_shacl_engine(engine: Optional[str]) -> str:
     """Return the canonical SHACL engine name or raise for unsupported engines."""
     if not engine:
         return "pyshacl"
-    if engine not in SHACL_ENGINES:
-        choices = ", ".join(sorted(SHACL_ENGINES))
+    if engine not in _SHACL_BACKENDS:
+        choices = ", ".join(sorted(_SHACL_BACKENDS))
         raise ValueError(
             f"Unsupported SHACL engine {engine!r}. Choose one of: {choices}"
         )
@@ -222,12 +221,15 @@ class ShiftyBackend(ShaclBackend):
         return ValidationGraphs(data_graph, shape_graph, shape_graph)
 
 
+_SHACL_BACKENDS: Dict[str, Type[ShaclBackend]] = {
+    "pyshacl": PyshaclBackend,
+    "topquadrant": TopQuadrantBackend,
+    "shifty": ShiftyBackend,
+}
+
+# Derived from the registry so adding a new engine only requires one dict entry.
+SHACL_ENGINES = frozenset(_SHACL_BACKENDS)
+
+
 def get_shacl_backend(engine: Optional[str]) -> ShaclBackend:
-    engine = normalize_shacl_engine(engine)
-    if engine == "pyshacl":
-        return PyshaclBackend()
-    if engine == "topquadrant":
-        return TopQuadrantBackend()
-    if engine == "shifty":
-        return ShiftyBackend()
-    raise AssertionError(f"Unhandled SHACL engine {engine!r}")
+    return _SHACL_BACKENDS[normalize_shacl_engine(engine)]()
