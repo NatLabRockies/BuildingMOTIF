@@ -4,7 +4,9 @@ from rdflib import Graph, Namespace, URIRef
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
+from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.namespaces import RDF, S223, bind_prefixes
+from buildingmotif.shacl import ShiftyBackend
 
 libraries = [
     "libraries/ashrae/223p/nrel-templates",
@@ -33,7 +35,6 @@ def setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
     bm = BuildingMOTIF("sqlite://", shacl_engine="shifty")
     bm.setup_tables()
-    # bm = get_building_motif()
     s223 = Library.load(
         ontology_graph="libraries/ashrae/223p/ontology/223p.ttl",
         run_shacl_inference=False,
@@ -71,7 +72,7 @@ def plug_223_connection_points(g: Graph):
         g.add((e, RDF.type, S223.Connectable))
 
 
-def test_223p_template(bm, s223, library, template):
+def test_223p_template(bm, s223, library, template, resolved_shape_graph):
     # set the module to this file; this helps the monkeypatch determine which BuildingMOTIF instance to use
     BuildingMOTIF.instance = bm
     try:
@@ -82,7 +83,10 @@ def test_223p_template(bm, s223, library, template):
         bind_prefixes(g)
         plug_223_connection_points(g)
         m.add_graph(g)
-        ctx = m.validate([s223.get_shape_collection()], error_on_missing_imports=False)
+        sc = s223.get_shape_collection()
+        backend = ShiftyBackend()
+        compiled_graph = backend.compile_model_graph(m.graph, [sc])
+        ctx = AlgebraicValidationContext.from_compiled([sc], resolved_shape_graph, compiled_graph, m)
     except Exception as e:
         bm.session.rollback()
         raise e
@@ -94,6 +98,9 @@ def pytest_generate_tests(metafunc):
     bm, s223 = setup_building_motif_s223()
     BuildingMOTIF.instance = bm
     if "test_223p_template" == metafunc.function.__name__:
+        resolved_shape_graph = s223.get_shape_collection().resolve_imports(
+            error_on_missing_imports=False
+        ).graph
         params = []
         ids = []
         for library_name in libraries:
@@ -102,14 +109,14 @@ def pytest_generate_tests(metafunc):
                 run_shacl_inference=False,
                 infer_templates=False,
             )
-            templates = templates = sorted(
-                library.get_templates(), key=lambda t: t.name
+            templates = sorted(library.get_templates(), key=lambda t: t.name)
+            params.extend(
+                [(bm, s223, library, template, resolved_shape_graph) for template in templates]
             )
-            params.extend([(bm, s223, library, template) for template in templates])
 
         # remove all templates in 'to skip'
         params = [p for p in params if p[3].name not in to_skip[p[2].name]]
         # library name - template name
         ids = [f"{p[2].name}-{p[3].name}" for p in params]
-        metafunc.parametrize("bm,s223,library,template", params, ids=ids)
+        metafunc.parametrize("bm,s223,library,template,resolved_shape_graph", params, ids=ids)
     BuildingMOTIF.clean()
