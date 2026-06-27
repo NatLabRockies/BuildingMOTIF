@@ -100,6 +100,21 @@ class ShapeCollection:
         """
         self.graph += graph
 
+    def replace_graph(self, graph: rdflib.Graph) -> None:
+        """Atomically replace this ShapeCollection's contents with ``graph``.
+
+        Uses copy-on-write: ``graph`` is written to a fresh named graph and the
+        stored pointer is flipped to it, so a failure or session rollback
+        leaves the previous contents intact. The old graph becomes an orphan
+        reclaimed by :py:meth:`BuildingMOTIF.collect_graph_garbage`.
+
+        :param graph: the new contents of the ShapeCollection
+        :type graph: rdflib.Graph
+        """
+        new_id, view = self._bm.graph_connection.replace_graph_contents(graph)
+        self._bm.table_connection.update_db_shape_collection_graph_id(self._id, new_id)
+        self.graph = view
+
     def _cbd(self, shape_name, self_contained=True):
         """Retrieves the Concise Bounded Description (CBD) of the shape."""
         cbd = self.graph.cbd(shape_name)

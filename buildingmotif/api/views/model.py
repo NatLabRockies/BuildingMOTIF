@@ -150,9 +150,11 @@ def update_model_graph(models_id: int) -> flask.Response:
         return {"message": f"data is unreadable: {e}"}, status.HTTP_400_BAD_REQUEST
 
     if request.method == "PUT":
-        model.graph.remove((None, None, None))
-
-    model.add_graph(graph)
+        # PUT replaces the whole graph; copy-on-write keeps the previous
+        # contents intact until the session commits below.
+        model.replace_graph(graph)
+    else:
+        model.add_graph(graph)
 
     current_app.building_motif.session.commit()
 

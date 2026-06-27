@@ -173,8 +173,29 @@ class BuildingMOTIF(metaclass=Singleton):
         root_logger.addHandler(log_file_handler)
         root_logger.addHandler(stream_handler)
 
+    def collect_graph_garbage(self) -> list:
+        """Reclaim orphaned named graphs no longer referenced by any table row.
+
+        Copy-on-write graph replacement and row deletion leave behind
+        unreferenced Oxigraph named graphs; this removes them. Only graphs with
+        UUID identifiers (models, shape collections, template bodies) are
+        considered, so OntoEnv-managed ontology graphs are never touched. Safe
+        to call when no write transaction is in flight.
+
+        :return: identifiers of the graphs that were reclaimed
+        :rtype: list
+        """
+        live_ids = self.table_connection.get_all_graph_ids()
+        return self.graph_connection.collect_garbage(live_ids)
+
     def close(self) -> None:
         """Close session and engine."""
+        try:
+            self.collect_graph_garbage()
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Graph garbage collection failed during close", exc_info=True
+            )
         try:
             self.ontology_environment.close()
         finally:

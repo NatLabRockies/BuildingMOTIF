@@ -23,6 +23,7 @@ parts:
   - file: guides/generating-queries.md
 - caption: Explainations
   chapters:
+  - file: explanations/storage-architecture.md
   - file: explanations/ingresses.md
   - file: explanations/templates.md
   - file: explanations/shapes-and-templates.md

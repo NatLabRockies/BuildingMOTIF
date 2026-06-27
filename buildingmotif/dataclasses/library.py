@@ -328,15 +328,11 @@ class Library:
         assert shape_col_id is not None  # should always pass
         shape_col = ShapeCollection.load(shape_col_id)
         try:
-            shape_col.graph.remove((None, None, None))
-            shape_col.add_graph(ontology)
+            shape_col.replace_graph(ontology)
         except Exception:
-            # Clean up any partial Oxigraph write and roll back the SQL row so
-            # the DB stays consistent.
-            try:
-                shape_col.graph.remove((None, None, None))
-            except Exception:
-                pass
+            # Copy-on-write left the previous graph untouched, so rolling back
+            # the session reverts the library rows and the newly written graph
+            # becomes an orphan reclaimed by garbage collection.
             get_building_motif().session.rollback()
             raise
 

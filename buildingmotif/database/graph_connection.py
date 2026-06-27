@@ -1,6 +1,7 @@
 import logging
+import uuid
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Set, Tuple, Union
 from urllib.parse import quote, unquote
 
 from pyoxigraph import NamedNode
@@ -124,6 +125,50 @@ class GraphConnection:
 
         return result
 
+    def replace_graph_contents(self, graph: Graph) -> Tuple[str, Graph]:
+        """Write ``graph`` into a brand-new named graph (copy-on-write).
+
+        This never mutates an existing named graph. The caller atomically
+        adopts the new contents by flipping its stored ``graph_id`` pointer to
+        the returned identifier (a single SQL update that commits with the
+        session); on failure or rollback the previous graph is still intact.
+        The previously referenced graph becomes an orphan that
+        :py:meth:`collect_garbage` reclaims.
+
+        :param graph: the new contents to write
+        :type graph: Graph
+        :return: the new graph identifier and its store-backed view
+        :rtype: Tuple[str, Graph]
+        """
+        new_identifier = str(uuid.uuid4())
+        view = self.create_graph(new_identifier, graph)
+        return new_identifier, view
+
+    def collect_garbage(self, live_graph_ids: Set[str]) -> List[str]:
+        """Delete UUID-identified named graphs not present in ``live_graph_ids``.
+
+        Only graphs whose identifier is a UUID are considered for deletion:
+        those are the graphs BuildingMOTIF creates for models, shape
+        collections, and template bodies. OntoEnv-managed ontology graphs are
+        keyed by their ontology IRI, so they are excluded by construction and
+        never reclaimed here.
+
+        :param live_graph_ids: identifiers that are still referenced and must
+            be kept
+        :type live_graph_ids: Set[str]
+        :return: identifiers of the graphs that were reclaimed
+        :rtype: List[str]
+        """
+        reclaimed: List[str] = []
+        for identifier in self.get_all_graph_identifiers():
+            if not _is_uuid(identifier):
+                continue
+            if identifier in live_graph_ids:
+                continue
+            self.delete_graph(identifier)
+            reclaimed.append(identifier)
+        return reclaimed
+
     def delete_graph(self, identifier: str) -> None:
         """Delete graph.
 
@@ -169,5 +214,15 @@ def _is_valid_iri(term: URIRef) -> bool:
     try:
         NamedNode(str(term))
     except ValueError:
+        return False
+    return True
+
+
+def _is_uuid(value: str) -> bool:
+    """Return True if ``value`` is a UUID string, as generated for the graph
+    identifiers of models, shape collections, and template bodies."""
+    try:
+        uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
         return False
     return True
