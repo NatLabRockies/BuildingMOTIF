@@ -327,8 +327,18 @@ class Library:
         shape_col_id = lib.get_shape_collection().id
         assert shape_col_id is not None  # should always pass
         shape_col = ShapeCollection.load(shape_col_id)
-        shape_col.graph.remove((None, None, None))
-        shape_col.add_graph(ontology)
+        try:
+            shape_col.graph.remove((None, None, None))
+            shape_col.add_graph(ontology)
+        except Exception:
+            # Clean up any partial Oxigraph write and roll back the SQL row so
+            # the DB stays consistent.
+            try:
+                shape_col.graph.remove((None, None, None))
+            except Exception:
+                pass
+            get_building_motif().session.rollback()
+            raise
 
         if infer_templates:
             # infer shapes from any class/nodeshape candidates in the graph
@@ -415,7 +425,11 @@ class Library:
                 continue
             lib._read_yml_file(file)
         # load shape collections from all ontology files in the directory
-        lib._load_shapes_from_directory(directory)
+        lib._load_shapes_from_directory(
+            directory,
+            infer_templates=infer_templates,
+            run_shacl_inference=run_shacl_inference,
+        )
 
         return lib
 

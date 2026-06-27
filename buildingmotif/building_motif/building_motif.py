@@ -175,10 +175,16 @@ class BuildingMOTIF(metaclass=Singleton):
 
     def close(self) -> None:
         """Close session and engine."""
-        self.ontology_environment.close()
-        self.graph_connection.close()
-        self.session.close()
-        self.engine.dispose()
+        try:
+            self.ontology_environment.close()
+        finally:
+            try:
+                self.graph_connection.close()
+            finally:
+                try:
+                    self.session.close()
+                finally:
+                    self.engine.dispose()
 
 
 def get_building_motif() -> "BuildingMOTIF":

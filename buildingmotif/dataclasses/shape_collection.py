@@ -139,18 +139,23 @@ class ShapeCollection:
             resolved = copy_graph(self.graph)
         else:
             graph_name = str(self.graph_name) if self.graph_name else None
+            used_fallback = False
             if graph_name is not None:
                 try:
-                    if graph_name not in bm.ontology_environment.ontology_names():
-                        bm.ontology_environment.add(
-                            self.graph,
-                            fetch_imports=bm.ontology_fetch_imports,
-                            overwrite=True,
-                        )
-                    resolved, _ = bm.ontology_environment.closure_copy(
-                        graph_name, recursion_depth=recursive_limit
+                    resolved = bm.ontology_environment.ensure_and_get_closure(
+                        self.graph,
+                        graph_name,
+                        recursion_depth=recursive_limit,
+                        fetch_imports=bm.ontology_fetch_imports,
                     )
-                except Exception:
+                except Exception as e:
+                    logging.getLogger(__name__).warning(
+                        "Could not resolve imports for %s through ontoenv (%s). "
+                        "Falling back to dependency resolution.",
+                        graph_name,
+                        e,
+                    )
+                    used_fallback = True
                     resolved, _ = bm.ontology_environment.dependencies_copy(
                         self.graph,
                         graph_name=graph_name,
@@ -166,8 +171,15 @@ class ShapeCollection:
                 )
                 resolved += self.graph
 
+            # When the fallback path was used, graph_name is not in ontoenv's
+            # index so missing_imports(graph_name) would report false positives.
+            # Check against self.graph instead so we report what owl:imports
+            # are still genuinely unresolvable from the graph content.
+            missing_imports_source = (
+                self.graph if used_fallback else (graph_name or self.graph)
+            )
             missing_imports = bm.ontology_environment.missing_imports(
-                graph_name or self.graph
+                missing_imports_source
             )
             if missing_imports and error_on_missing_imports:
                 raise OntologyImportsNotFound(missing_imports)
@@ -230,13 +242,11 @@ class ShapeCollection:
         graph_name = str(self.graph_name) if self.graph_name else None
         if graph_name is not None:
             try:
-                if graph_name not in bm.ontology_environment.ontology_names():
-                    bm.ontology_environment.add(
-                        self.graph,
-                        fetch_imports=bm.ontology_fetch_imports,
-                        overwrite=True,
-                    )
-                imports_closure, _ = bm.ontology_environment.closure_copy(graph_name)
+                imports_closure = bm.ontology_environment.ensure_and_get_closure(
+                    self.graph,
+                    graph_name,
+                    fetch_imports=bm.ontology_fetch_imports,
+                )
             except Exception as e:
                 logger.warning(
                     "Could not resolve imports for %s through ontoenv (%s). "

@@ -4,9 +4,7 @@ from typing import List, Optional, Union
 from urllib.parse import quote, unquote
 
 from pyoxigraph import NamedNode
-from rdflib import Literal
 from rdflib.graph import Graph, Store, URIRef, plugin
-from rdflib.namespace import XSD
 from rdflib.term import Node
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -164,12 +162,6 @@ def _encode_term(term: Optional[Node]) -> Optional[Node]:
 def _decode_term(term: Node) -> Node:
     if isinstance(term, URIRef) and str(term).startswith(INVALID_URIREF_PREFIX):
         return URIRef(unquote(str(term)[len(INVALID_URIREF_PREFIX) :]))
-    if (
-        isinstance(term, Literal)
-        and term.datatype == XSD.string
-        and term.language is None
-    ):
-        return Literal(str(term))
     return term
 
 

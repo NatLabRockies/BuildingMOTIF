@@ -36,6 +36,7 @@ class OntologyEnvironment:
         }
         if graph_connection is not None:
             kwargs["graph_store"] = BuildingMOTIFGraphStore(graph_connection)
+            kwargs["init_from_store"] = True
         if path is None:
             kwargs["temporary"] = True
         else:
@@ -99,6 +100,22 @@ class OntologyEnvironment:
 
     def ontology_names(self) -> list[str]:
         return list(self.env.get_ontology_names())
+
+    def ensure_and_get_closure(
+        self,
+        graph: rdflib.Graph,
+        graph_name: str,
+        recursion_depth: int = -1,
+        fetch_imports: bool = False,
+    ) -> rdflib.Graph:
+        """Ensure graph is registered in ontoenv, then return its import closure.
+
+        :raises Exception: if the closure cannot be resolved.
+        """
+        if graph_name not in self.ontology_names():
+            self.add(graph, fetch_imports=fetch_imports, overwrite=True)
+        closure, _ = self.closure_copy(graph_name, recursion_depth=recursion_depth)
+        return closure
 
     @staticmethod
     def graph_name(graph: rdflib.Graph) -> Optional[str]:

@@ -3,8 +3,8 @@
 ## Installing
 
 1. Install prerequisites:
-   - [Python >= 3.10.0, < 3.13](https://www.python.org/downloads/)
-   - [Poetry 1.4.0](https://python-poetry.org/docs/#installation)
+   - [Python >= 3.11.0, < 3.13](https://www.python.org/downloads/)
+   - [Poetry](https://python-poetry.org/docs/#installation)
 2. Clone this repository.
 3. Change directory to the new `/BuildingMOTIF` directory.
 4. Create and activate a virtual environment:
