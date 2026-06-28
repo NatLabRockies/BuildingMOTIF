@@ -70,15 +70,21 @@ class OntologyEnvironment:
     def closure_copy(
         self, ontology: str, recursion_depth: int = -1
     ) -> Tuple[rdflib.Graph, list[str]]:
-        if hasattr(self.env, "copy_closure"):
-            return self.env.copy_closure(ontology, recursion_depth=recursion_depth)
+        # Always use get_closure rather than copy_closure: in ontoenv 0.6.x,
+        # copy_closure reads from the native Rust store and bypasses the custom
+        # graph_store adapter, returning empty graphs when BuildingMOTIF's store
+        # is in use. get_closure returns a ClosureGraphView that correctly routes
+        # through the adapter.
         graph, names = self.env.get_closure(ontology, recursion_depth=recursion_depth)
         return self._copy_graph(graph), list(names)
 
     def iter_closure_triples(
         self, ontology: str, recursion_depth: int = -1
     ) -> Iterable[Tuple[rdflib.term.Node, rdflib.term.Node, rdflib.term.Node]]:
-        return self.env.iter_closure_triples(ontology, recursion_depth=recursion_depth)
+        # iter_closure_triples has the same graph_store bypass issue as copy_closure;
+        # iterate over get_closure instead.
+        graph, _ = self.env.get_closure(ontology, recursion_depth=recursion_depth)
+        return iter(graph)
 
     def dependencies_copy(
         self,
