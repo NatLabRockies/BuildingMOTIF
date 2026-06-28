@@ -11,11 +11,7 @@ import rdflib
 from rdflib import Graph, Literal, Namespace
 
 from buildingmotif import BuildingMOTIF
-from buildingmotif.dataclasses import (
-    AlgebraicValidationContext,
-    Library,
-    Model,
-)
+from buildingmotif.dataclasses import AlgebraicValidationContext, Library, Model
 from buildingmotif.dataclasses.template import Template
 from buildingmotif.namespaces import BRICK, OWL, PARAM, SH, A
 
@@ -173,7 +169,7 @@ def test_deletion_direction_for_sh_not(bm: BuildingMOTIF):
     )
     data = Graph().parse(
         data=(
-            '@prefix bldg: <urn:bldg/> .\n@prefix ex: <http://ex/> .\n'
+            "@prefix bldg: <urn:bldg/> .\n@prefix ex: <http://ex/> .\n"
             'bldg:acct ex:status "banned" .'
         ),
         format="turtle",
@@ -314,9 +310,7 @@ def test_any_sound_repair_can_be_lifted_to_template(bm: BuildingMOTIF):
         [], shapes, data, model, libraries=[lib]
     )
     witness = ctx.witnesses[0]
-    sound_progress = [
-        p for p in witness.proposals() if p.is_sound and p.is_progress
-    ]
+    sound_progress = [p for p in witness.proposals() if p.is_sound and p.is_progress]
     # there is more than one sound, progress-making alternative (synthesized +
     # template), and each can be lifted on its own without passing a library
     assert len(sound_progress) >= 2

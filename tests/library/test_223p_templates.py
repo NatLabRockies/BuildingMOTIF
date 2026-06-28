@@ -86,7 +86,9 @@ def test_223p_template(bm, s223, library, template, resolved_shape_graph):
         sc = s223.get_shape_collection()
         backend = PyshiftyBackend()
         compiled_graph = backend.compile_model_graph(m.graph, [sc])
-        ctx = AlgebraicValidationContext.from_compiled([sc], resolved_shape_graph, compiled_graph, m)
+        ctx = AlgebraicValidationContext.from_compiled(
+            [sc], resolved_shape_graph, compiled_graph, m
+        )
     except Exception as e:
         bm.session.rollback()
         raise e
@@ -98,9 +100,11 @@ def pytest_generate_tests(metafunc):
     bm, s223 = setup_building_motif_s223()
     BuildingMOTIF.instance = bm
     if "test_223p_template" == metafunc.function.__name__:
-        resolved_shape_graph = s223.get_shape_collection().resolve_imports(
-            error_on_missing_imports=False
-        ).graph
+        resolved_shape_graph = (
+            s223.get_shape_collection()
+            .resolve_imports(error_on_missing_imports=False)
+            .graph
+        )
         params = []
         ids = []
         for library_name in libraries:
@@ -111,12 +115,17 @@ def pytest_generate_tests(metafunc):
             )
             templates = sorted(library.get_templates(), key=lambda t: t.name)
             params.extend(
-                [(bm, s223, library, template, resolved_shape_graph) for template in templates]
+                [
+                    (bm, s223, library, template, resolved_shape_graph)
+                    for template in templates
+                ]
             )
 
         # remove all templates in 'to skip'
         params = [p for p in params if p[3].name not in to_skip[p[2].name]]
         # library name - template name
         ids = [f"{p[2].name}-{p[3].name}" for p in params]
-        metafunc.parametrize("bm,s223,library,template,resolved_shape_graph", params, ids=ids)
+        metafunc.parametrize(
+            "bm,s223,library,template,resolved_shape_graph", params, ids=ids
+        )
     BuildingMOTIF.clean()

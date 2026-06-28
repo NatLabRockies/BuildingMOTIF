@@ -1,8 +1,7 @@
 import sqlite3
 
 import pytest
-from rdflib import Graph
-from rdflib import URIRef
+from rdflib import Graph, URIRef
 
 from buildingmotif.dataclasses import Library, Model
 from buildingmotif.dataclasses.compiled_model import CompiledModel

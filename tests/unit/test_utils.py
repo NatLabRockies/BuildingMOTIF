@@ -360,14 +360,11 @@ def test_building_motif_validates_shacl_engine():
     BuildingMOTIF.clean()
 
     assert (
-        BuildingMOTIF("sqlite://", shacl_engine="pyshifty").shacl_engine
-        == "pyshifty"
+        BuildingMOTIF("sqlite://", shacl_engine="pyshifty").shacl_engine == "pyshifty"
     )
     BuildingMOTIF.clean()
 
-    assert (
-        BuildingMOTIF("sqlite://", shacl_engine="shifty").shacl_engine == "pyshifty"
-    )
+    assert BuildingMOTIF("sqlite://", shacl_engine="shifty").shacl_engine == "pyshifty"
     BuildingMOTIF.clean()
 
     with pytest.raises(ValueError, match="Unsupported SHACL engine"):

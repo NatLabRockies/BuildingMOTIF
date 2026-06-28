@@ -93,7 +93,10 @@ class ShaclBackend:
         graphs = self.validation_graphs(
             compiled_graph, shape_collections, error_on_missing_imports
         )
-        return self.validate(graphs.data_graph, graphs.shape_graph), graphs.context_graph
+        return (
+            self.validate(graphs.data_graph, graphs.shape_graph),
+            graphs.context_graph,
+        )
 
 
 class PyshaclBackend(ShaclBackend):

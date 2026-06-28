@@ -63,7 +63,9 @@ def test_brick_template(bm, brick, library, template, resolved_shape_graph):
         sc = brick.get_shape_collection()
         backend = PyshiftyBackend()
         compiled_graph = backend.compile_model_graph(m.graph, [sc])
-        ctx = AlgebraicValidationContext.from_compiled([sc], resolved_shape_graph, compiled_graph, m)
+        ctx = AlgebraicValidationContext.from_compiled(
+            [sc], resolved_shape_graph, compiled_graph, m
+        )
     except Exception as e:
         bm.session.rollback()
         raise e
@@ -75,17 +77,24 @@ def pytest_generate_tests(metafunc):
     bm, brick = setup_building_motif_brick()
     BuildingMOTIF.instance = bm
     if "test_brick_template" == metafunc.function.__name__:
-        resolved_shape_graph = brick.get_shape_collection().resolve_imports(
-            error_on_missing_imports=False
-        ).graph
+        resolved_shape_graph = (
+            brick.get_shape_collection()
+            .resolve_imports(error_on_missing_imports=False)
+            .graph
+        )
         params = []
         ids = []
         for library_name in libraries:
             library = Library.load(directory=library_name, run_shacl_inference=False)
             templates = sorted(library.get_templates(), key=lambda t: t.name)
             params.extend(
-                [(bm, brick, library, template, resolved_shape_graph) for template in templates]
+                [
+                    (bm, brick, library, template, resolved_shape_graph)
+                    for template in templates
+                ]
             )
             ids.extend([f"{library.name}-{template.name}" for template in templates])
-        metafunc.parametrize("bm,brick,library,template,resolved_shape_graph", params, ids=ids)
+        metafunc.parametrize(
+            "bm,brick,library,template,resolved_shape_graph", params, ids=ids
+        )
     BuildingMOTIF.clean()

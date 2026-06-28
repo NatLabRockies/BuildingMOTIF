@@ -30,15 +30,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import product
-from typing import (
-    TYPE_CHECKING,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
@@ -287,8 +279,7 @@ class RepairWitness:
         """
         summary = self._get_summary()
         kinds = {
-            str(getattr(atom, "kind", "")).split(".")[-1]
-            for atom in (summary or [])
+            str(getattr(atom, "kind", "")).split(".")[-1] for atom in (summary or [])
         }
         if "CountLow" in kinds:
             return SH.MinCountConstraintComponent
@@ -831,9 +822,7 @@ class AlgebraicValidationContext:
     def __post_init__(self):
         import shifty  # type: ignore
 
-        self.shapes_graph = _without_redundant_point_inverse_axioms(
-            self.shapes_graph
-        )
+        self.shapes_graph = _without_redundant_point_inverse_axioms(self.shapes_graph)
         self._session = shifty.RepairSession(self.shapes_graph, self.data_graph)
         self._algebra = shifty.validate_algebra(
             self.data_graph,
@@ -934,9 +923,7 @@ class AlgebraicValidationContext:
     def get_broken_entities(self) -> Set[Union[URIRef, str]]:
         return {focus or "Model" for focus in self.diffset}
 
-    def get_diffs_for_entity(
-        self, entity: Optional[URIRef]
-    ) -> List[RepairWitness]:
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> List[RepairWitness]:
         return list(self.diffset.get(entity, set()))
 
     def get_reasons_with_severity(
