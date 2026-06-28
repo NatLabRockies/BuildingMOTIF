@@ -6,7 +6,7 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
 from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.namespaces import bind_prefixes
-from buildingmotif.shacl import ShiftyBackend
+from buildingmotif.shacl import PyshiftyBackend
 
 # all the Brick libraries to test
 libraries = [
@@ -23,7 +23,7 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
     this initial setup to provide each test with a clean environment.
     """
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="shifty")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
     brick = Library.load(
         ontology_graph="libraries/brick/Brick.ttl", run_shacl_inference=False
@@ -61,7 +61,7 @@ def test_brick_template(bm, brick, library, template, resolved_shape_graph):
         bind_prefixes(g)
         m.add_graph(g)
         sc = brick.get_shape_collection()
-        backend = ShiftyBackend()
+        backend = PyshiftyBackend()
         compiled_graph = backend.compile_model_graph(m.graph, [sc])
         ctx = AlgebraicValidationContext.from_compiled([sc], resolved_shape_graph, compiled_graph, m)
     except Exception as e:

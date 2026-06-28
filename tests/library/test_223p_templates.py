@@ -6,7 +6,7 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
 from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.namespaces import RDF, S223, bind_prefixes
-from buildingmotif.shacl import ShiftyBackend
+from buildingmotif.shacl import PyshiftyBackend
 
 libraries = [
     "libraries/ashrae/223p/nrel-templates",
@@ -33,7 +33,7 @@ to_skip = {
 
 def setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="shifty")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
     s223 = Library.load(
         ontology_graph="libraries/ashrae/223p/ontology/223p.ttl",
@@ -84,7 +84,7 @@ def test_223p_template(bm, s223, library, template, resolved_shape_graph):
         plug_223_connection_points(g)
         m.add_graph(g)
         sc = s223.get_shape_collection()
-        backend = ShiftyBackend()
+        backend = PyshiftyBackend()
         compiled_graph = backend.compile_model_graph(m.graph, [sc])
         ctx = AlgebraicValidationContext.from_compiled([sc], resolved_shape_graph, compiled_graph, m)
     except Exception as e:

@@ -11,7 +11,11 @@ from buildingmotif.dataclasses.model import Model
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
 from buildingmotif.namespaces import SH, A
-from buildingmotif.shacl import get_shacl_backend
+from buildingmotif.shacl import (
+    DEFAULT_SHACL_ENGINE,
+    get_shacl_backend,
+    normalize_shacl_engine,
+)
 from buildingmotif.utils import copy_graph
 
 if TYPE_CHECKING:
@@ -40,7 +44,7 @@ class CompiledModel:
         self.shacl_engine = (
             self.model._bm.shacl_engine
             if (shacl_engine == "default" or not shacl_engine)
-            else shacl_engine
+            else normalize_shacl_engine(shacl_engine)
         )
         self._compiled_graph = compiled_graph
 
@@ -130,20 +134,20 @@ class CompiledModel:
         """
         import warnings
 
-        shacl_engine = shacl_engine or self.shacl_engine
-        if repair_libraries is not None and shacl_engine != "shifty":
+        shacl_engine = normalize_shacl_engine(shacl_engine or self.shacl_engine)
+        if repair_libraries is not None and shacl_engine != DEFAULT_SHACL_ENGINE:
             warnings.warn(
-                "repair_libraries is only used by the 'shifty' engine and will be ignored.",
+                "repair_libraries is only used by the 'pyshifty' engine and will be ignored.",
                 stacklevel=3,
             )
         backend = get_shacl_backend(shacl_engine)
 
-        # The shifty engine exposes a native algebraic + symbolic-repair API.
+        # The pyshifty engine exposes a native algebraic + symbolic-repair API.
         # Auto-route it to the AlgebraicValidationContext, which computes repairs
         # by abduction over the algebra and gates every one for soundness, rather
         # than re-parsing a flattened W3C report. Other engines keep the legacy
         # GraphDiff-based ValidationContext.
-        if shacl_engine == "shifty":
+        if shacl_engine == DEFAULT_SHACL_ENGINE:
             from buildingmotif.dataclasses.algebraic_validation import (
                 AlgebraicValidationContext,
             )
@@ -153,6 +157,23 @@ class CompiledModel:
                 self.shape_collections,
                 error_on_missing_imports=error_on_missing_imports,
             )
+            if self._requires_pyshacl_validation(graphs.shape_graph):
+                valid, report_g, report_str = get_shacl_backend("pyshacl").validate(
+                    graphs.data_graph, graphs.shape_graph
+                )
+                context_graph = graphs.data_graph + (
+                    graphs.shape_graph
+                    if graphs.shape_graph is not None
+                    else rdflib.Graph()
+                )
+                return ValidationContext(
+                    self.shape_collections,
+                    context_graph,
+                    valid,
+                    report_g,
+                    report_str,
+                    self.model,
+                )
             return AlgebraicValidationContext.from_compiled(
                 self.shape_collections,
                 graphs.shape_graph
@@ -194,6 +215,12 @@ class CompiledModel:
                 return sc
         return None
 
+    @staticmethod
+    def _requires_pyshacl_validation(shape_graph: Optional[rdflib.Graph]) -> bool:
+        if shape_graph is None:
+            return False
+        return (None, A, SH.SPARQLAskValidator) in shape_graph
+
     def shape_to_table(self, shape: rdflib.URIRef, table: str, conn):
         """
         Turn the shape into a SPARQL query and execute it on the model's graph, storing the results in a table.
@@ -223,8 +250,15 @@ class CompiledModel:
                 f"Shape {shape} is not defined in any of the shape collections"
             )
         query = defining_sc.shape_to_query(shape)
-        metadata = pd.DataFrame(self.graph.query(query).bindings, dtype="string")
-        # metadata.columns will be rdflib.term.Variable objects, so we need to convert them to strings
-        metadata.columns = [str(col) for col in metadata.columns]
+        results = self.graph.query(query)
+        columns = [str(col) for col in results.vars]
+        metadata = pd.DataFrame(
+            [
+                {str(col): value for col, value in row.items()}
+                for row in results.bindings
+            ],
+            columns=columns,
+            dtype="string",
+        )
         # convert the rdflib terms to Python types
         return metadata.map(lambda x: x.toPython())

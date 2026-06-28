@@ -3506,10 +3506,9 @@ js = ["pyduktape2 (>=0.4.6,<1)"]
 name = "pyshifty"
 version = "0.2.1"
 description = "Python bindings for the shifty SHACL engine"
-optional = true
+optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"pyshifty\""
 files = [
     {file = "pyshifty-0.2.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:8e3097519f141a81192731fde1f9a4e8aea2a5c154a8f2653cf2193ff3bd4818"},
     {file = "pyshifty-0.2.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:340b8afed6697022ebec26e5904861bbadd2b6f60dd152ada2e7241bc9333dc4"},
@@ -5049,11 +5048,10 @@ all = ["psycopg2"]
 all-ingresses = []
 bacnet-ingress = []
 postgres = ["psycopg2"]
-pyshifty = ["pyshifty"]
 topquadrant = ["brick-tq-shacl"]
 xlsx-ingress = []
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.13"
-content-hash = "a4479fa2080eff40dd36d54161d12c1279efe70eed6bfec9b8871e0d72ee52e9"
+content-hash = "f1263ad737282ea2c7a781644aa9ded8d9518d1765c476ba1f445c7dd07d61bb"

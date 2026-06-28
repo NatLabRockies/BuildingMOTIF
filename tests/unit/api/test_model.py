@@ -285,8 +285,8 @@ def test_validate_model(client, building_motif, shacl_engine):
     assert isinstance(results.get_json()["message"], str)
     response = results.get_json()
     assert "urn:building/vav1" in response["reasons"], "vav1 should be in the response"
-    if shacl_engine == "shifty":
-        # the shifty engine returns an AlgebraicValidationContext whose reasons
+    if shacl_engine == "pyshifty":
+        # the pyshifty engine returns an AlgebraicValidationContext whose reasons
         # are derived from the algebra (witness atoms) rather than the legacy
         # GraphDiff messages, so assert on structure rather than exact strings
         vav1_reasons = response["reasons"]["urn:building/vav1"]
@@ -337,6 +337,20 @@ def test_validate_model_bad_model_id(client, building_motif, shacl_engine):
 
     # Assert
     assert results.status_code == 404
+
+
+def test_validate_model_bad_shacl_engine(client):
+    BLDG = Namespace("urn:building/")
+    model = Model.create(name=BLDG)
+
+    results = client.post(
+        f"/models/{model.id}/validate?shacl_engine=bad-engine",
+        headers={"Content-Type": "application/json"},
+        json={},
+    )
+
+    assert results.status_code == 400
+    assert "Unsupported SHACL engine 'bad-engine'" in results.get_json()["message"]
 
 
 def test_validate_model_no_args(client, building_motif, shacl_engine):

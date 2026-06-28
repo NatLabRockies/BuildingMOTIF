@@ -215,7 +215,7 @@ class Model:
             is set in the BuildingMOTIF object
         :type shacl_engine: str, optional
         :param repair_libraries: libraries whose templates seed template-guided,
-            soundness-gated repair (only used by the ``shifty`` engine, which
+            soundness-gated repair (only used by the ``pyshifty`` engine, which
             returns an
             :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`).
             Defaults to no template guidance.

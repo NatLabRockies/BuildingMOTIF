@@ -5,19 +5,22 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type
 import pyshacl  # type: ignore
 from rdflib import Graph
 
-from buildingmotif.namespaces import OWL
+from buildingmotif.namespaces import BRICK, OWL
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses.shape_collection import ShapeCollection
 
 
 ValidationResult = Tuple[bool, Graph, str]
+DEFAULT_SHACL_ENGINE = "pyshifty"
+_SHACL_ENGINE_ALIASES = {"shifty": "pyshifty"}
 
 
 def normalize_shacl_engine(engine: Optional[str]) -> str:
     """Return the canonical SHACL engine name or raise for unsupported engines."""
     if not engine:
-        return "pyshacl"
+        return DEFAULT_SHACL_ENGINE
+    engine = _SHACL_ENGINE_ALIASES.get(engine, engine)
     if engine not in _SHACL_BACKENDS:
         choices = ", ".join(sorted(_SHACL_BACKENDS))
         raise ValueError(
@@ -165,7 +168,7 @@ class TopQuadrantBackend(PyshaclBackend):
             return super().validate(data_graph, shape_graph)
 
 
-class ShiftyBackend(ShaclBackend):
+class PyshiftyBackend(ShaclBackend):
     def infer(self, data_graph: Graph, shape_graph: Optional[Graph] = None) -> Graph:
         import shifty  # type: ignore
 
@@ -190,7 +193,8 @@ class ShiftyBackend(ShaclBackend):
         )
 
     def compile(self, data_graph: Graph, shape_graph: Optional[Graph] = None) -> Graph:
-        return self.infer(data_graph, shape_graph) - (shape_graph or Graph())
+        compiled_graph = self.infer(data_graph, shape_graph) - (shape_graph or Graph())
+        return _remove_redundant_point_inverses(compiled_graph)
 
     def compile_model_graph(
         self, model_graph: Graph, shape_collections: List["ShapeCollection"]
@@ -221,10 +225,17 @@ class ShiftyBackend(ShaclBackend):
         return ValidationGraphs(data_graph, shape_graph, shape_graph)
 
 
+def _remove_redundant_point_inverses(graph: Graph) -> Graph:
+    for point, _, entity in list(graph.triples((None, BRICK.isPointOf, None))):
+        if (entity, BRICK.hasPoint, point) in graph:
+            graph.remove((point, BRICK.isPointOf, entity))
+    return graph
+
+
 _SHACL_BACKENDS: Dict[str, Type[ShaclBackend]] = {
     "pyshacl": PyshaclBackend,
     "topquadrant": TopQuadrantBackend,
-    "shifty": ShiftyBackend,
+    "pyshifty": PyshiftyBackend,
 }
 
 # Derived from the registry so adding a new engine only requires one dict entry.

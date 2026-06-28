@@ -337,16 +337,14 @@ def test_param_name():
 
 
 def test_normalize_shacl_engine():
-    assert normalize_shacl_engine(None) == "pyshacl"
+    assert normalize_shacl_engine(None) == "pyshifty"
     assert normalize_shacl_engine("pyshacl") == "pyshacl"
     assert normalize_shacl_engine("topquadrant") == "topquadrant"
-    assert normalize_shacl_engine("shifty") == "shifty"
+    assert normalize_shacl_engine("pyshifty") == "pyshifty"
+    assert normalize_shacl_engine("shifty") == "pyshifty"
 
     with pytest.raises(ValueError, match="Unsupported SHACL engine"):
         normalize_shacl_engine("bad-engine")
-
-    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
-        normalize_shacl_engine("pyshifty")
 
 
 def test_shacl_helpers_validate_engine_choice():
@@ -358,7 +356,18 @@ def test_shacl_helpers_validate_engine_choice():
 
 
 def test_building_motif_validates_shacl_engine():
-    assert BuildingMOTIF("sqlite://", shacl_engine="shifty").shacl_engine == "shifty"
+    assert BuildingMOTIF("sqlite://").shacl_engine == "pyshifty"
+    BuildingMOTIF.clean()
+
+    assert (
+        BuildingMOTIF("sqlite://", shacl_engine="pyshifty").shacl_engine
+        == "pyshifty"
+    )
+    BuildingMOTIF.clean()
+
+    assert (
+        BuildingMOTIF("sqlite://", shacl_engine="shifty").shacl_engine == "pyshifty"
+    )
     BuildingMOTIF.clean()
 
     with pytest.raises(ValueError, match="Unsupported SHACL engine"):
@@ -371,7 +380,7 @@ def test_building_motif_validates_shacl_engine():
     BuildingMOTIF.clean()
 
 
-def test_shifty_validate_dispatches_to_shifty(monkeypatch):
+def test_pyshifty_validate_dispatches_to_shifty_module(monkeypatch):
     data_graph = Graph()
     shape_graph = Graph()
     shape_graph.add((URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class")))
@@ -388,7 +397,7 @@ def test_shifty_validate_dispatches_to_shifty(monkeypatch):
         SimpleNamespace(validate=validate),
     )
 
-    assert shacl_validate(data_graph, shape_graph, engine="shifty") == (
+    assert shacl_validate(data_graph, shape_graph, engine="pyshifty") == (
         True,
         report_graph,
         "ok",
@@ -402,7 +411,7 @@ def test_shifty_validate_dispatches_to_shifty(monkeypatch):
     ]
 
 
-def test_shifty_validate_omits_empty_shape_graph(monkeypatch):
+def test_pyshifty_validate_omits_empty_shape_graph(monkeypatch):
     data_graph = Graph()
     empty_shape_graph = Graph()
     report_graph = Graph()
@@ -418,7 +427,7 @@ def test_shifty_validate_omits_empty_shape_graph(monkeypatch):
         SimpleNamespace(validate=validate),
     )
 
-    assert shacl_validate(data_graph, empty_shape_graph, engine="shifty") == (
+    assert shacl_validate(data_graph, empty_shape_graph, engine="pyshifty") == (
         True,
         report_graph,
         "ok",
@@ -432,7 +441,7 @@ def test_shifty_validate_omits_empty_shape_graph(monkeypatch):
     ]
 
 
-def test_shifty_inference_removes_shape_graph(monkeypatch):
+def test_pyshifty_inference_removes_shape_graph(monkeypatch):
     data_triple = (URIRef("urn:data"), SH.path, URIRef("urn:value"))
     shape_triple = (URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class"))
     data_graph = Graph()
@@ -447,9 +456,34 @@ def test_shifty_inference_removes_shape_graph(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
 
-    closure = shacl_inference(data_graph, shape_graph, engine="shifty")
+    closure = shacl_inference(data_graph, shape_graph, engine="pyshifty")
     assert data_triple in closure
     assert shape_triple not in closure
+
+
+def test_pyshifty_inference_removes_redundant_is_point_of(monkeypatch):
+    equipment = URIRef("urn:equipment")
+    point = URIRef("urn:point")
+    has_point_triple = (equipment, BRICK.hasPoint, point)
+    inferred_inverse_triple = (point, BRICK.isPointOf, equipment)
+    shape_triple = (URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class"))
+    data_graph = Graph()
+    data_graph.add(has_point_triple)
+    shape_graph = Graph()
+    shape_graph.add(shape_triple)
+    inferred_graph = data_graph + shape_graph
+    inferred_graph.add(inferred_inverse_triple)
+
+    def infer(*args):
+        assert args == (data_graph, shape_graph)
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
+
+    closure = shacl_inference(data_graph, shape_graph, engine="pyshifty")
+    assert has_point_triple in closure
+    assert shape_triple not in closure
+    assert inferred_inverse_triple not in closure
 
 
 def test_skip_uri():

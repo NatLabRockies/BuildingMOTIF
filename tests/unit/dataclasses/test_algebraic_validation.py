@@ -1,10 +1,10 @@
 """Tests for the algebraic validation report and template-guided repair
 (:mod:`buildingmotif.dataclasses.algebraic_validation`).
 
-These exercise the thesis of the design: shifty's gate is a rigorous soundness
+These exercise the thesis of the design: pyshifty's gate is a rigorous soundness
 oracle, and BuildingMOTIF templates + VF2 monomorphism are a smarter candidate
-generator than shifty's naive ``Hole.candidates`` -- so the template-guided path
-produces *sound + progress-making* repairs where stock shifty cannot.
+generator than pyshifty's naive ``Hole.candidates`` -- so the template-guided path
+produces *sound + progress-making* repairs where stock pyshifty cannot.
 """
 import pytest
 import rdflib
@@ -17,7 +17,7 @@ from buildingmotif.dataclasses import (
     Model,
 )
 from buildingmotif.dataclasses.template import Template
-from buildingmotif.namespaces import PARAM, SH, A
+from buildingmotif.namespaces import BRICK, OWL, PARAM, SH, A
 
 pytest.importorskip("shifty")
 
@@ -47,7 +47,7 @@ def _mincount_class_shapes() -> Graph:
 
 def test_template_mint_beats_naive_shifty_candidate(bm: BuildingMOTIF):
     """A minCount+class failure: the template-guided proposal mints a *typed*
-    instance (sound + progress) and ranks first, whereas shifty's own
+    instance (sound + progress) and ranks first, whereas pyshifty's own
     candidates are at best sound-but-not-progress."""
     lib = Library.create("repairlib")
     _thing_template(lib)
@@ -81,7 +81,7 @@ def test_template_mint_beats_naive_shifty_candidate(bm: BuildingMOTIF):
 
     # the naive shifty candidates (flat reuse-first guesses) still cannot make
     # progress on a typed-value requirement on their own...
-    flat = [p for p in proposals if p.origin == "shifty-candidate"]
+    flat = [p for p in proposals if p.origin == "pyshifty-candidate"]
     assert flat, "shifty should still offer flat candidates"
     assert not any(p.is_progress for p in flat)
     # ...but recursive synthesis makes progress even without any templates
@@ -191,6 +191,81 @@ def test_deletion_direction_for_sh_not(bm: BuildingMOTIF):
     assert len(best.additions) == 0
 
 
+def test_get_broken_entities_maps_graph_level_failure_to_model(bm: BuildingMOTIF):
+    shapes = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        ex:S a sh:NodeShape ; sh:targetNode "literal-focus" ;
+          sh:property [ sh:path ex:p ; sh:minCount 1 ] .
+        """,
+        format="turtle",
+    )
+    data = Graph()
+    model = Model.create(BLDG)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+
+    assert not ctx.conforms
+    assert isinstance(ctx.report, Graph)
+    assert len(ctx.report) > 0
+    assert set(ctx.diffset) == {None}
+    assert ctx.get_broken_entities() == {"Model"}
+
+
+def test_brick_point_inverse_axioms_do_not_break_has_point_templates(
+    bm: BuildingMOTIF,
+):
+    shapes = Graph().parse(
+        data=f"""
+        @prefix brick: <{BRICK}> .
+        @prefix owl: <{OWL}> .
+        @prefix sh: <{SH}> .
+        brick:hasPoint owl:inverseOf brick:isPointOf .
+        brick:isPointOf owl:inverseOf brick:hasPoint .
+        brick:Point a sh:NodeShape ;
+          sh:targetClass brick:Point ;
+          sh:property [ sh:path brick:isPointOf ; sh:maxCount 0 ] .
+        """,
+        format="turtle",
+    )
+    data = Graph().parse(
+        data=f"""
+        @prefix brick: <{BRICK}> .
+        @prefix bldg: <{BLDG}> .
+        bldg:root brick:hasPoint bldg:point .
+        bldg:point a brick:Point .
+        """,
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+
+    assert ctx.conforms
+    assert ctx.get_broken_entities() == set()
+
+
+def test_get_reasons_with_severity_wraps_pyshifty_reasons(bm: BuildingMOTIF):
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+
+    reasons = ctx.get_reasons_with_severity("Violation")
+    reason = reasons[BLDG["x"]][0]
+    assert callable(reason.reason)
+    assert reason.reason() == (
+        "<urn:bldg/x> at least 1 value(s) required along <http://ex/p>, found 0"
+    )
+    assert reason.message == "at least 1 value(s) required along <http://ex/p>, found 0"
+
+
 def test_as_templates_resolves_violation(bm: BuildingMOTIF):
     """``as_templates`` lifts the best sound repair into a BuildingMOTIF
     template whose body fixes the failure when merged into the model."""
@@ -286,10 +361,10 @@ def test_all_repair_templates_returns_alternatives(bm: BuildingMOTIF):
     assert len(witness_alts) == len(alternatives)
 
 
-def test_auto_route_shifty_engine_returns_algebraic_context(bm: BuildingMOTIF):
-    """Model.validate with the shifty engine returns the new context and keeps
+def test_auto_route_pyshifty_engine_returns_algebraic_context(bm: BuildingMOTIF):
+    """Model.validate with the pyshifty engine returns the new context and keeps
     the legacy ``diffset`` / ``failed_component`` surface working."""
-    bm.shacl_engine = "shifty"
+    bm.shacl_engine = "pyshifty"
     shape_graph = Graph().parse(
         data="""
         @prefix sh: <http://www.w3.org/ns/shacl#> .

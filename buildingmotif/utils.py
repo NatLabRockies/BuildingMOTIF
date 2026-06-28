@@ -641,18 +641,18 @@ def skip_uri(uri: URIRef) -> bool:
 def shacl_validate(
     data_graph: Graph,
     shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
+    engine: Optional[str] = None,
 ) -> Tuple[bool, Graph, str]:
     """
     Validate the data graph against the shape graph.
-    Uses the fastest validation method available. Use the 'topquadrant' feature
-    to use TopQuadrant's SHACL engine. Defaults to using PySHACL.
+    Defaults to the ``pyshifty`` engine. Use the 'topquadrant'
+    feature to use TopQuadrant's SHACL engine.
 
     :param data_graph: the graph to validate
     :type data_graph: Graph
     :param shape_graph: the shape graph to validate against
     :type shape_graph: Graph, optional
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
+    :param engine: the SHACL engine to use, defaults to "pyshifty"
     :type engine: str, optional
     :return: a tuple containing the validation result, the validation report, and the validation report string
     :rtype: Tuple[bool, Graph, str]
@@ -665,19 +665,18 @@ def shacl_validate(
 def shacl_inference(
     data_graph: Graph,
     shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
+    engine: Optional[str] = None,
 ) -> Graph:
     """
     Infer new triples in the data graph using the shape graph.
-    Edits the data graph in place. Uses the fastest inference method available.
-    Use the 'topquadrant' feature to use TopQuadrant's SHACL engine. Defaults to
-    using PySHACL.
+    Edits the data graph in place. Defaults to the ``pyshifty`` engine. Use the
+    'topquadrant' feature to use TopQuadrant's SHACL engine.
 
     :param data_graph: the graph to infer new triples in
     :type data_graph: Graph
     :param shape_graph: the shape graph to use for inference
     :type shape_graph: Optional[Graph]
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
+    :param engine: the SHACL engine to use, defaults to "pyshifty"
     :type engine: str, optional
     :return: the data graph with inferred triples
     :rtype: Graph

@@ -1,26 +1,26 @@
 """Algebraic validation report and template-guided graph repair.
 
 This module is an alternative to :mod:`buildingmotif.dataclasses.validation` that
-consumes the *algebraic* output of the ``shifty`` SHACL engine
-(``pyshifty``) instead of re-parsing a flattened W3C SHACL validation report.
+consumes the *algebraic* output of the ``pyshifty`` SHACL engine instead of
+re-parsing a flattened W3C SHACL validation report.
 
-The shifty theory (``shifty-theory.pdf`` §9, "Symbolic repair: abduction over
+The pyshifty theory (``shifty-theory.pdf`` §9, "Symbolic repair: abduction over
 φ") frames repair as the abductive dual of validation: for each failing
-``(focus, statement)`` it synthesizes a :class:`shifty.RepairTree` — an
+``(focus, statement)`` it synthesizes a pyshifty repair tree — an
 AND/OR/Repeat tree of typed *holes* describing every edit that would make the
 focus conform — and ships a *gate* (``§9.6``) that re-validates a candidate
 ``ΔG`` over the whole graph and reports whether it is *sound* (introduces no new
 violation) and makes *progress* (removes at least one).
 
-shifty's own hole-filling (:meth:`shifty.Hole.candidates`) is reuse-first but
+pyshifty's own hole-filling (:meth:`pyshifty.Hole.candidates`) is reuse-first but
 deliberately naive: it offers any term drawn from the data graph and lets the
-caller decide. BuildingMOTIF can do better. It already owns two things shifty
+caller decide. BuildingMOTIF can do better. It already owns two things pyshifty
 does not: a *library of templates* (the project's domain vocabulary) and a *VF2
 monomorphism search* over those templates
 (:class:`buildingmotif.template_matcher.TemplateMatcher`). This module fuses the
 two: it uses templates + monomorphism as a *smart candidate generator*
 (reuse-first via subgraph matching, mint-correct via template grounding) and
-uses shifty's gate as the *rigorous arbiter*. Every proposed repair is gated;
+uses pyshifty's gate as the *rigorous arbiter*. Every proposed repair is gated;
 proposals are ranked by maximal reuse / minimal additions.
 
 The library decides nothing: :class:`AlgebraicValidationContext` only *proposes*
@@ -44,7 +44,7 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
 from rdflib.util import from_n3
 
-from buildingmotif.namespaces import PARAM, SH
+from buildingmotif.namespaces import BRICK, OWL, PARAM, SH
 from buildingmotif.utils import copy_graph, replace_nodes
 
 if TYPE_CHECKING:
@@ -64,20 +64,33 @@ def _mint_uri() -> URIRef:
 
 
 def _node_to_nt(node: Node) -> str:
-    """Render an rdflib node in the N-Triples term syntax shifty expects."""
+    """Render an rdflib node in the N-Triples term syntax pyshifty expects."""
     return node.n3()
 
 
 def _nt_to_node(term: str) -> Node:
-    """Parse an N-Triples term (as emitted by shifty) into an rdflib node."""
+    """Parse an N-Triples term (as emitted by pyshifty) into an rdflib node."""
     return from_n3(term.strip())
 
 
+def _focus_to_node(focus: object) -> Optional[Node]:
+    """Normalize pyshifty focus terms to legacy ValidationContext keys."""
+    node = _nt_to_node(focus) if isinstance(focus, str) and focus else None
+    return None if isinstance(node, Literal) else node
+
+
 def _triples_to_graph(triples) -> Graph:
-    """Build a graph from shifty (s, p, o) N-Triples-string tuples."""
+    """Build a graph from pyshifty (s, p, o) N-Triples-string tuples."""
     g = Graph()
     for s_nt, p_nt, o_nt in triples:
         g.add((_nt_to_node(s_nt), _nt_to_node(p_nt), _nt_to_node(o_nt)))
+    return g
+
+
+def _without_redundant_point_inverse_axioms(graph: Graph) -> Graph:
+    g = copy_graph(graph)
+    g.remove((BRICK.isPointOf, OWL.inverseOf, BRICK.hasPoint))
+    g.remove((BRICK.hasPoint, OWL.inverseOf, BRICK.isPointOf))
     return g
 
 
@@ -90,11 +103,36 @@ def _make_resolve_library() -> "Library":
     return Library.create(f"resolve_{token_hex(4)}")
 
 
+@dataclass(frozen=True)
+class AlgebraicReason:
+    """Legacy-compatible wrapper for pyshifty validation reasons."""
+
+    raw: "object"
+
+    def __getattr__(self, name):
+        return getattr(self.raw, name)
+
+    def reason(self) -> str:
+        message = getattr(self.raw, "message", None)
+        value = getattr(self.raw, "value", None)
+        if message and value:
+            return f"{value} {message}"
+        if message:
+            return str(message)
+        return str(self.raw)
+
+    def __str__(self) -> str:
+        return self.reason()
+
+    def __hash__(self):
+        return hash(self.reason())
+
+
 @dataclass
 class RepairProposal:
     """One soundness-gated repair candidate for a single :class:`RepairWitness`.
 
-    A proposal carries both representations requested by the design: the shifty
+    A proposal carries both representations requested by the design: the pyshifty
     ``ΔG`` (``additions`` / ``deletions`` graphs plus the gate's ``outcome``) and
     the means to lift the additions back into a BuildingMOTIF
     :class:`~buildingmotif.dataclasses.template.Template` via :meth:`as_template`.
@@ -108,7 +146,7 @@ class RepairProposal:
     deletions: Graph
     # the gate's verdict (None for a blocked, non-actionable proposal)
     outcome: Optional["object"]
-    # provenance: "template:<name>", "shifty-candidate", "hand", or "blocked"
+    # provenance: "template:<name>", "pyshifty-candidate", "hand", or "blocked"
     origin: str
     # existing model nodes this proposal reuses rather than mints
     reused_nodes: Set[Node] = field(default_factory=set)
@@ -197,7 +235,7 @@ class RepairProposal:
         return lib.create_template(template_name, body)
 
     def to_delta(self):
-        """Return this proposal as a shifty :class:`shifty.RepairDelta`."""
+        """Return this proposal as a pyshifty repair delta."""
         import shifty  # type: ignore
 
         return shifty.delta_from_graph(
@@ -210,7 +248,7 @@ class RepairProposal:
         return session.apply(self.to_delta())
 
     def advance(self, session):
-        """Return a new :class:`shifty.RepairSession` over ``G ⊕ ΔG``."""
+        """Return a new pyshifty repair session over ``G ⊕ ΔG``."""
         return session.advance(self.to_delta())
 
 
@@ -228,7 +266,7 @@ class RepairWitness:
     """
 
     focus: Optional[URIRef]
-    # the raw shifty FocusWitness
+    # the raw pyshifty FocusWitness
     witness: "object"
     # back-reference to the owning context (holds the session + repair engine)
     context: "AlgebraicValidationContext"
@@ -264,7 +302,7 @@ class RepairWitness:
 
     @cached_property
     def repair_tree(self):
-        """The shifty :class:`shifty.RepairTree` for this failure."""
+        """The pyshifty repair tree for this failure."""
         return self.witness.repair_tree()
 
     @property
@@ -360,24 +398,24 @@ class TemplateGuidedRepair:
     holes from four candidate sources, in priority order:
 
     1. **recursive synthesis** — for a hole that must conform to one or more
-       sub-shapes (:attr:`shifty.Hole.conforms_to_shapes`), build the value out
+       sub-shapes (:attr:`pyshifty.Hole.conforms_to_shapes`), build the value out
        structurally: reuse an existing node that already conforms, else mint a
        fresh node and recursively repair it against each sub-shape via
-       :meth:`shifty.RepairSession.repair_node_against` (bounded by ``BUILD_FUEL``).
+       pyshifty's repair-node-against operation (bounded by ``BUILD_FUEL``).
        This materializes deep, correctly-typed values (e.g. a ``sh:node`` over a
        multi-step path) that flat candidates cannot.
     2. **template reuse** — existing model nodes that are monomorphic to a
        library template (via :class:`~buildingmotif.template_matcher.TemplateMatcher`),
     3. **template mint** — a freshly grounded template instance, which also pulls
        in domain structure beyond the bare shape requirement,
-    4. **shifty native candidates** — so we never do worse than stock shifty.
+    4. **pyshifty native candidates** — so we never do worse than stock pyshifty.
 
     Every assembled ``ΔG`` is gated; only sound deltas survive.
     """
 
     MAX_BRANCHES = 4
     MAX_TEMPLATES = 25
-    # depth budget for recursive ConformsTo synthesis (cf. shifty BUILD_FUEL)
+    # depth budget for recursive ConformsTo synthesis (cf. pyshifty BUILD_FUEL)
     BUILD_FUEL = 6
 
     def __init__(
@@ -455,7 +493,7 @@ class TemplateGuidedRepair:
     def _hole_shapes(hole) -> List[int]:
         """The sub-shape ids a hole's value must conform to (``[]`` if none).
 
-        Reads :attr:`shifty.Hole.conforms_to_shapes` (the multi-shape surface);
+        Reads :attr:`pyshifty.Hole.conforms_to_shapes` (the multi-shape surface);
         ``conforms_to`` is the deprecated single-shape view and is not used.
         """
         try:
@@ -655,7 +693,7 @@ class TemplateGuidedRepair:
             if ok:
                 yield (bindings, extra, f"template:{tmpl.name}", set())
 
-        # source 4: shifty native candidates (reuse-first), zipped per hole
+        # source 4: pyshifty native candidates (reuse-first), zipped per hole
         per_hole: Dict[int, List[str]] = {}
         for h in open_holes:
             try:
@@ -673,7 +711,7 @@ class TemplateGuidedRepair:
                     break
                 bindings[hid] = cands[min(i, len(cands) - 1)]
             if ok:
-                yield (bindings, Graph(), "shifty-candidate", set())
+                yield (bindings, Graph(), "pyshifty-candidate", set())
 
     # -- the gate + assembly ---------------------------------------------
 
@@ -734,7 +772,7 @@ class TemplateGuidedRepair:
                 # fully determined by the plan (e.g. a pure deletion repair)
                 additions = _triples_to_graph(inst.delta.add)
                 deletions = _triples_to_graph(inst.delta.delete)
-                p = self._gate(focus, additions, deletions, "shifty-candidate", set())
+                p = self._gate(focus, additions, deletions, "pyshifty-candidate", set())
                 if p is not None:
                     proposals.append(p)
                 continue
@@ -773,7 +811,7 @@ class TemplateGuidedRepair:
 
 @dataclass
 class AlgebraicValidationContext:
-    """Validation report built from shifty's algebraic + repair output.
+    """Validation report built from pyshifty's algebraic + repair output.
 
     A drop-in companion to
     :class:`buildingmotif.dataclasses.validation.ValidationContext`: it exposes
@@ -793,6 +831,9 @@ class AlgebraicValidationContext:
     def __post_init__(self):
         import shifty  # type: ignore
 
+        self.shapes_graph = _without_redundant_point_inverse_axioms(
+            self.shapes_graph
+        )
         self._session = shifty.RepairSession(self.shapes_graph, self.data_graph)
         self._algebra = shifty.validate_algebra(
             self.data_graph,
@@ -821,7 +862,7 @@ class AlgebraicValidationContext:
         libraries: Optional[List["Library"]] = None,
     ) -> "AlgebraicValidationContext":
         """Build a context from the graphs produced by
-        :meth:`buildingmotif.shacl.ShiftyBackend.validation_graphs`."""
+        :meth:`buildingmotif.shacl.PyshiftyBackend.validation_graphs`."""
         return cls(
             shape_collections,
             shapes_graph,
@@ -832,7 +873,7 @@ class AlgebraicValidationContext:
 
     @property
     def session(self):
-        """The underlying shifty :class:`shifty.RepairSession`."""
+        """The underlying pyshifty repair session."""
         return self._session
 
     @property
@@ -848,18 +889,30 @@ class AlgebraicValidationContext:
         return self._algebra.results_text
 
     @cached_property
+    def report(self) -> Graph:
+        """Legacy-compatible W3C SHACL report graph."""
+        import shifty  # type: ignore
+
+        if len(self.shapes_graph) == 0:
+            _, report_graph, _ = shifty.validate(
+                self.data_graph,
+                minimum_severity="violation",
+            )
+        else:
+            _, report_graph, _ = shifty.validate(
+                self.data_graph,
+                self.shapes_graph,
+                minimum_severity="violation",
+            )
+        return report_graph
+
+    @cached_property
     def witnesses(self) -> List[RepairWitness]:
         """The violation horizon: one :class:`RepairWitness` per failing
         ``(focus, statement)``. Empty iff the graph conforms."""
         out: List[RepairWitness] = []
         for w in self._session.witnesses():
-            focus = w.focus
-            focus_node = (
-                _nt_to_node(focus) if isinstance(focus, str) and focus else None
-            )
-            if isinstance(focus_node, Literal):
-                focus_node = None
-            out.append(RepairWitness(focus_node, w, self))  # type: ignore
+            out.append(RepairWitness(_focus_to_node(w.focus), w, self))  # type: ignore
         return out
 
     def witnesses_by_focus(self) -> Dict[Optional[URIRef], List[RepairWitness]]:
@@ -878,8 +931,8 @@ class AlgebraicValidationContext:
 
     # -- ValidationContext-compatible surface -----------------------------
 
-    def get_broken_entities(self) -> Set[Optional[URIRef]]:
-        return set(self.diffset.keys())
+    def get_broken_entities(self) -> Set[Union[URIRef, str]]:
+        return {focus or "Model" for focus in self.diffset}
 
     def get_diffs_for_entity(
         self, entity: Optional[URIRef]
@@ -893,7 +946,7 @@ class AlgebraicValidationContext:
         given severity (``SH.Violation``/``"Violation"``, ``SH.Warning``, or
         ``SH.Info``). Mirrors
         :meth:`buildingmotif.dataclasses.validation.ValidationContext.get_reasons_with_severity`;
-        each value is the list of shifty ``Reason`` objects at that severity."""
+        each value is the list of legacy-compatible pyshifty reasons at that severity."""
         if isinstance(severity, URIRef):
             severity_name = str(severity).split("#")[-1]
         else:
@@ -905,11 +958,10 @@ class AlgebraicValidationContext:
             )
         out: Dict[Optional[URIRef], List["object"]] = defaultdict(list)
         for v in self._algebra.violations:
-            fn = v.focus_node
-            focus = _nt_to_node(fn) if isinstance(fn, str) and fn else None
+            focus = _focus_to_node(v.focus_node)
             for reason in v.reasons:
                 if str(reason.severity).split("#")[-1] == severity_name:
-                    out[focus].append(reason)
+                    out[focus].append(AlgebraicReason(reason))
         return dict(out)
 
     def proposals(self, limit: int = 8) -> Dict[Optional[URIRef], List[RepairProposal]]:
