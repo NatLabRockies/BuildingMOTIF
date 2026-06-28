@@ -63,28 +63,22 @@ class OntologyEnvironment:
         )
 
     def graph_copy(self, ontology: str) -> rdflib.Graph:
-        if hasattr(self.env, "copy_graph"):
-            return self.env.copy_graph(ontology)
-        return self._copy_graph(self.env.get_graph(ontology))
+        return self.env.copy_graph(ontology)
 
     def closure_copy(
         self, ontology: str, recursion_depth: int = -1
     ) -> Tuple[rdflib.Graph, list[str]]:
-        # Always use get_closure rather than copy_closure: in ontoenv 0.6.x,
-        # copy_closure reads from the native Rust store and bypasses the custom
-        # graph_store adapter, returning empty graphs when BuildingMOTIF's store
-        # is in use. get_closure returns a ClosureGraphView that correctly routes
-        # through the adapter.
-        graph, names = self.env.get_closure(ontology, recursion_depth=recursion_depth)
-        return self._copy_graph(graph), list(names)
+        graph, names = self.env.copy_closure(
+            ontology,
+            rewrite_sh_prefixes=False,
+            recursion_depth=recursion_depth,
+        )
+        return graph, list(names)
 
     def iter_closure_triples(
         self, ontology: str, recursion_depth: int = -1
     ) -> Iterable[Tuple[rdflib.term.Node, rdflib.term.Node, rdflib.term.Node]]:
-        # iter_closure_triples has the same graph_store bypass issue as copy_closure;
-        # iterate over get_closure instead.
-        graph, _ = self.env.get_closure(ontology, recursion_depth=recursion_depth)
-        return iter(graph)
+        return self.env.iter_closure_triples(ontology, recursion_depth=recursion_depth)
 
     def dependencies_copy(
         self,
@@ -100,6 +94,20 @@ class OntologyEnvironment:
             fetch_missing=fetch_missing,
         )
         return self._copy_graph(result), list(names)
+
+    def import_dependencies(
+        self,
+        graph: rdflib.Graph,
+        recursion_depth: int = -1,
+        fetch_missing: bool = False,
+    ) -> list[str]:
+        return list(
+            self.env.import_dependencies(
+                graph,
+                recursion_depth=recursion_depth,
+                fetch_missing=fetch_missing,
+            )
+        )
 
     def missing_imports(
         self, ontology_or_graph: Optional[Union[str, rdflib.Graph]] = None

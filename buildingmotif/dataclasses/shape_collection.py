@@ -153,49 +153,13 @@ class ShapeCollection:
         if recursive_limit == 0:
             resolved = copy_graph(self.graph)
         else:
-            graph_name = str(self.graph_name) if self.graph_name else None
-            used_fallback = False
-            if graph_name is not None:
-                try:
-                    resolved = bm.ontology_environment.ensure_and_get_closure(
-                        self.graph,
-                        graph_name,
-                        recursion_depth=recursive_limit,
-                        fetch_imports=bm.ontology_fetch_imports,
-                    )
-                except Exception as e:
-                    logging.getLogger(__name__).warning(
-                        "Could not resolve imports for %s through ontoenv (%s). "
-                        "Falling back to dependency resolution.",
-                        graph_name,
-                        e,
-                    )
-                    used_fallback = True
-                    resolved, _ = bm.ontology_environment.dependencies_copy(
-                        self.graph,
-                        graph_name=graph_name,
-                        recursion_depth=recursive_limit,
-                        fetch_missing=bm.ontology_fetch_imports,
-                    )
-                    resolved += self.graph
-            else:
-                resolved, _ = bm.ontology_environment.dependencies_copy(
-                    self.graph,
-                    recursion_depth=recursive_limit,
-                    fetch_missing=bm.ontology_fetch_imports,
-                )
-                resolved += self.graph
-
-            # When the fallback path was used, graph_name is not in ontoenv's
-            # index so missing_imports(graph_name) would report false positives.
-            # Check against self.graph instead so we report what owl:imports
-            # are still genuinely unresolvable from the graph content.
-            missing_imports_source = (
-                self.graph if used_fallback else (graph_name or self.graph)
+            resolved = copy_graph(self.graph)
+            bm.ontology_environment.import_dependencies(
+                resolved,
+                recursion_depth=recursive_limit,
+                fetch_missing=bm.ontology_fetch_imports,
             )
-            missing_imports = bm.ontology_environment.missing_imports(
-                missing_imports_source
-            )
+            missing_imports = bm.ontology_environment.missing_imports(self.graph)
             if missing_imports and error_on_missing_imports:
                 raise OntologyImportsNotFound(missing_imports)
             if missing_imports:
@@ -254,36 +218,19 @@ class ShapeCollection:
         """
         bm = get_building_motif()
         logger = logging.getLogger(__name__)
-        graph_name = str(self.graph_name) if self.graph_name else None
-        if graph_name is not None:
-            try:
-                imports_closure = bm.ontology_environment.ensure_and_get_closure(
-                    self.graph,
-                    graph_name,
-                    fetch_imports=bm.ontology_fetch_imports,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Could not resolve imports for %s through ontoenv (%s). "
-                    "Inferring templates from the local graph only.",
-                    graph_name,
-                    e,
-                )
-                imports_closure = copy_graph(self.graph)
-        else:
-            try:
-                imports_closure, _ = bm.ontology_environment.dependencies_copy(
-                    self.graph,
-                    fetch_missing=bm.ontology_fetch_imports,
-                )
-                imports_closure += self.graph
-            except Exception as e:
-                logger.warning(
-                    "Could not resolve imports through ontoenv (%s). "
-                    "Inferring templates from the local graph only.",
-                    e,
-                )
-                imports_closure = copy_graph(self.graph)
+        imports_closure = copy_graph(self.graph)
+        try:
+            bm.ontology_environment.import_dependencies(
+                imports_closure,
+                fetch_missing=bm.ontology_fetch_imports,
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not resolve imports through ontoenv (%s). "
+                "Inferring templates from the local graph only.",
+                e,
+            )
+            imports_closure = copy_graph(self.graph)
 
         dependency_graphs: dict[str, Graph] = {}
 
