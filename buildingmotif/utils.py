@@ -14,7 +14,6 @@ from rdflib.term import Node
 
 from buildingmotif.database.errors import TemplateNotFound
 from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
-from buildingmotif.shacl import normalize_shacl_engine
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Template
