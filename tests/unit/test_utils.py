@@ -15,7 +15,6 @@ from buildingmotif.utils import (
     get_parameters,
     get_template_parts_from_shape,
     graph_hash,
-    normalize_shacl_engine,
     replace_nodes,
     rewrite_shape_graph,
     shacl_inference,
@@ -334,17 +333,6 @@ def test_param_name():
     bad_p = BRICK["abc"]
     with pytest.raises(AssertionError):
         _param_name(bad_p)
-
-
-def test_normalize_shacl_engine():
-    assert normalize_shacl_engine(None) == "pyshifty"
-    assert normalize_shacl_engine("pyshacl") == "pyshacl"
-    assert normalize_shacl_engine("topquadrant") == "topquadrant"
-    assert normalize_shacl_engine("pyshifty") == "pyshifty"
-    assert normalize_shacl_engine("shifty") == "pyshifty"
-
-    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
-        normalize_shacl_engine("bad-engine")
 
 
 def test_shacl_helpers_validate_engine_choice():
