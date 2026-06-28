@@ -17,6 +17,7 @@ from buildingmotif.database.errors import LibraryNotFound
 from buildingmotif.database.tables import DBLibrary, DBTemplate
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.template import Template
+from buildingmotif.namespaces import bind_prefixes
 from buildingmotif.schemas import validate_libraries_yaml
 from buildingmotif.template_compilation import compile_template_spec
 from buildingmotif.utils import get_ontology_files, shacl_inference
@@ -358,17 +359,27 @@ class Library:
         :param run_shacl_inference: if true, run SHACL inference on the ontology graph
         :type run_shacl_inference: bool
         """
+        bm = get_building_motif()
         shape_col_id = self.get_shape_collection().id
         assert shape_col_id is not None  # this should always pass
         shape_col = ShapeCollection.load(shape_col_id)
+        graph_id = bm.table_connection.get_db_shape_collection(shape_col_id).graph_id
         for filename in get_ontology_files(directory):
             try:
-                shape_col.graph.parse(filename, format=guess_format(filename))
+                # Oxigraph's native loader is much faster than rdflib.parse for
+                # large ontologies; it falls back to rdflib internally if needed.
+                bm.graph_connection.load_file_into_graph(
+                    graph_id, filename, guess_format(str(filename))
+                )
             except (ParserError, BadSyntax) as e:
                 logging.getLogger(__name__).error(
                     f"Could not parse file {filename}: {e}"
                 )
                 raise e
+        # Native loading does not propagate file prefixes to the rdflib
+        # namespace manager; restore the standard BuildingMOTIF prefixes so
+        # serialization stays readable.
+        bind_prefixes(shape_col.graph)
         if run_shacl_inference:
             shape_col.graph = shacl_inference(
                 shape_col.graph, engine=get_building_motif().shacl_engine

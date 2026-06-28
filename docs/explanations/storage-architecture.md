@@ -38,8 +38,26 @@ about how we do that correctly.
 ```{note}
 Run SPARQL through the Oxigraph-backed graph (`graph.query(...)` /
 `store.query(...)`) rather than iterating triples in Python. Iterate triples
-only when you genuinely need to walk the whole graph.
+only when you genuinely need to walk the whole graph. rdflib's `Graph.query`
+already dispatches to Oxigraph's native SPARQL engine for store-backed graphs,
+so no special handling is needed.
 ```
+
+## Loading files: native vs. rdflib
+
+Parsing a large ontology with `Graph.parse` adds triples one at a time through
+rdflib's Python layer, which is slow. `GraphConnection.load_file_into_graph`
+instead uses Oxigraph's native (Rust) loader to parse a file directly into a
+named graph — roughly an order of magnitude faster on large files (e.g. Brick).
+The library directory loader uses this path.
+
+Native loading is for **trusted on-disk RDF only**: the native parser requires
+syntactically valid IRIs, so it must not be used for in-memory graphs that may
+carry generated template parameters with invalid IRIs (those still go through
+the wrapper). It also does not populate rdflib's namespace manager, so callers
+re-bind the standard prefixes (`bind_prefixes`) afterward. If the native parser
+cannot handle a file, the method transparently falls back to `Graph.parse`, so
+behavior is never worse than before.
 
 ## The `graph_id` pointer
 
