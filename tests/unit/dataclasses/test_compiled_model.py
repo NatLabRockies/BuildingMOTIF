@@ -1,7 +1,8 @@
 import sqlite3
 
 import pytest
-from rdflib import URIRef
+from rdflib import Graph, Literal, URIRef
+from rdflib.namespace import RDFS
 
 from buildingmotif.dataclasses import Library, Model
 from buildingmotif.dataclasses.compiled_model import CompiledModel
@@ -44,6 +45,26 @@ def test_compiled_model_compilation(clean_building_motif_topquadrant):
     assert bool(
         res
     ), "DumbSwitch is not connectedTo Luminaire, so s223 inference did not run to completion"
+
+
+def test_add_graph_updates_compiled_model_graph(clean_building_motif_topquadrant):
+    model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
+    shape_collection = Library.load(
+        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    ).get_shape_collection()
+    compiled_model = model.compile([shape_collection])
+
+    extra = Graph()
+    triple = (
+        URIRef("urn:model1/added"),
+        RDFS.label,
+        Literal("added to compiled model"),
+    )
+    extra.add(triple)
+
+    assert triple not in compiled_model.graph
+    compiled_model.add_graph(extra)
+    assert triple in compiled_model.graph
 
 
 def test_defining_shape_collection(clean_building_motif_topquadrant):
