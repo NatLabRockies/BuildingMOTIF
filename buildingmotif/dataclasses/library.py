@@ -1,7 +1,7 @@
 import logging
 import pathlib
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pygit2
@@ -32,7 +32,7 @@ class Library:
 
     _id: int
     _name: str
-    _bm: "BuildingMOTIF"
+    _bm: "BuildingMOTIF" = field(compare=False)
 
     @classmethod
     def create(cls, name: str, overwrite: Optional[bool] = True) -> "Library":

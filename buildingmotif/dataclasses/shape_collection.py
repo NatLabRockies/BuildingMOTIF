@@ -2,7 +2,7 @@ import logging
 import random
 import string
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
@@ -33,8 +33,8 @@ class ShapeCollection:
     """This class mirrors :py:class:`database.tables.DBShapeCollection`."""
 
     _id: int
-    graph: rdflib.Graph
-    _bm: "BuildingMOTIF"
+    graph: rdflib.Graph = field(compare=False)
+    _bm: "BuildingMOTIF" = field(compare=False)
 
     @classmethod
     def create(cls) -> "ShapeCollection":

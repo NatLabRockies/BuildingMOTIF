@@ -3,7 +3,7 @@ import logging
 import warnings
 from collections import Counter
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO, StringIO
 from itertools import chain
 from os import PathLike
@@ -48,9 +48,9 @@ class Template:
 
     _id: int
     _name: str
-    body: rdflib.Graph
+    body: rdflib.Graph = field(compare=False)
     optional_args: List[str]
-    _bm: "BuildingMOTIF"
+    _bm: "BuildingMOTIF" = field(compare=False)
 
     @classmethod
     def load(cls, id: int) -> "Template":

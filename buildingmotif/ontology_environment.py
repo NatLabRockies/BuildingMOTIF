@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Iterable, Optional, Tuple, Union
 import rdflib
 from ontoenv import OntoEnv
 
+from buildingmotif.database.graph_connection import _is_uuid
+
 if TYPE_CHECKING:
     from buildingmotif.database.graph_connection import GraphConnection
 
@@ -151,7 +153,11 @@ class BuildingMOTIFGraphStore:
         self.graph_connection.delete_graph(iri)
 
     def graph_ids(self) -> list[str]:
-        return self.graph_connection.get_all_graph_identifiers()
+        return [
+            gid
+            for gid in self.graph_connection.get_all_graph_identifiers()
+            if not _is_uuid(gid)
+        ]
 
     def size(self) -> dict[str, int]:
         graph_ids = self.graph_ids()

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, List, Optional
 
@@ -31,8 +31,8 @@ class Model:
     _id: int
     _name: str
     _description: str
-    _graph: rdflib.Graph
-    _bm: "BuildingMOTIF"
+    _graph: rdflib.Graph = field(compare=False)
+    _bm: "BuildingMOTIF" = field(compare=False)
     _manifest_id: int
 
     @classmethod
