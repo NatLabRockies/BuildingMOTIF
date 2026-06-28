@@ -36,7 +36,8 @@ with-relief-damper:
   body: >
     @prefix p: <urn:___param___#> .
     @prefix brick: <https://brickschema.org/schema/Brick#> .
-    p:name brick:hasPart p:relief-fan, p:relief-damper ;
+    p:name a brick:AHU ;
+           brick:hasPart p:relief-fan, p:relief-damper ;
            brick:hasPoint p:sp-sensor .
     p:relief-damper a brick:Exhaust_Damper .
   optional: ["sp-sensor"]
@@ -53,7 +54,8 @@ with-return-fan:
   body: >
     @prefix p: <urn:___param___#> .
     @prefix brick: <https://brickschema.org/schema/Brick#> .
-    p:name brick:hasPart p:return-fan ;
+    p:name a brick:AHU ;
+      brick:hasPart p:return-fan ;
       brick:hasPoint p:supply-air-flow, p:return-air-flow, p:sp-sensor .
     p:relief-damper a brick:Exhaust_Damper .
   optional: ["supply-air-flow", "return-air-flow", "sp-sensor"]

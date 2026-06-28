@@ -70,7 +70,7 @@ electrical_meter:
     current: https://brickschema.org/schema/Brick#Current_Sensor
     voltage: https://brickschema.org/schema/Brick#Voltage_Sensor
     power: https://brickschema.org/schema/Brick#Power_Sensor
-    breaker_status: breaker_status
+    breaker_status: https://brickschema.org/schema/Brick#Status
   dependencies:
     - template: breaker_status
       args: {"name": "breaker_status"}
