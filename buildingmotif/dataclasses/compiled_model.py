@@ -157,23 +157,6 @@ class CompiledModel:
                 self.shape_collections,
                 error_on_missing_imports=error_on_missing_imports,
             )
-            if self._requires_pyshacl_validation(graphs.shape_graph):
-                valid, report_g, report_str = get_shacl_backend("pyshacl").validate(
-                    graphs.data_graph, graphs.shape_graph
-                )
-                context_graph = graphs.data_graph + (
-                    graphs.shape_graph
-                    if graphs.shape_graph is not None
-                    else rdflib.Graph()
-                )
-                return ValidationContext(
-                    self.shape_collections,
-                    context_graph,
-                    valid,
-                    report_g,
-                    report_str,
-                    self.model,
-                )
             return AlgebraicValidationContext.from_compiled(
                 self.shape_collections,
                 graphs.shape_graph
@@ -214,12 +197,6 @@ class CompiledModel:
             if (shape, A, SH.NodeShape) in sc.graph:
                 return sc
         return None
-
-    @staticmethod
-    def _requires_pyshacl_validation(shape_graph: Optional[rdflib.Graph]) -> bool:
-        if shape_graph is None:
-            return False
-        return (None, A, SH.SPARQLAskValidator) in shape_graph
 
     def shape_to_table(self, shape: rdflib.URIRef, table: str, conn):
         """

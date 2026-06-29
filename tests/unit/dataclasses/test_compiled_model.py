@@ -1,10 +1,12 @@
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 from rdflib import Graph, URIRef
 
-from buildingmotif.dataclasses import Library, Model
+from buildingmotif.dataclasses import Library, Model, ValidationContext
 from buildingmotif.dataclasses.compiled_model import CompiledModel
+from buildingmotif.namespaces import A, SH
 
 
 def test_validate(clean_building_motif_topquadrant):
@@ -117,6 +119,79 @@ def test_shape_to_table_empty_result_preserves_columns(clean_building_motif):
     conn = sqlite3.connect(":memory:")
     compiled_model.shape_to_table(URIRef("urn:ex/shape"), "empty_shape", conn)
     assert conn.execute("SELECT target, thing FROM empty_shape").fetchall() == []
+
+
+def test_pyshifty_validate_uses_algebraic_context_for_sparql_ask_validator(
+    clean_building_motif, monkeypatch
+):
+    model = Model.create("urn:model/")
+    compiled_model = CompiledModel(model, [], Graph(), shacl_engine="pyshifty")
+    data_graph = Graph()
+    shape_graph = Graph()
+    shape_graph.add((URIRef("urn:validator"), A, SH.SPARQLAskValidator))
+    report_graph = Graph()
+    calls = []
+
+    class FakePyshiftyBackend:
+        def validation_graphs(self, compiled_graph, shape_collections, **kwargs):
+            calls.append(("pyshifty", compiled_graph, shape_collections, kwargs))
+            return SimpleNamespace(
+                data_graph=data_graph,
+                shape_graph=shape_graph,
+                context_graph=shape_graph,
+            )
+
+    def fake_get_shacl_backend(engine):
+        assert engine == "pyshifty"
+        return FakePyshiftyBackend()
+
+    def fake_from_compiled(
+        shape_collections, shapes, data, model_arg, libraries=None
+    ):
+        calls.append(("algebraic", shape_collections, shapes, data, model_arg, libraries))
+        return report_graph
+
+    monkeypatch.setattr(
+        "buildingmotif.dataclasses.compiled_model.get_shacl_backend",
+        fake_get_shacl_backend,
+    )
+    monkeypatch.setattr(
+        "buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext.from_compiled",
+        fake_from_compiled,
+    )
+
+    context = compiled_model.validate()
+
+    assert context is report_graph
+    assert calls[0][0] == "pyshifty"
+    assert calls[1] == ("algebraic", [], shape_graph, data_graph, model, None)
+
+
+def test_repair_libraries_warns_and_uses_legacy_context_for_non_pyshifty(
+    clean_building_motif, monkeypatch
+):
+    model = Model.create("urn:model/")
+    compiled_model = CompiledModel(model, [], Graph(), shacl_engine="pyshacl")
+    report_graph = Graph()
+    calls = []
+
+    class FakePyshaclBackend:
+        def validate_compiled_model(self, compiled_graph, shape_collections, **kwargs):
+            calls.append((compiled_graph, shape_collections, kwargs))
+            return (True, report_graph, "ok"), Graph()
+
+    monkeypatch.setattr(
+        "buildingmotif.dataclasses.compiled_model.get_shacl_backend",
+        lambda engine: FakePyshaclBackend(),
+    )
+
+    with pytest.warns(UserWarning, match="repair_libraries is only used"):
+        context = compiled_model.validate(repair_libraries=[])
+
+    assert isinstance(context, ValidationContext)
+    assert context.valid
+    assert context.report is report_graph
+    assert len(calls) == 1
 
 
 def test_shape_to_df(clean_building_motif_topquadrant):
