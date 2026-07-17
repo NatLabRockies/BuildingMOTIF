@@ -19,6 +19,7 @@ from buildingmotif.shacl import (
 from buildingmotif.utils import copy_graph
 
 if TYPE_CHECKING:
+    from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.library import Library
 
 
@@ -116,6 +117,7 @@ class CompiledModel:
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
+        repair_config: Optional["RepairConfig"] = None,
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -128,6 +130,10 @@ class CompiledModel:
             ontologies are missing (i.e. they need to be loaded into BuildingMOTIF), defaults
             to True
         :type error_on_missing_imports: bool, optional
+        :param repair_config: search budgets for template-guided repair (only used by
+            the ``pyshifty`` engine); defaults to
+            :class:`~buildingmotif.dataclasses.algebraic_validation.RepairConfig`
+        :type repair_config: Optional[RepairConfig]
         :return: An object containing useful properties/methods to deal with
             the validation results
         :rtype: ValidationContext
@@ -135,9 +141,12 @@ class CompiledModel:
         import warnings
 
         shacl_engine = normalize_shacl_engine(shacl_engine or self.shacl_engine)
-        if repair_libraries is not None and shacl_engine != DEFAULT_SHACL_ENGINE:
+        if (
+            repair_libraries is not None or repair_config is not None
+        ) and shacl_engine != DEFAULT_SHACL_ENGINE:
             warnings.warn(
-                "repair_libraries is only used by the 'pyshifty' engine and will be ignored.",
+                "repair_libraries and repair_config are only used by the 'pyshifty' "
+                "engine and will be ignored.",
                 stacklevel=3,
             )
         backend = get_shacl_backend(shacl_engine)
@@ -165,6 +174,7 @@ class CompiledModel:
                 graphs.data_graph,
                 self.model,
                 libraries=repair_libraries,
+                repair_config=repair_config,
             )
 
         (valid, report_g, report_str), context_graph = backend.validate_compiled_model(

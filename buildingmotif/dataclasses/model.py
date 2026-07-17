@@ -14,6 +14,7 @@ from buildingmotif.utils import Triple
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
+    from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.compiled_model import CompiledModel
     from buildingmotif.dataclasses.library import Library
 
@@ -193,6 +194,7 @@ class Model:
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
+        repair_config: Optional["RepairConfig"] = None,
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -220,6 +222,11 @@ class Model:
             :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`).
             Defaults to no template guidance.
         :type repair_libraries: Optional[List[Library]]
+        :param repair_config: search budgets for template-guided repair -- how many
+            templates, ``Any`` branches, synthesis recursion, and per-hole candidates
+            to try (only used by the ``pyshifty`` engine). Defaults to
+            :class:`~buildingmotif.dataclasses.algebraic_validation.RepairConfig`.
+        :type repair_config: Optional[RepairConfig]
 
         :rtype: ValidationContext
         """
@@ -227,7 +234,10 @@ class Model:
             shape_collections or [self.get_manifest()], shacl_engine=shacl_engine
         )
         return compiled_model.validate(
-            error_on_missing_imports, shacl_engine, repair_libraries=repair_libraries
+            error_on_missing_imports,
+            shacl_engine,
+            repair_libraries=repair_libraries,
+            repair_config=repair_config,
         )
 
     def compile(

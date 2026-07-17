@@ -26,6 +26,7 @@ proposals are ranked by maximal reuse / minimal additions.
 The library decides nothing: :class:`AlgebraicValidationContext` only *proposes*
 ranked, gated repairs. Applying one is always the caller's choice.
 """
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -36,7 +37,7 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
 from rdflib.util import from_n3
 
-from buildingmotif.namespaces import BRICK, OWL, PARAM, SH
+from buildingmotif.namespaces import BRICK, OWL, PARAM, RDF, RDFS, SH
 from buildingmotif.utils import copy_graph, replace_nodes
 
 if TYPE_CHECKING:
@@ -79,6 +80,32 @@ def _triples_to_graph(triples) -> Graph:
     return g
 
 
+def _ontology_projection(ontology: Graph) -> Graph:
+    """Project an ontology down to the triples the monomorphism search reads.
+
+    :class:`~buildingmotif.template_matcher.TemplateMatcher` consults the ontology
+    for exactly three things -- ``rdfs:subClassOf`` (``parents``),
+    ``rdfs:subPropertyOf`` (``superproperties``), and ``(node, rdf:type,
+    owl:Class)`` (``defined_in``). Node *types* are read from the data/template
+    graphs, not from here. Restricting the graph to those triples is therefore
+    semantics-preserving, and it makes every ``transitive_objects`` walk cheaper
+    -- which matters because the matcher rebuilds its ontology cache for each of
+    the ``2^|nodes|`` template subgraphs it enumerates.
+
+    Note that a *partial* projection is not safe: dropping the ``owl:Class``
+    declarations (keeping only ``subClassOf``) makes ``defined_in`` false for
+    every class, which silently turns the class check into a permissive one.
+    """
+    projected = Graph()
+    for triple in ontology.triples((None, RDFS.subClassOf, None)):
+        projected.add(triple)
+    for triple in ontology.triples((None, RDFS.subPropertyOf, None)):
+        projected.add(triple)
+    for triple in ontology.triples((None, RDF.type, OWL.Class)):
+        projected.add(triple)
+    return projected
+
+
 def _without_redundant_point_inverse_axioms(graph: Graph) -> Graph:
     g = copy_graph(graph)
     g.remove((BRICK.isPointOf, OWL.inverseOf, BRICK.hasPoint))
@@ -93,6 +120,34 @@ def _make_resolve_library() -> "Library":
     from buildingmotif.dataclasses import Library
 
     return Library.create(f"resolve_{token_hex(4)}")
+
+
+@dataclass(frozen=True)
+class RepairConfig:
+    """Search budgets for :class:`TemplateGuidedRepair`.
+
+    Candidate generation is heuristic and deliberately incomplete (see
+    ``algebraic-repair.md`` §7-8): these budgets bound it. The defaults reproduce
+    the historical hard-coded values. Raising them widens the search at a
+    superlinear cost -- in particular ``max_templates``, because template reuse
+    runs a :class:`~buildingmotif.template_matcher.TemplateMatcher` monomorphism
+    search *per template*, which is exponential in template size.
+
+    :param max_templates: how many templates to try *after* relevance filtering
+        (:meth:`TemplateGuidedRepair._select_templates` first keeps only templates
+        that could fill the failing hole), or ``None`` for no limit. The engine
+        rarely reaches this cap because the filter usually cuts the candidate set
+        to a handful; when it does bind it drops in library order, so prefer a
+        smaller, purpose-built library over raising it.
+    :param max_branches: how many branches to enumerate at each ``Any`` node
+    :param build_fuel: recursion depth budget for ConformsTo synthesis
+    :param candidate_limit: how many candidate terms to pull per hole
+    """
+
+    max_templates: Optional[int] = 25
+    max_branches: int = 4
+    build_fuel: int = 6
+    candidate_limit: int = 16
 
 
 @dataclass(frozen=True)
@@ -402,12 +457,9 @@ class TemplateGuidedRepair:
     4. **pyshifty native candidates** — so we never do worse than stock pyshifty.
 
     Every assembled ``ΔG`` is gated; only sound deltas survive.
-    """
 
-    MAX_BRANCHES = 4
-    MAX_TEMPLATES = 25
-    # depth budget for recursive ConformsTo synthesis (cf. pyshifty BUILD_FUEL)
-    BUILD_FUEL = 6
+    The search budgets live in :class:`RepairConfig`.
+    """
 
     def __init__(
         self,
@@ -415,13 +467,143 @@ class TemplateGuidedRepair:
         templates: List["Template"],
         model_graph: Graph,
         ontology_graph: Graph,
-        candidate_limit: int = 16,
+        config: Optional[RepairConfig] = None,
     ):
         self.session = session
         self.templates = templates
         self.model_graph = model_graph
         self.ontology_graph = ontology_graph
-        self.candidate_limit = candidate_limit
+        self.config = config or RepairConfig()
+        # memoized per-template monomorphism results and per-shape-set obligations
+        self._reuse_cache: Dict[int, List[Node]] = {}
+        self._required_types_cache: Dict[frozenset, Set[URIRef]] = {}
+        self._parents_cache: Dict[Node, Set[Node]] = {}
+        self._warned_truncation = False
+
+    @property
+    def candidate_limit(self) -> int:
+        return self.config.candidate_limit
+
+    @cached_property
+    def _matching_ontology(self) -> Graph:
+        """The ontology restricted to the triples the matcher reads."""
+        return _ontology_projection(self.ontology_graph)
+
+    def _parents(self, ntype: Node) -> Set[Node]:
+        """Transitive ``rdfs:subClassOf`` ancestors of ``ntype`` (including
+        itself), over the projected ontology; memoized."""
+        if ntype not in self._parents_cache:
+            self._parents_cache[ntype] = set(
+                self._matching_ontology.transitive_objects(ntype, RDFS.subClassOf)
+            )
+        return self._parents_cache[ntype]
+
+    # -- relevance filtering (keep only templates that can fill a hole) ----
+
+    def _template_name_types(self, tmpl: "Template") -> Set[URIRef]:
+        """The ``rdf:type``\\ s the template asserts directly on its ``name``
+        parameter. Empty when ``name`` is typed only through a dependency -- in
+        which case relevance is undecidable and we keep the template."""
+        if "name" not in tmpl.parameters:
+            return set()
+        return {
+            o
+            for o in tmpl.body.objects(PARAM["name"], RDF.type)
+            if isinstance(o, URIRef)
+        }
+
+    def _required_types(self, open_holes) -> Set[URIRef]:
+        """The set of ``rdf:type`` classes the open ConformsTo holes demand.
+
+        Recovered by synthesizing a probe value against each hole's shape-set
+        (reusing :meth:`_synthesize_value`) and reading the types off the result.
+        Returns the empty set when there are no ConformsTo holes *or* when an
+        obligation cannot be built -- both mean "cannot filter", so the caller
+        falls back to trying every (budgeted) template. Memoized by shape-set."""
+        shape_sets = frozenset(
+            tuple(sorted(self._hole_shapes(h)))
+            for h in open_holes
+            if self._hole_shapes(h)
+        )
+        if not shape_sets:
+            return set()
+        if shape_sets in self._required_types_cache:
+            return self._required_types_cache[shape_sets]
+        required: Set[URIRef] = set()
+        for shape_ids in shape_sets:
+            probe = _node_to_nt(_mint_uri())
+            built = self._synthesize_value(
+                probe, list(shape_ids), self.config.build_fuel
+            )
+            if built is None:
+                # obligation not buildable in budget: do not filter on it
+                self._required_types_cache[shape_sets] = set()
+                return set()
+            for t in built.objects(None, RDF.type):
+                if isinstance(t, URIRef):
+                    required.add(t)
+        self._required_types_cache[shape_sets] = required
+        return required
+
+    def _template_relevant(self, tmpl: "Template", required: Set[URIRef]) -> bool:
+        """Whether ``tmpl`` could plausibly fill a hole requiring ``required``.
+
+        A template is relevant if the class it puts on ``name`` is *comparable*
+        (in either direction along ``rdfs:subClassOf``) to a required class:
+        a subclass can be **minted** to satisfy ``sh:class``, and a superclass can
+        **reuse** an existing, more-specific model node that satisfies it. A
+        template that does not type ``name`` directly is kept (undecidable)."""
+        name_types = self._template_name_types(tmpl)
+        if not name_types:
+            return True
+        for t in name_types:
+            for r in required:
+                if r == t or r in self._parents(t) or t in self._parents(r):
+                    return True
+        return False
+
+    def _apply_template_budget(self, templates: List["Template"]) -> List["Template"]:
+        """Apply ``max_templates`` to an already-relevance-filtered list, warning
+        once if it still has to drop templates."""
+        limit = self.config.max_templates
+        if limit is None or len(templates) <= limit:
+            return templates
+        if not self._warned_truncation:
+            self._warned_truncation = True
+            warnings.warn(
+                f"RepairConfig.max_templates={limit} is dropping "
+                f"{len(templates) - limit} of {len(templates)} candidate repair "
+                "templates that survived relevance filtering. The kept slice is "
+                "by library order, not rank, so a better fix may be dropped. Pass "
+                "a smaller, purpose-built library to repair_libraries, or raise "
+                "max_templates (None = no limit) at the cost of a per-template "
+                "monomorphism search.",
+                stacklevel=2,
+            )
+        return templates[:limit]
+
+    def _select_templates(self, open_holes) -> List["Template"]:
+        """The templates to try for these holes: those relevant to the holes'
+        required types (when determinable), then capped by ``max_templates``.
+
+        Relevance filtering is what keeps the cap from binding arbitrarily -- a
+        large ``repair_libraries`` is cut to the handful of templates that could
+        actually fill the failing hole *before* the budget applies."""
+        required = self._required_types(open_holes)
+        candidates = (
+            [t for t in self.templates if self._template_relevant(t, required)]
+            if required
+            else self.templates
+        )
+        return self._apply_template_budget(candidates)
+
+    @property
+    def _templates_to_try(self) -> List["Template"]:
+        """All templates under the ``max_templates`` budget, without relevance
+        filtering. Kept for the no-ConformsTo-holes fallback (and as the
+        engine-wide view of the budget); the per-hole path uses
+        :meth:`_select_templates`, which filters for relevance first."""
+        return self._apply_template_budget(self.templates)
 
     # -- plan construction ------------------------------------------------
 
@@ -442,7 +624,7 @@ class TemplateGuidedRepair:
         if not anys:
             yield (repeats, [])
             return
-        ranges = [range(min(b, self.MAX_BRANCHES)) for (_, b) in anys]
+        ranges = [range(min(b, self.config.max_branches)) for (_, b) in anys]
         for combo in product(*ranges):
             yield (repeats, [(anys[i][0], combo[i]) for i in range(len(anys))])
 
@@ -604,7 +786,7 @@ class TemplateGuidedRepair:
                     continue
                 child = _mint_uri()
                 built = self._synthesize_value(
-                    _node_to_nt(child), shapes, self.BUILD_FUEL
+                    _node_to_nt(child), shapes, self.config.build_fuel
                 )
                 if built is None:
                     return None
@@ -630,10 +812,15 @@ class TemplateGuidedRepair:
 
         if "name" not in tmpl.parameters:
             return []
+        # (model_graph, ontology) are fixed for the engine's lifetime, so a
+        # template's reuse set is invariant across witnesses/plans -- memoize it.
+        key = id(tmpl)
+        if key in self._reuse_cache:
+            return self._reuse_cache[key]
         found: List[Node] = []
         seen: Set[Node] = set()
         try:
-            matcher = TemplateMatcher(self.model_graph, tmpl, self.ontology_graph)
+            matcher = TemplateMatcher(self.model_graph, tmpl, self._matching_ontology)
             for mapping in matcher.mappings_iter():
                 for building_node, template_node in mapping.items():
                     if template_node == PARAM["name"] and building_node not in seen:
@@ -643,6 +830,7 @@ class TemplateGuidedRepair:
                     break
         except Exception:
             return found
+        self._reuse_cache[key] = found
         return found
 
     def _fill_strategies(self, open_holes):
@@ -655,8 +843,9 @@ class TemplateGuidedRepair:
         if combo is not None:
             yield combo
 
-        # source 2+3: templates (reuse, then mint)
-        for tmpl in self.templates[: self.MAX_TEMPLATES]:
+        # source 2+3: templates (reuse, then mint), filtered to those relevant to
+        # the holes' required types so the max_templates budget rarely binds
+        for tmpl in self._select_templates(open_holes):
             if "name" not in tmpl.parameters:
                 continue
             # reuse: existing nodes monomorphic to the template
@@ -818,6 +1007,8 @@ class AlgebraicValidationContext:
     model: "Model"
     # candidate libraries for template-guided repair (default: model's libraries)
     libraries: List["Library"] = field(default_factory=list)
+    # search budgets for the repair engine (default: RepairConfig())
+    repair_config: Optional[RepairConfig] = None
 
     def __post_init__(self):
         import shifty  # type: ignore
@@ -838,7 +1029,11 @@ class AlgebraicValidationContext:
             except Exception:
                 continue
         self.engine = TemplateGuidedRepair(
-            self._session, templates, self.data_graph, self._ontology
+            self._session,
+            templates,
+            self.data_graph,
+            self._ontology,
+            config=self.repair_config,
         )
 
     @classmethod
@@ -849,6 +1044,7 @@ class AlgebraicValidationContext:
         data_graph: Graph,
         model: "Model",
         libraries: Optional[List["Library"]] = None,
+        repair_config: Optional[RepairConfig] = None,
     ) -> "AlgebraicValidationContext":
         """Build a context from the graphs produced by
         :meth:`buildingmotif.shacl.PyshiftyBackend.validation_graphs`."""
@@ -858,6 +1054,7 @@ class AlgebraicValidationContext:
             copy_graph(data_graph),
             model,
             list(libraries or []),
+            repair_config,
         )
 
     @property

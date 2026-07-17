@@ -6,12 +6,19 @@ oracle, and BuildingMOTIF templates + VF2 monomorphism are a smarter candidate
 generator than pyshifty's naive ``Hole.candidates`` -- so the template-guided path
 produces *sound + progress-making* repairs where stock pyshifty cannot.
 """
+import warnings
+
 import pytest
 import rdflib
-from rdflib import Graph, Literal, Namespace
+from rdflib import RDF, RDFS, Graph, Literal, Namespace
 
 from buildingmotif import BuildingMOTIF
-from buildingmotif.dataclasses import AlgebraicValidationContext, Library, Model
+from buildingmotif.dataclasses import (
+    AlgebraicValidationContext,
+    Library,
+    Model,
+    RepairConfig,
+)
 from buildingmotif.dataclasses.template import Template
 from buildingmotif.namespaces import BRICK, OWL, PARAM, SH, A
 
@@ -390,3 +397,229 @@ def test_auto_route_pyshifty_engine_returns_algebraic_context(bm: BuildingMOTIF)
     model.add_triples((BLDG["z1"], rdflib.RDFS.label, Literal("zone one")))
     ctx2 = model.validate([shape_lib.get_shape_collection()])
     assert ctx2.valid
+
+
+def test_repair_config_defaults_match_historical_budgets():
+    """The defaults reproduce the previously hard-coded class constants, so
+    lifting them out of :class:`TemplateGuidedRepair` is behavior-preserving."""
+    config = RepairConfig()
+    assert config.max_templates == 25
+    assert config.max_branches == 4
+    assert config.build_fuel == 6
+    assert config.candidate_limit == 16
+
+
+def test_repair_config_is_threaded_to_the_engine(bm: BuildingMOTIF):
+    """A caller-supplied config reaches the engine -- including ``candidate_limit``,
+    which was previously unreachable because the context never passed it on."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    config = RepairConfig(
+        max_templates=1, max_branches=2, build_fuel=1, candidate_limit=4
+    )
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib], repair_config=config
+    )
+    assert ctx.engine.config is config
+    assert ctx.engine.candidate_limit == 4
+    # repair still produces a sound, progress-making fix under a custom budget
+    assert any(p.is_progress for p in ctx.witnesses[0].proposals())
+
+
+def test_max_templates_none_disables_the_cap(bm: BuildingMOTIF):
+    """``max_templates=None`` means no limit, and does not warn."""
+    lib = Library.create("repairlib")
+    for i in range(30):
+        body = Graph()
+        body.add((PARAM["name"], A, EX.Thing))
+        lib.create_template(f"thing-{i}", body)
+
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [],
+        shapes,
+        data,
+        model,
+        libraries=[lib],
+        repair_config=RepairConfig(max_templates=None),
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any truncation warning fails the test
+        assert len(ctx.engine._templates_to_try) == 30
+
+
+def test_max_templates_truncation_warns_once(bm: BuildingMOTIF):
+    """Truncation is by library order rather than relevance, so it warns -- but
+    only once per engine, no matter how many witnesses ask for proposals."""
+    lib = Library.create("repairlib")
+    for i in range(30):
+        body = Graph()
+        body.add((PARAM["name"], A, EX.Thing))
+        lib.create_template(f"thing-{i}", body)
+
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for witness in ctx.witnesses:
+            witness.proposals()
+        assert len(ctx.engine._templates_to_try) == 25
+    truncation = [w for w in caught if "max_templates" in str(w.message)]
+    assert len(truncation) == 1
+    assert "25" in str(truncation[0].message)
+
+
+def _mincount_class_shapes_with_subclass() -> Graph:
+    """Like :func:`_mincount_class_shapes` but with ``ex:Special`` a subclass of
+    the required ``ex:Thing`` -- so a reuse of an existing ``ex:Special`` node
+    satisfies the ``sh:class ex:Thing`` obligation."""
+    return Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        ex:Special rdfs:subClassOf ex:Thing .
+        ex:S a sh:NodeShape ; sh:targetNode bldg:x ;
+          sh:property [ sh:path ex:p ; sh:minCount 1 ; sh:class ex:Thing ] .
+        """,
+        format="turtle",
+    )
+
+
+def test_relevance_filter_keeps_max_templates_from_binding(bm: BuildingMOTIF):
+    """A large library with a single relevant template is cut to that template
+    *before* the ``max_templates`` budget applies -- so the default cap does not
+    bind and no truncation warning fires, even with 60 templates."""
+    lib = Library.create("repairlib")
+    _thing_template(lib)  # the one relevant template (name a ex:Thing)
+    for i in range(60):
+        body = Graph()
+        body.add((PARAM["name"], A, EX[f"Unrelated{i}"]))
+        lib.create_template(f"noise-{i}", body)
+
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    witness = ctx.witnesses[0]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        proposals = witness.proposals()
+    # 61 templates in the library, but the cap (25) never binds: only 1 relevant
+    assert not [w for w in caught if "max_templates" in str(w.message)]
+    # a template-origin repair still lands
+    template_progress = [
+        p for p in proposals if p.is_progress and p.origin.startswith("template:")
+    ]
+    assert template_progress
+    assert all("thing" in p.origin for p in template_progress)
+
+
+def test_relevance_filter_keeps_superclass_templates_for_reuse(bm: BuildingMOTIF):
+    """A template typed with a *superclass* of the required class must survive
+    the filter: monomorphism can reuse an existing, more-specific model node
+    that satisfies the obligation."""
+    lib = Library.create("repairlib")
+    # template roots name at ex:Thing; requirement is also ex:Thing, but the
+    # reuse target in the model is the subclass ex:Special
+    _thing_template(lib)
+    for i in range(30):
+        body = Graph()
+        body.add((PARAM["name"], A, EX[f"Unrelated{i}"]))
+        lib.create_template(f"noise-{i}", body)
+
+    shapes = _mincount_class_shapes_with_subclass()
+    data = Graph().parse(
+        data=(
+            "@prefix bldg: <urn:bldg/> .\n@prefix ex: <http://ex/> .\n"
+            "bldg:x a bldg:Foo .\nbldg:reuse_me a ex:Special ."
+        ),
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    witness = ctx.witnesses[0]
+    import shifty  # local, mirrors engine usage
+
+    rt = witness.repair_tree
+    plan = shifty.RepairPlan()
+    for choice in rt.choices():
+        if choice.kind == shifty.ChoiceKind.Repeat:
+            plan.count(choice.node_id, choice.min if choice.min else 1)
+        elif choice.kind == shifty.ChoiceKind.Any:
+            plan.choose(choice.node_id, 0)
+    open_holes = list(rt.instantiate(plan).open_holes)
+
+    selected = {t.name for t in ctx.engine._select_templates(open_holes)}
+    assert "thing" in selected
+    assert not any(name.startswith("noise-") for name in selected)
+
+
+def test_ontology_projection_preserves_matching_semantics(bm: BuildingMOTIF):
+    """The projected ontology yields the same monomorphisms as the full one --
+    it keeps ``subClassOf``/``subPropertyOf``/``owl:Class`` (all the matcher
+    reads) and drops the rest."""
+    from buildingmotif.dataclasses.algebraic_validation import _ontology_projection
+    from buildingmotif.template_matcher import TemplateMatcher
+
+    ontology = Graph().parse(
+        data="""
+        @prefix ex: <http://ex/> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        ex:Special a owl:Class ; rdfs:subClassOf ex:Thing ; rdfs:label "noise" .
+        ex:Thing a owl:Class .
+        ex:unrelated ex:predicate ex:junk .
+        """,
+        format="turtle",
+    )
+    projected = _ontology_projection(ontology)
+    # the label / unrelated triples are gone; the hierarchy + class decls remain
+    assert len(projected) < len(ontology)
+    assert (EX.Special, RDFS.subClassOf, EX.Thing) in projected
+    assert (EX.Special, RDF.type, OWL.Class) in projected
+
+    lib = Library.create("l")
+    body = Graph()
+    body.add((PARAM["name"], A, EX.Thing))
+    tmpl = lib.create_template("thing-t", body)
+
+    model_graph = Graph()
+    model_graph.add((BLDG["s"], A, EX.Special))  # subclass instance
+
+    full = TemplateMatcher(model_graph, tmpl, ontology)
+    proj = TemplateMatcher(model_graph, tmpl, projected)
+    assert full.largest_mapping_size == proj.largest_mapping_size
