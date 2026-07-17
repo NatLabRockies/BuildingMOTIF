@@ -3504,19 +3504,19 @@ js = ["pyduktape2 (>=0.4.6,<1)"]
 
 [[package]]
 name = "pyshifty"
-version = "0.2.3"
+version = "0.2.5"
 description = "Python bindings for the shifty SHACL engine"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "pyshifty-0.2.3-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:dbe66b2bc7178c44100b491d486da35366b473018628a7fcbe6d474a1a12f4aa"},
-    {file = "pyshifty-0.2.3-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f68c2c025e4c207c979cab37b46ed5343fd5f00fbfb2703e5936ecd058714885"},
-    {file = "pyshifty-0.2.3-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d8d9cb8d2c8eef0a183c653a04794aaa04e2beeaae55a836ed622f609c139f10"},
-    {file = "pyshifty-0.2.3-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:d39e8723bcb458baa7e7a38c54d7a74256b6df9a4d20c285340c0352f2eb9117"},
-    {file = "pyshifty-0.2.3-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:4dc4919a59919abc3d305ff1f6448065eae65566b05aba22ca8d5289ba2fc413"},
-    {file = "pyshifty-0.2.3-cp39-abi3-win_amd64.whl", hash = "sha256:ac56b39daf50184ee9a1285eb7058ae4152a258782a8b77baf83ccd0218ead7e"},
-    {file = "pyshifty-0.2.3.tar.gz", hash = "sha256:8c4a32ec92a74e95d951b9e7941f1faa1629c646586e5713d2c1cf67d93fa729"},
+    {file = "pyshifty-0.2.5-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:fdc84b6c46e8b6892ced2f30b0f6500e8796c66c9a5ee8d06be7d6adb5744c4e"},
+    {file = "pyshifty-0.2.5-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6cb1968a48b69b890f45da44a13c18f69d8f261ab25bc5fffc12b9223d3efd94"},
+    {file = "pyshifty-0.2.5-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f3bad7350a6bc198e1d4590fca0fd23037309340296d226e183704467c8d37ea"},
+    {file = "pyshifty-0.2.5-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:ed282ae6c01d0742314aa60cbf636c07601577b160da28aa3441845761b7dc1c"},
+    {file = "pyshifty-0.2.5-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6fa8480fbf0ea69d555a38939d094f68ccc8483809cbee096e25682debdcac3d"},
+    {file = "pyshifty-0.2.5-cp39-abi3-win_amd64.whl", hash = "sha256:cbca2a7e669681d70ee720137e8696fda508cf41cbfb81166c2be5b281c1cc8d"},
+    {file = "pyshifty-0.2.5.tar.gz", hash = "sha256:0640f6cecd8dc3abf22723e722e645d6146f1450531130bcd70e6be05ba16db4"},
 ]
 
 [package.extras]
@@ -5054,4 +5054,4 @@ xlsx-ingress = []
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.13"
-content-hash = "1b70cf0ba30df19c71d8f3ed960481212b30e6c120d6b8e8bd86483d01159ede"
+content-hash = "25fb04d03f7b514b5f50cb12856f6fc684a729f33c0b77d204c278d99794e09e"
