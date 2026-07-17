@@ -56,11 +56,9 @@ def _guarantee_unique_template_name(library: "Library", name: str) -> str:
     proposals. The Library is intended to be ephemeral so these names will not be
     around for long.
 
-    Template names are unique across the whole BuildingMOTIF database, not just
-    within a single library, so a name already taken by *another* (e.g. an
-    earlier ephemeral resolve) library must also be skipped. ``get_template_by_name``
-    raises :class:`TemplateNotFound` when the name is entirely free and
-    ``ValueError`` when it is taken by a different library; both are handled here.
+    Template names are unique within a library, so names already taken by other
+    libraries do not need to be skipped. ``get_template_by_name`` raises
+    :class:`TemplateNotFound` when the name is free in the given library.
     """
     idx = 1
     original_name = name
@@ -68,11 +66,8 @@ def _guarantee_unique_template_name(library: "Library", name: str) -> str:
         try:
             existing = library.get_template_by_name(name)
         except TemplateNotFound:
-            # the name is entirely free -- use it
+            # the name is free in this library -- use it
             return name
-        except ValueError:
-            # the name is taken by a *different* library -- keep searching
-            existing = True
         if not existing:
             return name
         name = f"{original_name}_{idx}"

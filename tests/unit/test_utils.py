@@ -524,8 +524,10 @@ def test_strip_param():
 def test_guarantee_unique_template_name(bm):
     # make new library
     lib = Library.create("test")
+    other_lib = Library.create("other_test")
     # add a template
     lib.create_template("test_template", None)
+    other_lib.create_template("other_template", None)
 
     # create a new template with the same name
     name = _guarantee_unique_template_name(lib, "test_template")
@@ -538,3 +540,7 @@ def test_guarantee_unique_template_name(bm):
     assert name == "test_template_2"
 
     lib.create_template(name, None)
+
+    # names in other libraries do not collide
+    name = _guarantee_unique_template_name(lib, "other_template")
+    assert name == "other_template"
