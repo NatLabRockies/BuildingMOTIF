@@ -76,6 +76,99 @@ def test_load_library_from_ontology(bm: BuildingMOTIF):
     assert len(shapeg.graph) > 1
 
 
+def test_load_library_creates_imported_ontology_libraries(
+    bm: BuildingMOTIF, tmp_path: Path
+):
+    dependency = tmp_path / "dependency.ttl"
+    dependency_iri = dependency.as_uri()
+    dependency.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+<{dependency_iri}> a owl:Ontology .
+<urn:DependencyShape> a owl:Class, sh:NodeShape .
+"""
+    )
+    root = tmp_path / "root.ttl"
+    root.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<urn:root> a owl:Ontology ;
+    owl:imports <{dependency_iri}> .
+"""
+    )
+
+    Library.load(ontology_graph=str(root), run_shacl_inference=False)
+
+    imported = Library.load(name=dependency_iri)
+    assert imported is not None
+    assert len(imported.get_shape_collection().graph) > 0
+    assert len(imported.get_templates()) == 1
+
+
+def test_load_library_can_skip_import_fetch(bm: BuildingMOTIF, tmp_path: Path):
+    dependency = tmp_path / "dependency.ttl"
+    dependency_iri = dependency.as_uri()
+    dependency.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<{dependency_iri}> a owl:Ontology .
+"""
+    )
+    root = tmp_path / "root.ttl"
+    root.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<urn:root> a owl:Ontology ;
+    owl:imports <{dependency_iri}> .
+"""
+    )
+
+    Library.load(
+        ontology_graph=str(root),
+        fetch_imports=False,
+        run_shacl_inference=False,
+    )
+
+    with pytest.raises(Exception):
+        Library.load(name=dependency_iri)
+
+
+def test_ontology_environment_uses_buildingmotif_graph_store(
+    bm: BuildingMOTIF, tmp_path: Path
+):
+    dependency = tmp_path / "dependency.ttl"
+    dependency_iri = dependency.as_uri()
+    dependency.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+<{dependency_iri}> a owl:Ontology .
+<urn:DependencyShape> a owl:Class, sh:NodeShape .
+"""
+    )
+    root = tmp_path / "root.ttl"
+    root.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<urn:root> a owl:Ontology ;
+    owl:imports <{dependency_iri}> .
+"""
+    )
+
+    ontology_name = bm.ontology_environment.add(str(root), fetch_imports=True)
+
+    graph_ids = bm.graph_connection.get_all_graph_identifiers()
+    assert ontology_name in graph_ids
+    assert dependency_iri in graph_ids
+    assert len(bm.ontology_environment.graph_copy(ontology_name)) > 0
+
+    closure, closure_names = bm.ontology_environment.closure_copy(ontology_name)
+    assert dependency_iri in closure_names
+    assert len(closure) > 0
+    assert len(list(bm.ontology_environment.iter_closure_triples(ontology_name))) > 0
+
+
 def test_load_library_from_ontology_with_error(bm: BuildingMOTIF):
     with pytest.raises(Exception):
         Library.load(ontology_graph="tests/unit/fixtures/bad_shape_template.ttl")

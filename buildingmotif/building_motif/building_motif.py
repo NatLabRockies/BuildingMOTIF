@@ -1,7 +1,7 @@
 import logging
 import os
-from contextlib import contextmanager
-from typing import Optional
+from pathlib import Path
+from typing import Iterable, Optional, Union
 
 from rdflib import Graph
 from rdflib.namespace import NamespaceManager
@@ -20,6 +20,7 @@ from buildingmotif.database.utils import (
     _custom_json_serializer,
 )
 from buildingmotif.namespaces import bind_prefixes
+from buildingmotif.ontology_environment import OntologyEnvironment
 
 
 class BuildingMOTIF(metaclass=Singleton):
@@ -30,6 +31,12 @@ class BuildingMOTIF(metaclass=Singleton):
         db_uri: str,
         shacl_engine: Optional[str] = "pyshacl",
         log_level=logging.WARNING,
+        ontology_cache_path: Optional[Union[str, Path]] = None,
+        ontology_search_directories: Optional[Iterable[Union[str, Path]]] = None,
+        ontology_fetch_imports: bool = True,
+        ontology_offline: bool = False,
+        ontology_strict: bool = False,
+        graph_store_path: Optional[Union[str, Path]] = None,
     ) -> None:
         """Class constructor.
 
@@ -42,9 +49,23 @@ class BuildingMOTIF(metaclass=Singleton):
         :param log_level: logging level of detail
         :type log_level: int
         :default log_level: INFO
+        :param ontology_cache_path: path to the ontoenv workspace. If omitted,
+            an in-memory temporary environment is used.
+        :param ontology_search_directories: directories ontoenv should scan when
+            resolving imports.
+        :param ontology_fetch_imports: default for whether library loading should
+            fetch owl:imports dependencies.
+        :param ontology_offline: if true, ontoenv will not fetch remote imports.
+        :param ontology_strict: if true, ontoenv treats missing imports as errors.
+        :param graph_store_path: directory for the Oxigraph graph store. If
+            omitted, GRAPH_STORE_PATH is used when set. File-backed SQLite
+            databases default to <sqlite-db-file>.oxigraph. In-memory SQLite
+            databases use an in-memory graph store. Other databases default to
+            .buildingmotif-oxigraph in the current working directory.
         """
         self.db_uri = db_uri
         self.shacl_engine = shacl_engine or "pyshacl"
+        self.ontology_fetch_imports = ontology_fetch_imports
         self.engine = create_engine(
             db_uri,
             echo=False,
@@ -61,13 +82,19 @@ class BuildingMOTIF(metaclass=Singleton):
             self.setup_tables()
 
         self.table_connection = TableConnection(self.engine, self)
-        self.graph_connection = GraphConnection(
-            BuildingMotifEngine(self.engine, self.Session)
-        )
+        self.graph_store_path = self._resolve_graph_store_path(graph_store_path)
+        self.graph_connection = GraphConnection(self.graph_store_path)
 
         g = Graph()
         bind_prefixes(g)
         self.template_ns_mgr: NamespaceManager = NamespaceManager(g)
+        self.ontology_environment = OntologyEnvironment(
+            path=ontology_cache_path,
+            search_directories=ontology_search_directories,
+            offline=ontology_offline,
+            strict=ontology_strict,
+            graph_connection=self.graph_connection,
+        )
 
     @property
     def session(self):
@@ -92,6 +119,27 @@ class BuildingMOTIF(metaclass=Singleton):
         )
         # length is 0 if the db is in-memory
         return not len(filename[0])
+
+    def _resolve_graph_store_path(
+        self, graph_store_path: Optional[Union[str, Path]]
+    ) -> Optional[Path]:
+        """Resolve the Oxigraph graph store path for this instance."""
+        if graph_store_path is not None:
+            return Path(graph_store_path)
+
+        env_graph_store_path = os.getenv("GRAPH_STORE_PATH")
+        if env_graph_store_path:
+            return Path(env_graph_store_path)
+
+        if self.engine.dialect.name == "sqlite":
+            if self._is_in_memory_sqlite():
+                return None
+            database = self.engine.url.database
+            if database:
+                return Path(f"{database}.oxigraph")
+            return None
+
+        return Path(".buildingmotif-oxigraph")
 
     def setup_logging(self, log_level):
         """Create log file with DEBUG level and stdout handler with specified
@@ -125,10 +173,39 @@ class BuildingMOTIF(metaclass=Singleton):
         root_logger.addHandler(log_file_handler)
         root_logger.addHandler(stream_handler)
 
+    def collect_graph_garbage(self) -> list:
+        """Reclaim orphaned named graphs no longer referenced by any table row.
+
+        Copy-on-write graph replacement and row deletion leave behind
+        unreferenced Oxigraph named graphs; this removes them. Only graphs with
+        UUID identifiers (models, shape collections, template bodies) are
+        considered, so OntoEnv-managed ontology graphs are never touched. Safe
+        to call when no write transaction is in flight.
+
+        :return: identifiers of the graphs that were reclaimed
+        :rtype: list
+        """
+        live_ids = self.table_connection.get_all_graph_ids()
+        return self.graph_connection.collect_garbage(live_ids)
+
     def close(self) -> None:
         """Close session and engine."""
-        self.session.close()
-        self.engine.dispose()
+        try:
+            self.collect_graph_garbage()
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Graph garbage collection failed during close", exc_info=True
+            )
+        try:
+            self.ontology_environment.close()
+        finally:
+            try:
+                self.graph_connection.close()
+            finally:
+                try:
+                    self.session.close()
+                finally:
+                    self.engine.dispose()
 
 
 def get_building_motif() -> "BuildingMOTIF":
@@ -145,33 +222,3 @@ def get_building_motif() -> "BuildingMOTIF":
     if hasattr(BuildingMOTIF, "instance"):
         return BuildingMOTIF.instance  # type: ignore
     raise SingletonNotInstantiatedException
-
-
-class BuildingMotifEngine:
-    """BuildingMotifEngine is a class that wraps a SQLAlchemy Engine and
-    Session.
-
-    This enables the use of sessioned transactions in rdflib-sqlalchemy.
-    If we are experiencing weird graph database issues this may be the cause.
-    """
-
-    def __init__(self, engine, Session) -> None:
-        self.engine = engine
-        self.Session = Session
-
-    # begin and connect attributes are queried from the wrapped session.
-
-    @contextmanager
-    def begin(self):
-        yield self.Session()
-
-    @contextmanager
-    def connect(self):
-        yield self.Session()
-
-    def __getattr__(self, attr):
-        # When an attribute is requested, see if we have overriden it
-        # If we have not return the attr of the wrapped engine
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.engine, attr)

@@ -2,7 +2,7 @@ import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.compare import isomorphic
 from rdflib.exceptions import ParserError
-from rdflib.namespace import FOAF
+from rdflib.namespace import FOAF, XSD
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model, ValidationContext
@@ -269,6 +269,10 @@ def test_model_compile(bm: BuildingMOTIF, shacl_engine):
     precompiled_model = Graph().parse(
         "tests/unit/fixtures/smallOffice_brick_compiled.ttl", format="ttl"
     )
+    for s, p, o in list(precompiled_model):
+        if isinstance(o, Literal) and o.datatype is None and o.language is None:
+            precompiled_model.remove((s, p, o))
+            precompiled_model.add((s, p, Literal(str(o), datatype=XSD.string)))
 
     in_first = precompiled_model - compiled_model.graph
 

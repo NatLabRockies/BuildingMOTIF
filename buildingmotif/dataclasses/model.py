@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, List, Optional
 
@@ -9,7 +9,7 @@ import rfc3987
 from buildingmotif import get_building_motif
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
-from buildingmotif.utils import Triple, copy_graph, shacl_inference, skolemize_shapes
+from buildingmotif.utils import Triple, copy_graph, skolemize_shapes
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
@@ -31,8 +31,8 @@ class Model:
     _id: int
     _name: str
     _description: str
-    _graph: rdflib.Graph
-    _bm: "BuildingMOTIF"
+    _graph: rdflib.Graph = field(compare=False)
+    _bm: "BuildingMOTIF" = field(compare=False)
     _manifest_id: int
 
     @classmethod
@@ -185,6 +185,23 @@ class Model:
         """
         self.graph += graph
 
+    def replace_graph(self, graph: rdflib.Graph) -> None:
+        """Atomically replace this Model's contents with ``graph``.
+
+        Uses copy-on-write: ``graph`` is written to a fresh named graph and the
+        stored pointer is flipped to it, so a failure or session rollback
+        leaves the previous contents intact. The old graph becomes an orphan
+        reclaimed by :py:meth:`BuildingMOTIF.collect_graph_garbage`.
+
+        :param graph: the new contents of the model
+        :type graph: rdflib.Graph
+        """
+        new_id, view = self._bm.graph_connection.replace_graph_contents(graph)
+        self._bm.table_connection.update_db_model_graph_id(self._id, new_id)
+        self._graph = view
+        # invalidate the cached `graph` property so it returns the new view
+        self.__dict__.pop("graph", None)
+
     def validate(
         self,
         shape_collections: Optional[List[ShapeCollection]] = None,
@@ -244,10 +261,7 @@ class Model:
 
         model_graph = copy_graph(self.graph).skolemize()
 
-        compiled_graph = shacl_inference(
-            model_graph, ontology_graph, engine=self._bm.shacl_engine
-        )
-        return CompiledModel(self, shape_collections, compiled_graph)
+        return CompiledModel(self, shape_collections, model_graph)
 
     def get_manifest(self) -> ShapeCollection:
         """Get ShapeCollection from model.

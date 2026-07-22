@@ -51,9 +51,11 @@ class CompiledModel:
             else shacl_engine
         )
 
+        source_graph = copy_graph(compiled_graph)
         self._compiled_graph = shacl_inference(
             compiled_graph, ontology_graph, shacl_engine
         )
+        self._compiled_graph += source_graph
 
     @cached_property
     def graph(self) -> rdflib.Graph:
@@ -61,6 +63,15 @@ class CompiledModel:
         for shape_collection in self.shape_collections:
             g += shape_collection.graph
         return g
+
+    def add_graph(self, graph: rdflib.Graph) -> None:
+        """Add the given graph to this compiled model snapshot.
+
+        :param graph: the graph to add to the compiled model
+        :type graph: rdflib.Graph
+        """
+        self._compiled_graph += graph
+        self.__dict__.pop("graph", None)
 
     def validate_model_against_shapes(
         self,
