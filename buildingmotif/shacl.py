@@ -56,7 +56,11 @@ class ShaclBackend:
             shape_graph += shape_collection.graph
 
         compiled_graph = copy_graph(model_graph).skolemize()
-        return self.compile(compiled_graph, skolemize_shapes(shape_graph))
+        # keep the source triples: some engines return only what they inferred
+        source_graph = copy_graph(compiled_graph)
+        return (
+            self.compile(compiled_graph, skolemize_shapes(shape_graph)) + source_graph
+        )
 
     def validation_graphs(
         self,
@@ -91,7 +95,10 @@ class ShaclBackend:
         graphs = self.validation_graphs(
             compiled_graph, shape_collections, error_on_missing_imports
         )
-        return self.validate(graphs.data_graph, graphs.shape_graph), graphs.context_graph
+        return (
+            self.validate(graphs.data_graph, graphs.shape_graph),
+            graphs.context_graph,
+        )
 
 
 class PyshaclBackend(ShaclBackend):
@@ -202,7 +209,9 @@ class ShiftyBackend(ShaclBackend):
         for shape_collection in shape_collections:
             shape_graph += shape_collection.graph
 
-        return self.compile(copy_graph(model_graph), shape_graph)
+        # keep the source triples: shifty returns only the inferred closure
+        source_graph = copy_graph(model_graph)
+        return self.compile(copy_graph(model_graph), shape_graph) + source_graph
 
     def validation_graphs(
         self,
