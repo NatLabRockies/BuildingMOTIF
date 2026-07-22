@@ -7,7 +7,6 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-import pyshacl  # type: ignore
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.compare import _TripleCanonicalizer
 from rdflib.paths import ZeroOrOne
@@ -52,21 +51,32 @@ def _param_name(param: URIRef) -> str:
 
 def _guarantee_unique_template_name(library: "Library", name: str) -> str:
     """
-    Ensure that the template name is unique in the library by appending an increasing
-    number. This is only called when we are generating templates from GraphDiffs and
-    the names are local to the Library. The Library is intended to be ephemeral so these
-    names will not be around for long.
+    Ensure that the template name is unique by appending an increasing number.
+    This is only called when we are generating templates from GraphDiffs / repair
+    proposals. The Library is intended to be ephemeral so these names will not be
+    around for long.
+
+    Template names are unique across the whole BuildingMOTIF database, not just
+    within a single library, so a name already taken by *another* (e.g. an
+    earlier ephemeral resolve) library must also be skipped. ``get_template_by_name``
+    raises :class:`TemplateNotFound` when the name is entirely free and
+    ``ValueError`` when it is taken by a different library; both are handled here.
     """
     idx = 1
     original_name = name
-    try:
-        while library.get_template_by_name(name):
-            name = f"{original_name}_{idx}"
-            idx += 1
-    except TemplateNotFound:
-        # this means that the template does not exist and we can use the original name
-        pass
-    return name
+    while True:
+        try:
+            existing = library.get_template_by_name(name)
+        except TemplateNotFound:
+            # the name is entirely free -- use it
+            return name
+        except ValueError:
+            # the name is taken by a *different* library -- keep searching
+            existing = True
+        if not existing:
+            return name
+        name = f"{original_name}_{idx}"
+        idx += 1
 
 
 def copy_graph(g: Graph, preserve_blank_nodes: bool = True) -> Graph:
@@ -646,29 +656,9 @@ def shacl_validate(
     :return: a tuple containing the validation result, the validation report, and the validation report string
     :rtype: Tuple[bool, Graph, str]
     """
+    from buildingmotif.shacl import get_shacl_backend
 
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import (
-                validate as tq_validate,  # type: ignore
-            )
-
-            return tq_validate(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-
-    data_graph = data_graph + (shape_graph or Graph())
-    return pyshacl.validate(
-        data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        js=True,
-        allow_warnings=True,
-    )  # type: ignore
+    return get_shacl_backend(engine).validate(data_graph, shape_graph)
 
 
 def shacl_inference(
@@ -691,49 +681,9 @@ def shacl_inference(
     :return: the data graph with inferred triples
     :rtype: Graph
     """
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import infer as tq_infer
+    from buildingmotif.shacl import get_shacl_backend
 
-            return tq_infer(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-
-    # We use a fixed-point computation approach to 'compiling' RDF models.
-    # We accomlish this by keeping track of the size of the graph before and after
-    # the inference step. If the size of the graph changes, then we know that the
-    # inference has had some effect. We do this at most 3 times to avoid looping
-    # forever.
-    pre_compile_length = len(data_graph)  # type: ignore
-    pyshacl.validate(
-        data_graph=data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        inplace=True,
-        js=True,
-        allow_warnings=True,
-    )
-    post_compile_length = len(data_graph)  # type: ignore
-
-    attempts = 3
-    while attempts > 0 and post_compile_length != pre_compile_length:
-        pre_compile_length = len(data_graph)  # type: ignore
-        pyshacl.validate(
-            data_graph=data_graph,
-            shacl_graph=shape_graph,
-            ont_graph=shape_graph,
-            advanced=True,
-            inplace=True,
-            js=True,
-            allow_warnings=True,
-        )
-        post_compile_length = len(data_graph)  # type: ignore
-        attempts -= 1
-    return data_graph - (shape_graph or Graph())
+    return get_shacl_backend(engine).compile(data_graph, shape_graph)
 
 
 def skolemize_shapes(g: Graph) -> Graph:

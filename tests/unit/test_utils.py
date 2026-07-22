@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
 
@@ -12,8 +15,10 @@ from buildingmotif.utils import (
     get_parameters,
     get_template_parts_from_shape,
     graph_hash,
+    normalize_shacl_engine,
     replace_nodes,
     rewrite_shape_graph,
+    shacl_inference,
     shacl_validate,
     skip_uri,
 )
@@ -329,6 +334,122 @@ def test_param_name():
     bad_p = BRICK["abc"]
     with pytest.raises(AssertionError):
         _param_name(bad_p)
+
+
+def test_normalize_shacl_engine():
+    assert normalize_shacl_engine(None) == "pyshacl"
+    assert normalize_shacl_engine("pyshacl") == "pyshacl"
+    assert normalize_shacl_engine("topquadrant") == "topquadrant"
+    assert normalize_shacl_engine("shifty") == "shifty"
+
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        normalize_shacl_engine("bad-engine")
+
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        normalize_shacl_engine("pyshifty")
+
+
+def test_shacl_helpers_validate_engine_choice():
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        shacl_validate(Graph(), engine="bad-engine")
+
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        shacl_inference(Graph(), engine="bad-engine")
+
+
+def test_building_motif_validates_shacl_engine():
+    assert BuildingMOTIF("sqlite://", shacl_engine="shifty").shacl_engine == "shifty"
+    BuildingMOTIF.clean()
+
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        BuildingMOTIF("sqlite://", shacl_engine="bad-engine")
+    BuildingMOTIF.clean()
+
+    bm = BuildingMOTIF("sqlite://")
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        bm.shacl_engine = "bad-engine"
+    BuildingMOTIF.clean()
+
+
+def test_shifty_validate_dispatches_to_shifty(monkeypatch):
+    data_graph = Graph()
+    shape_graph = Graph()
+    shape_graph.add((URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class")))
+    report_graph = Graph()
+    calls = []
+
+    def validate(*args, **kwargs):
+        calls.append(("validate", args, kwargs))
+        return True, report_graph, "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "shifty",
+        SimpleNamespace(validate=validate),
+    )
+
+    assert shacl_validate(data_graph, shape_graph, engine="shifty") == (
+        True,
+        report_graph,
+        "ok",
+    )
+    assert calls == [
+        (
+            "validate",
+            (data_graph, shape_graph),
+            {"minimum_severity": "violation"},
+        ),
+    ]
+
+
+def test_shifty_validate_omits_empty_shape_graph(monkeypatch):
+    data_graph = Graph()
+    empty_shape_graph = Graph()
+    report_graph = Graph()
+    calls = []
+
+    def validate(*args, **kwargs):
+        calls.append(("validate", args, kwargs))
+        return True, report_graph, "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "shifty",
+        SimpleNamespace(validate=validate),
+    )
+
+    assert shacl_validate(data_graph, empty_shape_graph, engine="shifty") == (
+        True,
+        report_graph,
+        "ok",
+    )
+    assert calls == [
+        (
+            "validate",
+            (data_graph,),
+            {"minimum_severity": "violation"},
+        ),
+    ]
+
+
+def test_shifty_inference_removes_shape_graph(monkeypatch):
+    data_triple = (URIRef("urn:data"), SH.path, URIRef("urn:value"))
+    shape_triple = (URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class"))
+    data_graph = Graph()
+    data_graph.add(data_triple)
+    shape_graph = Graph()
+    shape_graph.add(shape_triple)
+    inferred_graph = data_graph + shape_graph
+
+    def infer(*args):
+        assert args == (data_graph, shape_graph)
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
+
+    closure = shacl_inference(data_graph, shape_graph, engine="shifty")
+    assert data_triple in closure
+    assert shape_triple not in closure
 
 
 def test_skip_uri():

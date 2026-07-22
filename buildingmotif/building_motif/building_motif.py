@@ -21,6 +21,7 @@ from buildingmotif.database.utils import (
 )
 from buildingmotif.namespaces import bind_prefixes
 from buildingmotif.ontology_environment import OntologyEnvironment
+from buildingmotif.shacl import normalize_shacl_engine
 
 
 class BuildingMOTIF(metaclass=Singleton):
@@ -42,7 +43,7 @@ class BuildingMOTIF(metaclass=Singleton):
 
         :param db_uri: database URI
         :type db_uri: str
-        :param shacl_engine: the name of the engine to use for validation: "pyshacl" or "topquadrant". Using topquadrant
+        :param shacl_engine: the name of the engine to use for validation: "pyshacl", "shifty", or "topquadrant". Using topquadrant
             requires Java to be installed on this machine, and the "topquadrant" feature on BuildingMOTIF,
             defaults to "pyshacl"
         :type shacl_engine: str, optional
@@ -64,7 +65,7 @@ class BuildingMOTIF(metaclass=Singleton):
             .buildingmotif-oxigraph in the current working directory.
         """
         self.db_uri = db_uri
-        self.shacl_engine = shacl_engine or "pyshacl"
+        self.shacl_engine = normalize_shacl_engine(shacl_engine)
         self.ontology_fetch_imports = ontology_fetch_imports
         self.engine = create_engine(
             db_uri,
@@ -95,6 +96,14 @@ class BuildingMOTIF(metaclass=Singleton):
             strict=ontology_strict,
             graph_connection=self.graph_connection,
         )
+
+    @property
+    def shacl_engine(self) -> str:
+        return self._shacl_engine
+
+    @shacl_engine.setter
+    def shacl_engine(self, engine: Optional[str]) -> None:
+        self._shacl_engine = normalize_shacl_engine(engine)
 
     @property
     def session(self):

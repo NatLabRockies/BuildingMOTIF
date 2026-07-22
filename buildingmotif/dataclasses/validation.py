@@ -713,31 +713,56 @@ def diffset_to_templates(
 
         templ_lists = (diff.resolve(lib) for diff in diffset)
         templs: List[Template] = list(filter(None, chain.from_iterable(templ_lists)))
-        if len(templs) <= 1:
-            templates.extend(templs)
-            continue
-        base = templs[0]
-        # treat all the other templates as dependencies of the first one.
-        # This allows us to do a "join" with inline_dependencies() which
-        # will ensure that there are no unintended overlaps in the choice
-        # of parameter name
-        for templ in templs[1:]:
-            # if there is a 'name' in the parameter list, join on that name.
-            # otherwise, just append the body
-            # (we don't need to use use to_inline() to ensure uniqueness of parameters
-            # because all params are created with _gensym() which ensures uniqueness)
-            if "name" in templ.parameters:
-                base.add_dependency(templ, {"name": "name"})
-            else:
-                base.body += templ.body
-        unified = base.inline_dependencies()
-        # only try to evaluate if there are parameters, else this will fail.
-        # We may not have parameters if the GraphDiffs have all the information
-        # they need to patch the graph and don't need user input
-        if len(unified.parameters) > 0:
-            unified_evaluated = unified.evaluate({"name": focus})
-        else:
-            unified_evaluated = unified
-        assert isinstance(unified_evaluated, Template)
-        templates.append(unified_evaluated)
+        templates.extend(merge_templates_for_focus(focus, templs))
     return templates
+
+
+def merge_templates_for_focus(
+    focus: Optional[URIRef], templs: List["Template"]
+) -> List["Template"]:
+    """Merge a list of templates that all target a single focus node into a
+    single template by joining them on the shared ``name`` parameter.
+
+    This is the per-focus "join" used both by :func:`diffset_to_templates` (the
+    legacy GraphDiff path) and by the algebraic repair path
+    (:mod:`buildingmotif.dataclasses.algebraic_validation`), so the merge
+    semantics stay in one place.
+
+    :param focus: the focus node the templates resolve, or None for graph-level
+        templates that should not be bound to a focus
+    :type focus: Optional[URIRef]
+    :param templs: the templates to merge
+    :type templs: List[Template]
+    :return: a list containing the merged template (or the originals if there is
+        nothing to merge)
+    :rtype: List[Template]
+    """
+    from buildingmotif.dataclasses import Template
+
+    templs = list(filter(None, templs))
+    if len(templs) <= 1:
+        return templs
+    base = templs[0]
+    # treat all the other templates as dependencies of the first one.
+    # This allows us to do a "join" with inline_dependencies() which
+    # will ensure that there are no unintended overlaps in the choice
+    # of parameter name
+    for templ in templs[1:]:
+        # if there is a 'name' in the parameter list, join on that name.
+        # otherwise, just append the body
+        # (we don't need to use use to_inline() to ensure uniqueness of parameters
+        # because all params are created with _gensym() which ensures uniqueness)
+        if "name" in templ.parameters:
+            base.add_dependency(templ, {"name": "name"})
+        else:
+            base.body += templ.body
+    unified = base.inline_dependencies()
+    # only try to evaluate if there are parameters and we have a focus to bind,
+    # else this will fail. We may not have parameters if the diffs have all the
+    # information they need to patch the graph and don't need user input
+    if focus is not None and len(unified.parameters) > 0:
+        unified_evaluated = unified.evaluate({"name": focus})
+    else:
+        unified_evaluated = unified
+    assert isinstance(unified_evaluated, Template)
+    return [unified_evaluated]

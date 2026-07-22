@@ -9,11 +9,13 @@ import rfc3987
 from buildingmotif import get_building_motif
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
-from buildingmotif.utils import Triple, copy_graph, skolemize_shapes
+from buildingmotif.shacl import get_shacl_backend
+from buildingmotif.utils import Triple
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
     from buildingmotif.dataclasses.compiled_model import CompiledModel
+    from buildingmotif.dataclasses.library import Library
 
 
 def _validate_uri(uri: str):
@@ -207,6 +209,7 @@ class Model:
         shape_collections: Optional[List[ShapeCollection]] = None,
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = None,
+        repair_libraries: Optional[List["Library"]] = None,
     ) -> "ValidationContext":
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -228,14 +231,26 @@ class Model:
         :param shacl_engine: the SHACL engine to use for validation, defaults to whatever
             is set in the BuildingMOTIF object
         :type shacl_engine: str, optional
+        :param repair_libraries: libraries whose templates seed template-guided,
+            soundness-gated repair (only used by the ``shifty`` engine, which
+            returns an
+            :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`).
+            Defaults to no template guidance.
+        :type repair_libraries: Optional[List[Library]]
 
         :rtype: ValidationContext
         """
-        compiled_model = self.compile(shape_collections or [self.get_manifest()])
-        return compiled_model.validate(error_on_missing_imports)
+        compiled_model = self.compile(
+            shape_collections or [self.get_manifest()], shacl_engine=shacl_engine
+        )
+        return compiled_model.validate(
+            error_on_missing_imports, shacl_engine, repair_libraries=repair_libraries
+        )
 
     def compile(
-        self, shape_collections: Optional[List["ShapeCollection"]] = None
+        self,
+        shape_collections: Optional[List["ShapeCollection"]] = None,
+        shacl_engine: Optional[str] = None,
     ) -> "CompiledModel":
         """Compile the graph of a model against a set of ShapeCollections.
 
@@ -251,17 +266,16 @@ class Model:
         """
         from buildingmotif.dataclasses.compiled_model import CompiledModel
 
-        ontology_graph = rdflib.Graph()
         if shape_collections is None:
             shape_collections = [self.get_manifest()]
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
-
-        ontology_graph = skolemize_shapes(ontology_graph)
-
-        model_graph = copy_graph(self.graph).skolemize()
-
-        return CompiledModel(self, shape_collections, model_graph)
+        backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
+        compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
+        return CompiledModel(
+            self,
+            shape_collections,
+            compiled_graph,
+            shacl_engine=shacl_engine or "default",
+        )
 
     def get_manifest(self) -> ShapeCollection:
         """Get ShapeCollection from model.

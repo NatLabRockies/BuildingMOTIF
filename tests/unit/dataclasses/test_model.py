@@ -5,7 +5,12 @@ from rdflib.exceptions import ParserError
 from rdflib.namespace import FOAF, XSD
 
 from buildingmotif import BuildingMOTIF
-from buildingmotif.dataclasses import Library, Model, ValidationContext
+from buildingmotif.dataclasses import (
+    AlgebraicValidationContext,
+    Library,
+    Model,
+    ValidationContext,
+)
 from buildingmotif.namespaces import BRICK, OWL, RDF, RDFS, SH, A
 
 BLDG = Namespace("urn:building/")
@@ -239,7 +244,7 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
 
     # validate the graph (should fail because there are no labels)
     ctx = model.validate([shape_lib.get_shape_collection()])
-    assert isinstance(ctx, ValidationContext)
+    assert isinstance(ctx, (ValidationContext, AlgebraicValidationContext))
     assert not ctx.valid
     assert len(ctx.diffset) == 1
     diff = next(iter(ctx.diffset.values())).pop()
@@ -248,7 +253,7 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
     model.add_triples((bindings["name"], RDFS.label, Literal("hvac zone 1")))
     # validate the graph (should now be valid)
     ctx = model.validate([shape_lib.get_shape_collection()])
-    assert isinstance(ctx, ValidationContext)
+    assert isinstance(ctx, (ValidationContext, AlgebraicValidationContext))
     assert ctx.valid
 
 
