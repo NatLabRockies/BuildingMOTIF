@@ -612,9 +612,7 @@ class Library:
         :return: template
         :rtype: Template
         """
-        dbt = self._bm.table_connection.get_db_template_by_name(name)
-        if dbt.library_id != self._id:
-            raise ValueError(f"Template {name} not in library {self._name}")
+        dbt = self._bm.table_connection.get_db_template_by_name(name, self._id)
         return Template.load(dbt.id)
 
 

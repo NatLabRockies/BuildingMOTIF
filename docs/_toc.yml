@@ -15,6 +15,7 @@ parts:
   - file: tutorials/model_creation.md
   - file: tutorials/model_validation.md
   - file: tutorials/model_correction.md
+  - file: tutorials/pyshifty_validation_repair.md
   - file: tutorials/template_writing.ipynb
 - caption: Guides
   chapters:

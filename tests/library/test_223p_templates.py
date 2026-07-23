@@ -48,7 +48,7 @@ def _cheap_template_names(library_path: str):
 
 def _setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="shifty")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
     s223 = Library.load(
         ontology_graph="libraries/ashrae/223p/ontology/223p.ttl",

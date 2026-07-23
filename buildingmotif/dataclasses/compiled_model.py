@@ -11,12 +11,17 @@ from buildingmotif.dataclasses.model import Model
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
 from buildingmotif.namespaces import SH, A
-from buildingmotif.shacl import get_shacl_backend
+from buildingmotif.shacl import (
+    DEFAULT_SHACL_ENGINE,
+    get_shacl_backend,
+    normalize_shacl_engine,
+)
 from buildingmotif.utils import copy_graph
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses.algebraic_validation import (
         AlgebraicValidationContext,
+        RepairConfig,
     )
     from buildingmotif.dataclasses.library import Library
 
@@ -43,7 +48,7 @@ class CompiledModel:
         self.shacl_engine = (
             self.model._bm.shacl_engine
             if (shacl_engine == "default" or not shacl_engine)
-            else shacl_engine
+            else normalize_shacl_engine(shacl_engine)
         )
         # inference is performed by the SHACL backend in Model.compile; the
         # graph handed to us here is already compiled
@@ -124,8 +129,9 @@ class CompiledModel:
     def validate(
         self,
         error_on_missing_imports: bool = True,
-        shacl_engine: Optional[str] = "default",
+        shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
+        repair_config: Optional["RepairConfig"] = None,
     ) -> Union["ValidationContext", "AlgebraicValidationContext"]:
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
@@ -149,23 +155,33 @@ class CompiledModel:
             soundness-gated repair. Only the ``"shifty"`` engine uses these; other
             engines ignore them. Defaults to no template guidance.
         :type repair_libraries: Optional[List[Library]]
+        :param repair_config: search budgets for template-guided repair (only used by
+            the ``pyshifty`` engine); defaults to
+            :class:`~buildingmotif.dataclasses.algebraic_validation.RepairConfig`
+        :type repair_config: Optional[RepairConfig]
         :return: An object containing useful properties/methods to deal with
             the validation results
         :rtype: ValidationContext
         """
-        shacl_engine = (
-            self.shacl_engine
-            if (shacl_engine == "default" or not shacl_engine)
-            else shacl_engine
-        )
+        import warnings
+
+        shacl_engine = normalize_shacl_engine(shacl_engine or self.shacl_engine)
+        if (
+            repair_libraries is not None or repair_config is not None
+        ) and shacl_engine != DEFAULT_SHACL_ENGINE:
+            warnings.warn(
+                "repair_libraries and repair_config are only used by the 'pyshifty' "
+                "engine and will be ignored.",
+                stacklevel=3,
+            )
         backend = get_shacl_backend(shacl_engine)
 
-        # The shifty engine exposes a native algebraic + symbolic-repair API.
+        # The pyshifty engine exposes a native algebraic + symbolic-repair API.
         # Auto-route it to the AlgebraicValidationContext, which computes repairs
         # by abduction over the algebra and gates every one for soundness, rather
         # than re-parsing a flattened W3C report. Other engines keep the legacy
         # GraphDiff-based ValidationContext.
-        if shacl_engine == "shifty":
+        if shacl_engine == DEFAULT_SHACL_ENGINE:
             from buildingmotif.dataclasses.algebraic_validation import (
                 AlgebraicValidationContext,
             )
@@ -183,6 +199,7 @@ class CompiledModel:
                 graphs.data_graph,
                 self.model,
                 libraries=repair_libraries,
+                repair_config=repair_config,
             )
 
         (valid, report_g, report_str), context_graph = backend.validate_compiled_model(
@@ -245,8 +262,15 @@ class CompiledModel:
                 f"Shape {shape} is not defined in any of the shape collections"
             )
         query = defining_sc.shape_to_query(shape)
-        metadata = pd.DataFrame(self.graph.query(query).bindings, dtype="string")
-        # metadata.columns will be rdflib.term.Variable objects, so we need to convert them to strings
-        metadata.columns = [str(col) for col in metadata.columns]
+        results = self.graph.query(query)
+        columns = [str(col) for col in results.vars]
+        metadata = pd.DataFrame(
+            [
+                {str(col): value for col, value in row.items()}
+                for row in results.bindings
+            ],
+            columns=columns,
+            dtype="string",
+        )
         # convert the rdflib terms to Python types
         return metadata.map(lambda x: x.toPython())

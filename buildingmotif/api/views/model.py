@@ -206,9 +206,12 @@ def validate_model(models_id: int) -> flask.Response:
             }, status.HTTP_400_BAD_REQUEST
 
     # if shape_collections is empty, model.validate will default to the model's manifest
-    vaildation_context = model.validate(
-        shape_collections, error_on_missing_imports=False, shacl_engine=shacl_engine
-    )
+    try:
+        vaildation_context = model.validate(
+            shape_collections, error_on_missing_imports=False, shacl_engine=shacl_engine
+        )
+    except ValueError as e:
+        return {"message": str(e)}, status.HTTP_400_BAD_REQUEST
 
     return {
         "message": vaildation_context.report_string,
