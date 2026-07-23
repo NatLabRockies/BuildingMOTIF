@@ -376,6 +376,18 @@ class Library:
                     f"Could not parse file {filename}: {e}"
                 )
                 raise e
+            # Register the file with OntoEnv under its own declared name (if
+            # any), independent of the bulk load above. Directory-loaded
+            # libraries often bundle several files that only make sense
+            # merged (e.g. guideline36's per-equipment fragments have no
+            # owl:Ontology header of their own), alongside files that
+            # declare a real ontology identity and import each other or
+            # ontologies outside the directory (e.g. Brick's imports/*.ttl).
+            # Without this, those names are never known to OntoEnv, so any
+            # owl:imports referencing them - from inside or outside this
+            # directory - fails to resolve instead of finding the
+            # already-loaded content.
+            bm.ontology_environment.add(filename, fetch_imports=False, overwrite=True)
         # Native loading does not propagate file prefixes to the rdflib
         # namespace manager; restore the standard BuildingMOTIF prefixes so
         # serialization stays readable.
