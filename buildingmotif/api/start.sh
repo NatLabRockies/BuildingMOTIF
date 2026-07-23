@@ -1,4 +1,4 @@
 #!/bin/bash
 set -ex
-poetry run alembic upgrade head
-poetry run python buildingmotif/api/app.py
+uv run alembic upgrade head
+uv run python buildingmotif/api/app.py
