@@ -41,7 +41,7 @@ brick-tq-shacl = {optional = true, version="0.3.4a2"}
 # SHACL engine and the algebraic validation/repair path are always available.
 # Pinned to the 0.2.x line -- the algebra/repair API is not yet stable across
 # minor releases.
-pyshifty = "0.2"
+pyshifty = "^0.2"
 werkzeug="^2.3.7"
 types-jsonschema = "^4.21.0.20240311"
 matplotlib = "^3.9.2"
