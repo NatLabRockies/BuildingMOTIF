@@ -252,6 +252,7 @@ dependencies = [
     { name = "pyaml" },
     { name = "pygit2" },
     { name = "pyshacl" },
+    { name = "pyshifty" },
     { name = "rdflib" },
     { name = "rfc3987" },
     { name = "setuptools" },
@@ -282,9 +283,6 @@ bacnet-ingress = [
 ]
 postgres = [
     { name = "psycopg2" },
-]
-pyshifty = [
-    { name = "pyshifty" },
 ]
 topquadrant = [
     { name = "brick-tq-shacl" },
@@ -343,7 +341,7 @@ requires-dist = [
     { name = "pyaml", specifier = ">=21.10.1,<22" },
     { name = "pygit2", specifier = ">=1.17,<1.18" },
     { name = "pyshacl", specifier = ">=0.30,<0.31" },
-    { name = "pyshifty", marker = "extra == 'pyshifty'", specifier = "==0.2.0" },
+    { name = "pyshifty", specifier = ">=0.2.0,<0.3" },
     { name = "pytz", marker = "extra == 'all'", specifier = ">=2022.7.1,<2023" },
     { name = "pytz", marker = "extra == 'all-ingresses'", specifier = ">=2022.7.1,<2023" },
     { name = "pytz", marker = "extra == 'bacnet-ingress'", specifier = ">=2022.7.1,<2023" },
@@ -355,7 +353,7 @@ requires-dist = [
     { name = "types-pyyaml", specifier = ">=6.0.4,<7" },
     { name = "werkzeug", specifier = ">=2.3.7,<3" },
 ]
-provides-extras = ["all", "postgres", "topquadrant", "pyshifty", "bacnet-ingress", "xlsx-ingress", "all-ingresses"]
+provides-extras = ["all", "postgres", "topquadrant", "bacnet-ingress", "xlsx-ingress", "all-ingresses"]
 
 [package.metadata.requires-dev]
 dev = [

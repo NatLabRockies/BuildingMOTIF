@@ -27,6 +27,29 @@ def normalize_shacl_engine(engine: Optional[str]) -> str:
     return engine
 
 
+def require_shifty():
+    """Import and return the ``shifty`` module (from the ``pyshifty`` package).
+
+    ``pyshifty`` is a required dependency of BuildingMOTIF, so this normally just
+    returns the already-imported module. It exists so that, if ``shifty`` is
+    somehow missing from the environment, callers get a single clear, actionable
+    error that names the distribution -- rather than a bare
+    ``ModuleNotFoundError: No module named 'shifty'`` surfacing from deep inside
+    the repair engine.
+    """
+    try:
+        import shifty  # type: ignore
+
+        return shifty
+    except ImportError as exc:  # pragma: no cover - required dependency
+        raise ImportError(
+            "The 'shifty' SHACL engine requires the 'pyshifty' package, which is "
+            "a required dependency of BuildingMOTIF but is not importable in this "
+            "environment. Reinstall BuildingMOTIF (e.g. `poetry install`) to "
+            "restore it."
+        ) from exc
+
+
 @dataclass
 class ValidationGraphs:
     data_graph: Graph
@@ -175,7 +198,7 @@ class TopQuadrantBackend(PyshaclBackend):
 
 class ShiftyBackend(ShaclBackend):
     def infer(self, data_graph: Graph, shape_graph: Optional[Graph] = None) -> Graph:
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         if shape_graph is None or len(shape_graph) == 0:  # type: ignore
             return shifty.infer(data_graph).graph()  # type: ignore
@@ -184,7 +207,7 @@ class ShiftyBackend(ShaclBackend):
     def validate(
         self, data_graph: Graph, shape_graph: Optional[Graph] = None
     ) -> ValidationResult:
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         if shape_graph is None or len(shape_graph) == 0:  # type: ignore
             return shifty.validate(  # type: ignore
@@ -203,6 +226,11 @@ class ShiftyBackend(ShaclBackend):
     def compile_model_graph(
         self, model_graph: Graph, shape_collections: List["ShapeCollection"]
     ) -> Graph:
+        # NOTE: unlike ShaclBackend.compile_model_graph, we deliberately do *not*
+        # skolemize the model or the shapes here. shifty operates on blank nodes
+        # natively (it does its own internal handling), and skolemizing would
+        # change the terms it reports in witnesses -- so the graphs handed to
+        # shifty must keep their original blank nodes.
         from buildingmotif.utils import copy_graph
 
         shape_graph = Graph()
@@ -219,6 +247,9 @@ class ShiftyBackend(ShaclBackend):
         shape_collections: List["ShapeCollection"],
         error_on_missing_imports: bool = True,
     ) -> ValidationGraphs:
+        # As in compile_model_graph, the shapes and data are handed to shifty
+        # un-skolemized and un-rewritten (no sh:node inlining): shifty consumes
+        # the native SHACL algebra directly rather than a flattened shape graph.
         from buildingmotif.utils import copy_graph
 
         shape_graph = Graph()

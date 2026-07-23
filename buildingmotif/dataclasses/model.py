@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import rdflib
 import rdflib.query
@@ -14,6 +14,9 @@ from buildingmotif.utils import Triple
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
+    from buildingmotif.dataclasses.algebraic_validation import (
+        AlgebraicValidationContext,
+    )
     from buildingmotif.dataclasses.compiled_model import CompiledModel
     from buildingmotif.dataclasses.library import Library
 
@@ -210,7 +213,7 @@ class Model:
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
-    ) -> "ValidationContext":
+    ) -> Union["ValidationContext", "AlgebraicValidationContext"]:
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
         If a list of shape collections is provided, the manifest will *not* be automatically

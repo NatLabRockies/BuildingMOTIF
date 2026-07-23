@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import pandas as pd
 import rdflib
@@ -15,6 +15,9 @@ from buildingmotif.shacl import get_shacl_backend
 from buildingmotif.utils import copy_graph
 
 if TYPE_CHECKING:
+    from buildingmotif.dataclasses.algebraic_validation import (
+        AlgebraicValidationContext,
+    )
     from buildingmotif.dataclasses.library import Library
 
 
@@ -123,7 +126,7 @@ class CompiledModel:
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = "default",
         repair_libraries: Optional[List["Library"]] = None,
-    ) -> "ValidationContext":
+    ) -> Union["ValidationContext", "AlgebraicValidationContext"]:
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
         If a list of shape collections is provided, the manifest will *not* be automatically
@@ -135,6 +138,17 @@ class CompiledModel:
             ontologies are missing (i.e. they need to be loaded into BuildingMOTIF), defaults
             to True
         :type error_on_missing_imports: bool, optional
+        :param shacl_engine: the SHACL engine to validate with. ``"default"`` (or
+            None) uses the engine this model was compiled with; pass ``"pyshacl"``,
+            ``"topquadrant"``, or ``"shifty"`` to override. The ``"shifty"`` engine
+            returns an
+            :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`
+            instead of the legacy ``ValidationContext``. Defaults to ``"default"``.
+        :type shacl_engine: Optional[str]
+        :param repair_libraries: libraries whose templates seed template-guided,
+            soundness-gated repair. Only the ``"shifty"`` engine uses these; other
+            engines ignore them. Defaults to no template guidance.
+        :type repair_libraries: Optional[List[Library]]
         :return: An object containing useful properties/methods to deal with
             the validation results
         :rtype: ValidationContext
