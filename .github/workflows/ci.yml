@@ -17,22 +17,20 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
-      - name: poetry install
-        run: poetry install --all-extras
+      - name: install
+        run: uv sync --all-extras --python 3.11
       - name: run isort and black
         run: |
-          poetry run isort . --check
-          poetry run black . --check
+          uv run isort . --check
+          uv run black . --check
 
   # The "testing" job verifies the base SDK functionality across
   # all supported Python versions.
@@ -50,28 +48,24 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
-      - name: poetry install
-        run: poetry install --all-extras
-      - name: install pytest-xdist for parallel tests
-        run: poetry run pip install pytest-xdist
+      - name: install
+        run: uv sync --all-extras --python ${{ matrix.python-version }}
       - name: lint
-        run: poetry run flake8 buildingmotif
+        run: uv run flake8 buildingmotif
       - name: type check
-        run: poetry run mypy --ignore-missing-imports
+        run: uv run mypy --ignore-missing-imports
       - name: unit tests
-        run: poetry run pytest -n auto tests/unit --cov=./ --cov-report=xml
+        run: uv run --with pytest-xdist pytest -n auto tests/unit --cov=./ --cov-report=xml
       - name: build tests
-        run: poetry build
+        run: uv build
 
   # We only run "integration" tests on the latest Python version.
   # These tests detect if changes to ontologies, libraries, models and BuildingMOTIF
@@ -91,28 +85,24 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
-      - name: poetry install
-        run: poetry install --all-extras
-      - name: install pytest-xdist for parallel tests
-        run: poetry run pip install pytest-xdist
+      - name: install
+        run: uv sync --all-extras --python ${{ matrix.python-version }}
       - name: integration tests
-        run: poetry run pytest -n auto tests/integration
+        run: uv run --with pytest-xdist pytest -n auto tests/integration
       - name: bacnet tests
         run: |
           cd tests/integration/fixtures/bacnet
           docker compose build device buildingmotif
           docker compose run -d device
-          docker compose run buildingmotif poetry run pytest -m bacnet
+          docker compose run buildingmotif uv run pytest -m bacnet
           docker compose down
 
   # We only run "library" tests on the latest Python version.
@@ -131,22 +121,18 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
-      - name: poetry install
-        run: poetry install --all-extras
-      - name: install pytest-xdist for parallel tests
-        run: poetry run pip install pytest-xdist
+      - name: install
+        run: uv sync --all-extras --python ${{ matrix.python-version }}
       - name: library tests
-        run: poetry run pytest -n auto tests/library
+        run: uv run --with pytest-xdist pytest -n auto tests/library
 
   coverage:
     needs: testing
