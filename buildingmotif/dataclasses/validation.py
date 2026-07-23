@@ -737,8 +737,6 @@ def merge_templates_for_focus(
         nothing to merge)
     :rtype: List[Template]
     """
-    from buildingmotif.dataclasses import Template
-
     templs = list(filter(None, templs))
     if len(templs) <= 1:
         return templs
@@ -757,12 +755,17 @@ def merge_templates_for_focus(
         else:
             base.body += templ.body
     unified = base.inline_dependencies()
-    # only try to evaluate if there are parameters and we have a focus to bind,
-    # else this will fail. We may not have parameters if the diffs have all the
-    # information they need to patch the graph and don't need user input
-    if focus is not None and len(unified.parameters) > 0:
-        unified_evaluated = unified.evaluate({"name": focus})
-    else:
-        unified_evaluated = unified
-    assert isinstance(unified_evaluated, Template)
-    return [unified_evaluated]
+    # Anchor the merged repair at the concrete focus node when we have one, by
+    # substituting the shared ``name`` parameter for it and leaving every other
+    # parameter free for the caller to fill. We do this with a node replacement
+    # rather than ``evaluate({"name": focus})`` so the result is *always* a
+    # Template: if ``name`` were the only parameter, ``evaluate`` would fully
+    # bind and hand back a bare Graph (which the old code then tripped over with
+    # ``assert isinstance(..., Template)``). When there is no focus (a
+    # graph-level repair) or no ``name`` parameter -- e.g. the algebraic repair
+    # path, which bakes the focus in as a concrete term already -- the template
+    # is returned unchanged.
+    if focus is not None and "name" in unified.parameters:
+        unified = unified.in_memory_copy()
+        replace_nodes(unified.body, {PARAM["name"]: focus})
+    return [unified]

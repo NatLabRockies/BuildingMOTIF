@@ -26,30 +26,43 @@ proposals are ranked by maximal reuse / minimal additions.
 The library decides nothing: :class:`AlgebraicValidationContext` only *proposes*
 ranked, gated repairs. Applying one is always the caller's choice.
 """
+import logging
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import product
-from typing import (
-    TYPE_CHECKING,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Set, Tuple, Union
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
 
 from buildingmotif.namespaces import PARAM, SH
+from buildingmotif.shacl import require_shifty
 from buildingmotif.utils import copy_graph, replace_nodes
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Model, ShapeCollection, Template
 
+logger = logging.getLogger(__name__)
+
 # namespace for nodes minted by the repair engine (concrete, gate-able IRIs)
 REPAIR = Namespace("urn:buildingmotif:repair#")
+
+
+class GateOutcome(Protocol):
+    """Structural type for the verdict shifty's gate returns for a candidate
+    ``ΔG`` (:meth:`shifty.RepairSession.gate`). Only the two soundness flags the
+    repair layer reads are pinned here."""
+
+    @property
+    def is_sound(self) -> bool:
+        """True iff the candidate ΔG introduces no new violation."""
+        ...
+
+    @property
+    def is_progress(self) -> bool:
+        """True iff the candidate ΔG removes at least one violation."""
+        ...
+
 
 _mint_counter = 0
 
@@ -114,7 +127,7 @@ class RepairProposal:
     # triples this proposal would delete
     deletions: Graph
     # the gate's verdict (None for a blocked, non-actionable proposal)
-    outcome: Optional["object"]
+    outcome: Optional[GateOutcome]
     # provenance: "template:<name>", "shifty-candidate", "hand", or "blocked"
     origin: str
     # existing model nodes this proposal reuses rather than mints
@@ -208,7 +221,7 @@ class RepairProposal:
 
     def to_delta(self):
         """Return this proposal as a shifty :class:`shifty.RepairDelta`."""
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         return shifty.delta_from_graph(
             add=self.additions if len(self.additions) else None,
@@ -256,10 +269,14 @@ class RepairWitness:
             try:
                 summary = summary()
             except Exception:
+                logger.debug(
+                    "failed_component: witness.summary() raised for focus %s",
+                    self.focus,
+                    exc_info=True,
+                )
                 summary = None
         kinds = {
-            str(getattr(atom, "kind", "")).split(".")[-1]
-            for atom in (summary or [])
+            str(getattr(atom, "kind", "")).split(".")[-1] for atom in (summary or [])
         }
         if "CountLow" in kinds:
             return SH.MinCountConstraintComponent
@@ -283,6 +300,11 @@ class RepairWitness:
         try:
             return bool(self.repair_tree.is_blocked)
         except Exception:
+            logger.debug(
+                "is_blocked: could not read repair_tree.is_blocked for focus %s",
+                self.focus,
+                exc_info=True,
+            )
             return False
 
     def explain(self) -> str:
@@ -290,6 +312,11 @@ class RepairWitness:
         try:
             return self.repair_tree.explain()
         except Exception:
+            logger.debug(
+                "explain: repair_tree.explain() raised for focus %s",
+                self.focus,
+                exc_info=True,
+            )
             return ""
 
     def reason(self) -> str:
@@ -300,6 +327,11 @@ class RepairWitness:
             try:
                 summary = summary()
             except Exception:
+                logger.debug(
+                    "reason: witness.summary() raised for focus %s",
+                    self.focus,
+                    exc_info=True,
+                )
                 summary = None
         if isinstance(summary, (list, tuple)) and summary:
             parts = []
@@ -321,6 +353,11 @@ class RepairWitness:
             try:
                 target = target()
             except Exception:
+                logger.debug(
+                    "reason: witness.target() raised for focus %s",
+                    self.focus,
+                    exc_info=True,
+                )
                 target = ""
         return f"{self.focus} failed {target}".strip()
 
@@ -420,7 +457,7 @@ class TemplateGuidedRepair:
         """Yield (repeat_counts, any_choices) plan specs over the tree's
         decision points. ``Repeat`` nodes use their minimum count (>=1);
         ``Any`` nodes are enumerated as separate base plans."""
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         repeats: List[Tuple[int, int]] = []
         anys: List[Tuple[int, int]] = []
@@ -438,7 +475,7 @@ class TemplateGuidedRepair:
             yield (repeats, [(anys[i][0], combo[i]) for i in range(len(anys))])
 
     def _build_plan(self, spec):
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         repeats, anys = spec
         plan = shifty.RepairPlan()
@@ -481,6 +518,9 @@ class TemplateGuidedRepair:
         try:
             return list(hole.conforms_to_shapes or [])
         except Exception:
+            logger.debug(
+                "_hole_shapes: could not read hole.conforms_to_shapes", exc_info=True
+            )
             return []
 
     def _first_conforming(self, hole, shape_ids: List[int]) -> Optional[str]:
@@ -489,6 +529,7 @@ class TemplateGuidedRepair:
         try:
             candidates = list(hole.candidates(self.candidate_limit))
         except Exception:
+            logger.debug("_first_conforming: hole.candidates() raised", exc_info=True)
             return None
         for cand in candidates:
             try:
@@ -498,6 +539,11 @@ class TemplateGuidedRepair:
                 ):
                     return cand
             except Exception:
+                logger.debug(
+                    "_first_conforming: repair_node_against(%s) raised",
+                    cand,
+                    exc_info=True,
+                )
                 continue
         return None
 
@@ -507,6 +553,7 @@ class TemplateGuidedRepair:
         try:
             candidates = list(hole.candidates(self.candidate_limit))
         except Exception:
+            logger.debug("_fill_leaf: hole.candidates() raised", exc_info=True)
             candidates = []
         if candidates:
             return candidates[0], Graph()
@@ -522,6 +569,12 @@ class TemplateGuidedRepair:
             try:
                 sub_tree = self.session.repair_node_against(node_nt, sid)
             except Exception:
+                logger.debug(
+                    "_synthesize_value: repair_node_against(%s, shape=%s) raised",
+                    node_nt,
+                    sid,
+                    exc_info=True,
+                )
                 return None
             if sub_tree is None:
                 continue  # already conforms
@@ -534,7 +587,7 @@ class TemplateGuidedRepair:
     def _synthesize_tree(self, rt, fuel: int) -> Optional[Graph]:
         """Greedily fold one repair (sub)tree into a concrete additions graph,
         recursing through nested ConformsTo holes until ``fuel`` runs out."""
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         if fuel <= 0:
             return None
@@ -547,6 +600,7 @@ class TemplateGuidedRepair:
         try:
             inst = rt.instantiate(plan)
         except Exception:
+            logger.debug("_synthesize_tree: rt.instantiate(plan) raised", exc_info=True)
             return None
         extra = Graph()
         for h in inst.open_holes:
@@ -571,6 +625,9 @@ class TemplateGuidedRepair:
         try:
             inst2 = rt.instantiate(plan)
         except Exception:
+            logger.debug(
+                "_synthesize_tree: rt.instantiate(bound plan) raised", exc_info=True
+            )
             return None
         if not inst2.is_complete:
             return None
@@ -633,6 +690,11 @@ class TemplateGuidedRepair:
                 if len(found) >= self.candidate_limit:
                     break
         except Exception:
+            logger.debug(
+                "_reuse_candidates: monomorphism search failed for template %s",
+                getattr(tmpl, "name", tmpl),
+                exc_info=True,
+            )
             return found
         return found
 
@@ -681,6 +743,11 @@ class TemplateGuidedRepair:
             try:
                 per_hole[h.id] = list(h.candidates(self.candidate_limit))
             except Exception:
+                logger.debug(
+                    "_fill_strategies: hole.candidates() raised for hole %s",
+                    getattr(h, "id", h),
+                    exc_info=True,
+                )
                 per_hole[h.id] = []
         depth = max((len(v) for v in per_hole.values()), default=0)
         for i in range(min(depth, self.candidate_limit)):
@@ -701,7 +768,7 @@ class TemplateGuidedRepair:
         self, focus, additions: Graph, deletions: Graph, origin: str, reused: Set[Node]
     ) -> Optional[RepairProposal]:
         """Gate one ΔG; return a sound proposal or None."""
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         if len(additions) == 0 and len(deletions) == 0:
             return None
@@ -712,6 +779,14 @@ class TemplateGuidedRepair:
             )
             outcome = self.session.gate(delta)
         except Exception:
+            logger.debug(
+                "_gate: shifty gate raised for focus %s (origin %s, +%d/-%d triples)",
+                focus,
+                origin,
+                len(additions),
+                len(deletions),
+                exc_info=True,
+            )
             return None
         if not outcome.is_sound:
             return None
@@ -747,6 +822,11 @@ class TemplateGuidedRepair:
             try:
                 inst = rt.instantiate(base_plan)
             except Exception:
+                logger.debug(
+                    "propose: rt.instantiate(base_plan) raised for focus %s",
+                    focus,
+                    exc_info=True,
+                )
                 continue
             open_holes = list(inst.open_holes)
 
@@ -766,6 +846,13 @@ class TemplateGuidedRepair:
                 try:
                     inst2 = rt.instantiate(plan)
                 except Exception:
+                    logger.debug(
+                        "propose: rt.instantiate(bound plan) raised for focus %s "
+                        "(origin %s)",
+                        focus,
+                        origin,
+                        exc_info=True,
+                    )
                     continue
                 if not inst2.is_complete:
                     continue
@@ -811,7 +898,7 @@ class AlgebraicValidationContext:
     libraries: List["Library"] = field(default_factory=list)
 
     def __post_init__(self):
-        import shifty  # type: ignore
+        shifty = require_shifty()
 
         self._session = shifty.RepairSession(self.shapes_graph, self.data_graph)
         self._algebra = shifty.validate_algebra(
@@ -826,6 +913,12 @@ class AlgebraicValidationContext:
             try:
                 templates.extend(lib.get_templates())
             except Exception:
+                logger.debug(
+                    "AlgebraicValidationContext: could not load templates from "
+                    "library %s; skipping it for repair guidance",
+                    getattr(lib, "name", lib),
+                    exc_info=True,
+                )
                 continue
         self.engine = TemplateGuidedRepair(
             self._session, templates, self.data_graph, self._ontology
@@ -901,9 +994,7 @@ class AlgebraicValidationContext:
     def get_broken_entities(self) -> Set[Optional[URIRef]]:
         return {rw.focus for rw in self.witnesses}
 
-    def get_diffs_for_entity(
-        self, entity: Optional[URIRef]
-    ) -> List[RepairWitness]:
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> List[RepairWitness]:
         return [rw for rw in self.witnesses if rw.focus == entity]
 
     def get_reasons_with_severity(
