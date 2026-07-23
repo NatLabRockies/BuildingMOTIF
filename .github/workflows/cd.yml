@@ -21,6 +21,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{github.event.pull_request.head.ref}}
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: setup-python
         uses: actions/setup-python@v6
         with:
@@ -32,22 +36,14 @@ jobs:
       #     output_file: docs/reference/apidoc/code_visualization.svg
       #     excluded_paths: ".github"
       #     commit_message: "repo-visualizer [skip actions]"
-      # install project, which is required for autodoc of code
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-create: false
+      # install project, which is required for autodoc of code (jupyter-book is in the dev group)
       - name: install buildingmotif
-        run: poetry install --all-extras
-      # install jupyter-book, which for some reason isn't available with poetry install
-      - name: install jupyter book
-        run: pip install jupyter-book
+        run: uv sync --all-extras --python 3.11
       # build docs, which are deployed by repo settings
       - name: build docs
         run: |
-          jupyter-book config sphinx ./docs/
-          sphinx-build ./docs/ docs/_build/html -b html
+          uv run jupyter-book config sphinx ./docs/
+          uv run sphinx-build ./docs/ docs/_build/html -b html
       # TODO can we use an official GitHub Action? https://github.com/actions/deploy-pages
       - name: deploy docs
         uses: peaceiris/actions-gh-pages@v3
@@ -63,17 +59,13 @@ jobs:
       # setup
       - name: checkout
         uses: actions/checkout@v7
-      - name: setup-python
-        uses: actions/setup-python@v6
-      # install poetry and build dist
-      - name: install-poetry
-        uses: snok/install-poetry@v1
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
+          enable-cache: true
+      # build dist
       - name: build dist
-        run: poetry build
+        run: uv build
       - name: publish distribution to Test PyPI
         id: test-pypi
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -94,24 +86,22 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v7
+      - name: install-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: install-poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
       - name: install dependencies
-        run: poetry install --no-root --with=dev
+        run: uv sync --no-install-project --python 3.11
       - name: increment dev version
         env:
           PYPI_URL: https://pypi.org
-        run: poetry run python scripts/bump_dev_version.py
+        run: uv run python scripts/bump_dev_version.py
       - name: build dist
-        run: poetry build
+        run: uv build
       - name: publish dev distribution to Test PyPI
         id: test-pypi
         uses: pypa/gh-action-pypi-publish@release/v1

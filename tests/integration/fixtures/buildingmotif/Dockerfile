@@ -1,13 +1,15 @@
 FROM python:3.11
 
+# install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /home/buildingmotif
 
-RUN pip install poetry==1.8.2 && poetry config virtualenvs.create false
-
+# install dependencies first (without the project) for better layer caching
 COPY pyproject.toml .
-COPY poetry.lock .
+COPY uv.lock .
 
-RUN poetry install --no-root
+RUN uv sync --no-install-project --locked
 
 COPY buildingmotif buildingmotif
 COPY tests tests
@@ -15,5 +17,6 @@ COPY notebooks notebooks
 COPY migrations migrations
 COPY libraries libraries
 COPY docs docs
+COPY LICENSE .
 
-RUN poetry install
+RUN uv sync --locked
