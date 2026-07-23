@@ -30,9 +30,9 @@ dependencies = [
     "pyshacl>=0.30,<0.31",
     # pyshifty (imported as ``shifty``) is a required dependency: the ``shifty``
     # SHACL engine and the algebraic validation/repair path are always available.
-    # Pinned exactly -- the algebra/repair API is not yet stable across minor
-    # releases.
-    "pyshifty==0.2.5",
+    # Pinned to the 0.2.x line -- the algebra/repair API is not yet stable across
+    # minor releases.
+    "pyshifty>=0.2,<0.3",
     "alembic>=1.8.0,<2",
     "Flask>=2.1.2,<3",
     "Flask-API>=3.0.post1,<4",
