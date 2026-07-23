@@ -123,6 +123,14 @@ graph even if some imports are missing. With `ontology_fetch_imports=True` and n
 available, "missing" usually means an ontology OntoEnv couldn't find locally *or* fetch
 — the rare genuinely-broken import, not the common "you forgot to load QUDT."
 
+## Where the commonly-imported ontologies actually live
+
+For local search directories / offline loads / pinning a newer version than auto-fetch
+resolves — see `SKILL.md`'s "Other ontologies" table for exact URLs (Brick nightly on
+GitHub, 223P at open223.info, WATR at watermetadata.org, QUDT via its own dereferenceable
+URIs). None of these are builtin or in the repo; OntoEnv fetches them by IRI when an
+`owl:imports` names them and `ontology_fetch_imports=True` (the default).
+
 ## When imports still fail
 
 OntoEnv resolves an import by (1) finding it in a search directory, (2) finding it already

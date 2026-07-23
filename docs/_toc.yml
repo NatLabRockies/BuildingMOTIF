@@ -21,6 +21,7 @@ parts:
   - file: guides/csv-import.md
   - file: guides/ingress-bacnet-to-brick.md
   - file: guides/generating-queries.md
+  - file: guides/agent-skill.md
 - caption: Explainations
   chapters:
   - file: explanations/ingresses.md
