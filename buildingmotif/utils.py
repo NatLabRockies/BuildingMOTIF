@@ -15,10 +15,6 @@ from rdflib.term import Node
 from buildingmotif.database.errors import TemplateNotFound
 from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
 
-# re-exported for callers that expect the helper alongside shacl_validate /
-# shacl_inference below
-from buildingmotif.shacl import normalize_shacl_engine  # noqa: F401
-
 if TYPE_CHECKING:
     from buildingmotif.dataclasses import Library, Template
 
@@ -60,11 +56,9 @@ def _guarantee_unique_template_name(library: "Library", name: str) -> str:
     proposals. The Library is intended to be ephemeral so these names will not be
     around for long.
 
-    Template names are unique across the whole BuildingMOTIF database, not just
-    within a single library, so a name already taken by *another* (e.g. an
-    earlier ephemeral resolve) library must also be skipped. ``get_template_by_name``
-    raises :class:`TemplateNotFound` when the name is entirely free and
-    ``ValueError`` when it is taken by a different library; both are handled here.
+    Template names are unique within a library, so names already taken by other
+    libraries do not need to be skipped. ``get_template_by_name`` raises
+    :class:`TemplateNotFound` when the name is free in the given library.
     """
     idx = 1
     original_name = name
@@ -72,11 +66,8 @@ def _guarantee_unique_template_name(library: "Library", name: str) -> str:
         try:
             existing = library.get_template_by_name(name)
         except TemplateNotFound:
-            # the name is entirely free -- use it
+            # the name is free in this library -- use it
             return name
-        except ValueError:
-            # the name is taken by a *different* library -- keep searching
-            existing = True
         if not existing:
             return name
         name = f"{original_name}_{idx}"
@@ -644,18 +635,18 @@ def skip_uri(uri: URIRef) -> bool:
 def shacl_validate(
     data_graph: Graph,
     shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
+    engine: Optional[str] = None,
 ) -> Tuple[bool, Graph, str]:
     """
     Validate the data graph against the shape graph.
-    Uses the fastest validation method available. Use the 'topquadrant' feature
-    to use TopQuadrant's SHACL engine. Defaults to using PySHACL.
+    Defaults to the ``pyshifty`` engine. Use the 'topquadrant'
+    feature to use TopQuadrant's SHACL engine.
 
     :param data_graph: the graph to validate
     :type data_graph: Graph
     :param shape_graph: the shape graph to validate against
     :type shape_graph: Graph, optional
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
+    :param engine: the SHACL engine to use, defaults to "pyshifty"
     :type engine: str, optional
     :return: a tuple containing the validation result, the validation report, and the validation report string
     :rtype: Tuple[bool, Graph, str]
@@ -668,19 +659,18 @@ def shacl_validate(
 def shacl_inference(
     data_graph: Graph,
     shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
+    engine: Optional[str] = None,
 ) -> Graph:
     """
     Infer new triples in the data graph using the shape graph.
-    Edits the data graph in place. Uses the fastest inference method available.
-    Use the 'topquadrant' feature to use TopQuadrant's SHACL engine. Defaults to
-    using PySHACL.
+    Edits the data graph in place. Defaults to the ``pyshifty`` engine. Use the
+    'topquadrant' feature to use TopQuadrant's SHACL engine.
 
     :param data_graph: the graph to infer new triples in
     :type data_graph: Graph
     :param shape_graph: the shape graph to use for inference
     :type shape_graph: Optional[Graph]
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
+    :param engine: the SHACL engine to use, defaults to "pyshifty"
     :type engine: str, optional
     :return: the data graph with inferred triples
     :rtype: Graph

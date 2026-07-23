@@ -321,18 +321,23 @@ class TableConnection:
             raise TemplateNotFound(idnum=id)
         return db_template
 
-    def get_db_template_by_name(self, name: str) -> DBTemplate:
+    def get_db_template_by_name(
+        self, name: str, library_id: Optional[int] = None
+    ) -> DBTemplate:
         """Get database template by name.
 
         :param name: name of DBTemplate
         :type name: str
+        :param library_id: optional id of the template's library
+        :type library_id: Optional[int]
         :return: DBTemplate
         :rtype: DBTemplate
         """
         try:
-            db_template = (
-                self.bm.session.query(DBTemplate).filter(DBTemplate.name == name).one()
-            )
+            query = self.bm.session.query(DBTemplate).filter(DBTemplate.name == name)
+            if library_id is not None:
+                query = query.filter(DBTemplate.library_id == library_id)
+            db_template = query.one()
         except NoResultFound:
             raise TemplateNotFound(name=name)
         return db_template

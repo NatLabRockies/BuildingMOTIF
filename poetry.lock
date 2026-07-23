@@ -898,6 +898,21 @@ files = [
 test = ["pytest (>=6)"]
 
 [[package]]
+name = "execnet"
+version = "2.1.2"
+description = "execnet: rapid multi-Python deployment"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec"},
+    {file = "execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd"},
+]
+
+[package.extras]
+testing = ["hatch", "pre-commit", "pytest", "tox"]
+
+[[package]]
 name = "executing"
 version = "2.2.0"
 description = "Get the currently executing AST node of a frame, and other information"
@@ -3489,19 +3504,19 @@ js = ["pyduktape2 (>=0.4.6,<1)"]
 
 [[package]]
 name = "pyshifty"
-version = "0.2.0"
+version = "0.2.5"
 description = "Python bindings for the shifty SHACL engine"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "pyshifty-0.2.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:64961093337a428772a33c800ba110471f7bbed911e7d87bbc0c09587f5be166"},
-    {file = "pyshifty-0.2.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8b7ad5a1fbfef22bd7df969c54943ad10341ace0298b34262ff774ab3d11de93"},
-    {file = "pyshifty-0.2.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7042564fa556e793b9a6a5ff22f216711b1cf530900c53b9f95478a57b28403d"},
-    {file = "pyshifty-0.2.0-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:389785cc35af0ffa5989f2d3f9ef7ec89c45f9ca5b4c9190f116ee34d77c6c16"},
-    {file = "pyshifty-0.2.0-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:00f0a92d8354b7fc2f61245e61d8da06eabf8e49934a66cabad39a7102df494e"},
-    {file = "pyshifty-0.2.0-cp39-abi3-win_amd64.whl", hash = "sha256:d543ffeefa315fef7d739e457b5c904061664c468343999389b83c68736383a7"},
-    {file = "pyshifty-0.2.0.tar.gz", hash = "sha256:5dc3fd6de25a82abf16a218d86fb04754c01261f742ce71b3c8e472f846d0d2e"},
+    {file = "pyshifty-0.2.5-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:fdc84b6c46e8b6892ced2f30b0f6500e8796c66c9a5ee8d06be7d6adb5744c4e"},
+    {file = "pyshifty-0.2.5-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6cb1968a48b69b890f45da44a13c18f69d8f261ab25bc5fffc12b9223d3efd94"},
+    {file = "pyshifty-0.2.5-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f3bad7350a6bc198e1d4590fca0fd23037309340296d226e183704467c8d37ea"},
+    {file = "pyshifty-0.2.5-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:ed282ae6c01d0742314aa60cbf636c07601577b160da28aa3441845761b7dc1c"},
+    {file = "pyshifty-0.2.5-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6fa8480fbf0ea69d555a38939d094f68ccc8483809cbee096e25682debdcac3d"},
+    {file = "pyshifty-0.2.5-cp39-abi3-win_amd64.whl", hash = "sha256:cbca2a7e669681d70ee720137e8696fda508cf41cbfb81166c2be5b281c1cc8d"},
+    {file = "pyshifty-0.2.5.tar.gz", hash = "sha256:0640f6cecd8dc3abf22723e722e645d6146f1450531130bcd70e6be05ba16db4"},
 ]
 
 [package.extras]
@@ -3548,6 +3563,27 @@ pytest = ">=4.6"
 
 [package.extras]
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
+
+[[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+description = "pytest xdist plugin for distributed testing, most importantly across multiple CPUs"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88"},
+    {file = "pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1"},
+]
+
+[package.dependencies]
+execnet = ">=2.1"
+pytest = ">=7.0.0"
+
+[package.extras]
+psutil = ["psutil (>=3.0)"]
+setproctitle = ["setproctitle"]
+testing = ["filelock"]
 
 [[package]]
 name = "python-dateutil"
@@ -5018,4 +5054,4 @@ xlsx-ingress = []
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.13"
-content-hash = "9bd2ee4472b72193622ba7daa0728083b067bcd613d8c33ba10a1c701ff7dabf"
+content-hash = "25fb04d03f7b514b5f50cb12856f6fc684a729f33c0b77d204c278d99794e09e"

@@ -39,13 +39,14 @@ jsonschema = "^4.21.1"
 brick-tq-shacl = {optional = true, version="0.3.4a2"}
 # pyshifty (imported as ``shifty``) is a required dependency: the ``shifty``
 # SHACL engine and the algebraic validation/repair path are always available.
-# Pinned to the 0.2.x line -- the algebra/repair API is not yet stable across
-# minor releases.
-pyshifty = "^0.2.0"
+# Pinned exactly -- the algebra/repair API is not yet stable across minor
+# releases.
+pyshifty = "0.2.5"
 werkzeug="^2.3.7"
 types-jsonschema = "^4.21.0.20240311"
 matplotlib = "^3.9.2"
 pandas = "^2.2.3"
+pytest-xdist = "^3.8.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.3.0"

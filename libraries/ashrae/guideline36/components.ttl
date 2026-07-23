@@ -50,4 +50,4 @@
 
 :variable-speed-fan-vfd a sh:NodeShape, owl:Class ;
     rdfs:label "Variable Speed Fan VFD" ;
-    sh:class brick:Variable_Speed_Drive .
+    sh:class brick:Fan .

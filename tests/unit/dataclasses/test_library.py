@@ -49,6 +49,16 @@ def test_get_templates(clean_building_motif):
     assert [r.id for r in results] == [t1.id, t2.id]
 
 
+def test_get_template_by_name_is_scoped_to_library(clean_building_motif):
+    lib = Library.create("my_library")
+    other_lib = Library.create("your_library")
+    templ = lib.create_template("shared_template")
+    other_templ = other_lib.create_template("shared_template")
+
+    assert lib.get_template_by_name("shared_template").id == templ.id
+    assert other_lib.get_template_by_name("shared_template").id == other_templ.id
+
+
 def test_get_shape_collection(clean_building_motif):
     lib = Library.create("my_library")
     shape_collection = lib.get_shape_collection()

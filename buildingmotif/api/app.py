@@ -10,6 +10,7 @@ from buildingmotif.api.views.model import blueprint as model_blueprint
 from buildingmotif.api.views.parser import blueprint as parsers_blueprint
 from buildingmotif.api.views.template import blueprint as template_blueprint
 from buildingmotif.building_motif.building_motif import BuildingMOTIF
+from buildingmotif.shacl import DEFAULT_SHACL_ENGINE
 
 
 def _after_request(response):
@@ -44,14 +45,15 @@ def _after_error(error):
     return str(error), status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def create_app(DB_URI, shacl_engine: Optional[str] = "pyshacl"):
+def create_app(DB_URI, shacl_engine: Optional[str] = DEFAULT_SHACL_ENGINE):
     """Creates a Flask API.
 
     :param db_uri: database URI
     :type db_uri: str
-    :param shacl_engine: the name of the engine to use for validation: "pyshacl", "shifty", or "topquadrant". Using topquadrant
+    :param shacl_engine: the name of the engine to use for validation: "pyshifty", "pyshacl", or "topquadrant". "shifty" is
+        accepted as an alias for "pyshifty". Using topquadrant
         requires Java to be installed on this machine, and the "topquadrant" feature on BuildingMOTIF,
-        defaults to "pyshacl"
+        defaults to "pyshifty"
     :type shacl_engine: str, optional
     :return: flask app
     :rtype: Flask.app

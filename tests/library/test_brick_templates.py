@@ -4,7 +4,9 @@ from rdflib import Graph, Namespace
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
+from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.namespaces import bind_prefixes
+from buildingmotif.shacl import PyshiftyBackend
 
 # all the Brick libraries to test
 libraries = [
@@ -21,7 +23,7 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
     this initial setup to provide each test with a clean environment.
     """
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
-    bm = BuildingMOTIF("sqlite://", shacl_engine="shifty")
+    bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
     brick = Library.load(
         ontology_graph="libraries/brick/Brick.ttl", run_shacl_inference=False
@@ -49,7 +51,7 @@ def setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
     return bm, brick
 
 
-def test_brick_template(bm, brick, library, template):
+def test_brick_template(bm, brick, library, template, resolved_shape_graph):
     BuildingMOTIF.instance = bm
     try:
         MODEL = Namespace("urn:ex/")
@@ -58,9 +60,11 @@ def test_brick_template(bm, brick, library, template):
         assert isinstance(g, Graph), "was not a graph"
         bind_prefixes(g)
         m.add_graph(g)
-        ctx = m.validate(
-            [brick.get_shape_collection()],
-            error_on_missing_imports=False,
+        sc = brick.get_shape_collection()
+        backend = PyshiftyBackend()
+        compiled_graph = backend.compile_model_graph(m.graph, [sc])
+        ctx = AlgebraicValidationContext.from_compiled(
+            [sc], resolved_shape_graph, compiled_graph, m
         )
     except Exception as e:
         bm.session.rollback()
@@ -73,12 +77,24 @@ def pytest_generate_tests(metafunc):
     bm, brick = setup_building_motif_brick()
     BuildingMOTIF.instance = bm
     if "test_brick_template" == metafunc.function.__name__:
+        resolved_shape_graph = (
+            brick.get_shape_collection()
+            .resolve_imports(error_on_missing_imports=False)
+            .graph
+        )
         params = []
         ids = []
         for library_name in libraries:
             library = Library.load(directory=library_name, run_shacl_inference=False)
             templates = sorted(library.get_templates(), key=lambda t: t.name)
-            params.extend([(bm, brick, library, template) for template in templates])
+            params.extend(
+                [
+                    (bm, brick, library, template, resolved_shape_graph)
+                    for template in templates
+                ]
+            )
             ids.extend([f"{library.name}-{template.name}" for template in templates])
-        metafunc.parametrize("bm,brick,library,template", params, ids=ids)
+        metafunc.parametrize(
+            "bm,brick,library,template,resolved_shape_graph", params, ids=ids
+        )
     BuildingMOTIF.clean()
