@@ -17,13 +17,48 @@ we add it?**
   checked against evidence before applying. Repair is the second half of the loop;
   validation is the first.
 
-This skill assumes **BuildingMOTIF is used as an installed Python package**
-(`pip install buildingmotif` / `uv add buildingmotif`), not run from a checkout of the
-NREL/BuildingMOTIF repository. All imports come from the `buildingmotif` package; the
-only filesystem paths used are the user's own model/shape files and the *builtin
-libraries* that ship inside the package (see below). Recommend `uv` for environment
-management going forward; `uvx buildingmotif …` runs the CLI without a persistent
-install.
+This skill assumes **BuildingMOTIF is used as an installed Python package**, not run from
+a checkout of the NatLabRockies/BuildingMOTIF repository. That's about the `buildingmotif`
+package your scripts `import` — not about these skill files themselves, which (until this
+skill is packaged separately) you still have to pull from the repository once, by whatever
+lightweight means you like; see `docs/guides/agent-skill.md` if you need that part spelled
+out. All imports come from the `buildingmotif` package; the only filesystem paths used are
+the user's own model/shape files and the *builtin libraries* that ship inside the package
+(see below).
+
+### Installation: install from the `gtf-buildingmotif` branch, not PyPI
+
+The PyPI release lags this skill — `pyshifty`/algebraic repair, the OntoEnv-backed import
+resolution, and the Oxigraph store are all only on `gtf-buildingmotif`, an integration
+branch on NatLabRockies/BuildingMOTIF that carries the latest merged features ahead of their
+individual PRs into `develop` (see the repo's `BRANCHES.md` if you have a checkout handy —
+you don't need one for this). Install straight from that branch with `uv`:
+
+```bash
+# in a project managed by uv
+uv add "buildingmotif @ git+https://github.com/NatLabRockies/BuildingMOTIF.git@gtf-buildingmotif"
+
+# add the Java-backed TopQuadrant SHACL engine too (needs a JVM on PATH)
+uv add "buildingmotif[topquadrant] @ git+https://github.com/NatLabRockies/BuildingMOTIF.git@gtf-buildingmotif"
+
+# one-off install, no persistent pyproject.toml
+uv pip install "buildingmotif @ git+https://github.com/NatLabRockies/BuildingMOTIF.git@gtf-buildingmotif"
+
+# run the CLI without installing anything persistent
+uvx --from "git+https://github.com/NatLabRockies/BuildingMOTIF.git@gtf-buildingmotif" buildingmotif …
+```
+
+This is still an **installed package**, not a source checkout: `uv` clones the branch into
+an isolated build environment and installs the built wheel into your project's venv, so you
+get `import buildingmotif` from `site-packages` — no repo directory to `cd` into or run
+scripts relative to. Everything in this skill (imports, builtin library paths, "not run
+from a checkout") holds exactly as it would installing from PyPI; only the source URL
+changes. `pyshifty` is a required dependency (not an extra) on this branch, so the default
+`shacl_engine="pyshifty"` path needs nothing beyond the plain install above.
+
+`gtf-buildingmotif` is a moving integration target (rebased/force-pushed as feature
+branches land) — pin `@<commit-sha>` instead of `@gtf-buildingmotif` for a reproducible
+install, e.g. in CI or a shared requirements file.
 
 ## Core rule: never invent metadata
 
@@ -111,7 +146,8 @@ loads, and `ontology_cache_path` to persist resolved ontologies across sessions.
 
 BuildingMOTIF resolves certain string paths against the **builtin libraries** packaged
 inside `buildingmotif/libraries/` (via `pkg_resources.resource_exists` on the
-`buildingmotif.libraries` namespace). These ship with `pip install buildingmotif`:
+`buildingmotif.libraries` namespace). These ship with the package install (see
+"Installation" above):
 
 | Builtin path (pass to `Library.load`) | Contents |
 |---|---|
@@ -121,7 +157,7 @@ inside `buildingmotif/libraries/` (via `pkg_resources.resource_exists` on the
 
 **Sample application libraries** (`ashrae/guideline36`, `chiller-plant`,
 `pointlist-test`, `223p`, `medium-office`, `ZonePAC`, …) are **not shipped in the
-package** (see [NREL/BuildingMOTIF#133](https://github.com/NREL/BuildingMOTIF/issues/133)).
+package** (see [NatLabRockies/BuildingMOTIF#133](https://github.com/NatLabRockies/BuildingMOTIF/issues/133)).
 They live only in the repository's `libraries/` directory. To use them as a package user:
 
 - **clone the repo** and point `Library.load(directory=...)` at the path, **or**
@@ -129,6 +165,24 @@ They live only in the repository's `libraries/` directory. To use them as a pack
   time (see `references/templates.md`), **or**
 - write your own templates/shapes inline — the YAML and SHACL formats are documented in
   `references/templates.md`.
+
+### Other ontologies (Brick nightly, 223P, WATR, QUDT) — not shipped, not in the repo
+
+None of these are builtin or in the repo's `libraries/`. With `ontology_fetch_imports=True`
+(the default) OntoEnv fetches whichever of these a shape or model actually `owl:imports`,
+so most of the time you don't load them by hand at all — see `references/ontology_imports.md`.
+Reach for the table below when you need a newer/specific version than what auto-fetch
+resolves, or a local copy for `ontology_search_directories` / offline loads:
+
+| Ontology | Where to get it | Notes |
+|---|---|---|
+| **Brick** (unreleased/newer than the builtin) | [Nightly Build release on GitHub](https://github.com/BrickSchema/Brick/releases/tag/nightly) — `Brick.ttl` asset, rebuilt continuously off `master` | The builtin `brick/Brick.ttl` (above) is pinned to a release; use the nightly asset when you need a fix that hasn't been tagged yet. `Brick-only.ttl` (no imports) and `Brick+imports.ttl` are also published there. |
+| **223P** | [open223.info](https://open223.info) — `/223p.ttl` for the current version | Community-maintained ASHRAE 223P tooling/ontology hub, not an official ASHRAE distribution. |
+| **WATR** | [watermetadata.org](https://watermetadata.org) — ontology download link on the site (`water.ttl`); source at [github.com/DataDrivenCPS/water-ontology](https://github.com/DataDrivenCPS/water-ontology) | NAWI-funded water-systems metadata ontology; Brick's counterpart for water. |
+| **QUDT** | dereference its own namespace URIs (e.g. `http://qudt.org/schema/qudt/`, `http://qudt.org/vocab/unit/`) | Don't vendor a copy — QUDT's IRIs are the canonical, dereferenceable source; OntoEnv/rdflib resolve them directly when fetching is on. |
+
+Same load-order rule as Brick applies here: if a library's templates depend on 223P or WATR
+class templates, load that ontology **before** the dependent library.
 
 ### Loading Brick (the one load-order rule that matters)
 
@@ -207,7 +261,7 @@ notebooks are not on the local filesystem by default. They are all on the web:
   `explanations/point-label-parsing.md`, `tutorials/model_validation.md`,
   `tutorials/model_creation.md`, `reference/cli_tool.md`.
 - Repair theory (`algebraic-repair.md`) and runnable notebooks:
-  <https://github.com/NREL/BuildingMOTIF> (`algebraic-repair.md` at the repo root;
+  <https://github.com/NatLabRockies/BuildingMOTIF> (`algebraic-repair.md` at the repo root;
   `notebooks/Existing-model-repair-with-pyshifty.ipynb` — minimal end-to-end;
   `notebooks/Existing-model-validation-with-pyshifty.ipynb` — real-model validation plus
   a repair playground with labelled experiments A–G;
