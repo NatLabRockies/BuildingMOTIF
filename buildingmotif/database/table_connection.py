@@ -96,7 +96,10 @@ class TableConnection:
         :return: DBModel
         :rtype: DBModel
         """
-        db_model = self.bm.session.query(DBModel).filter(DBModel.name == name).one()
+        try:
+            db_model = self.bm.session.query(DBModel).filter(DBModel.name == name).one()
+        except NoResultFound:
+            raise ModelNotFound(name=name)
         return db_model
 
     def update_db_model_name(self, id: int, name: str) -> None:
@@ -440,9 +443,12 @@ class TableConnection:
         :param optional_args: new list of optional_args
         :type name: List[str]
         """
-        db_template = (
-            self.bm.session.query(DBTemplate).filter(DBTemplate.id == id).one()
-        )
+        try:
+            db_template = (
+                self.bm.session.query(DBTemplate).filter(DBTemplate.id == id).one()
+            )
+        except NoResultFound:
+            raise TemplateNotFound(idnum=id)
         db_template.optional_args = optional_args
 
     def add_template_dependency_preliminary(
