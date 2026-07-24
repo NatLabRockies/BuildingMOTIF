@@ -266,6 +266,74 @@ def test_get_reasons_with_severity_wraps_pyshifty_reasons(bm: BuildingMOTIF):
     assert reason.message == "at least 1 value(s) required along <http://ex/p>, found 0"
 
 
+def _sparql_age_shape() -> Graph:
+    return Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        ex:S a sh:NodeShape ; sh:targetNode bldg:x ;
+          sh:sparql [
+            a sh:SPARQLConstraint ;
+            sh:message "{$this} must have a positive age." ;
+            sh:prefixes ex: ;
+            sh:select \"\"\"
+                SELECT $this ?age
+                WHERE {
+                    OPTIONAL { $this ex:age ?age . }
+                    FILTER (!BOUND(?age) || ?age <= 0)
+                }
+            \"\"\" ;
+          ] .
+        """,
+        format="turtle",
+    )
+
+
+def test_sparql_constraint_reason_includes_diagnostic(bm: BuildingMOTIF):
+    """A failed ``sh:sparql`` constraint is opaque on the repair-tree side (no
+    algebraic witness) -- but the *separate* ``validate_algebra()`` call this
+    same context also runs computes a pyshifty ``SparqlDiagnostic``
+    (query/bindings/results) for the same failure.
+    :class:`AlgebraicValidationContext` correlates the two so ``reason()`` /
+    ``explain()`` (and :meth:`get_reasons_with_severity`) surface the
+    diagnostic instead of a bare "opaque SPARQL" dead end."""
+    shapes = _sparql_age_shape()
+    data = Graph().parse(
+        data="""
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        bldg:x a bldg:Foo ; ex:age -5 .
+        """,
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+    assert not ctx.conforms
+
+    witnesses = ctx.witnesses
+    assert len(witnesses) == 1
+    rw = witnesses[0]
+    assert rw.is_blocked  # opaque SPARQL: no algebraic repair possible
+
+    diagnostics = rw.sparql_diagnostics
+    assert len(diagnostics) == 1
+    assert "ex/age" in diagnostics[0].query
+    assert diagnostics[0].bindings  # at least $this is prebound
+
+    # reason()/explain() no longer stop at "opaque SPARQL -- no algebraic witness"
+    assert "query:" in rw.reason()
+    assert "query:" in rw.explain()
+
+    # the structured get_reasons_with_severity surface carries it too
+    reasons = ctx.get_reasons_with_severity("Violation")
+    reason = reasons[BLDG["x"]][0]
+    assert reason.reason().startswith("<urn:bldg/x> must have a positive age. [query:")
+    assert "ex/age" in reason.reason()
+
+
 def test_as_templates_resolves_violation(bm: BuildingMOTIF):
     """``as_templates`` lifts the best sound repair into a BuildingMOTIF
     template whose body fixes the failure when merged into the model."""
@@ -393,6 +461,75 @@ def test_auto_route_pyshifty_engine_returns_algebraic_context(bm: BuildingMOTIF)
     # repairing the label makes it conform
     model.add_triples((BLDG["z1"], rdflib.RDFS.label, Literal("zone one")))
     ctx2 = model.validate([shape_lib.get_shape_collection()])
+    assert ctx2.valid
+
+
+def test_sparql_constraint_fires_after_shape_collection_round_trips_through_storage(
+    bm: BuildingMOTIF,
+):
+    """A ``sh:sparql`` constraint whose query body uses a prefixed name (here
+    ``brick:``) must still fire after its shape collection has gone through
+    BuildingMOTIF's normal load -> storage -> ``Model.validate`` path -- not
+    just when the shapes graph is a freshly-parsed, in-memory ``rdflib.Graph``
+    with its original ``@prefix`` bindings still attached.
+
+    This is the regression case for a real silent-failure bug: BuildingMOTIF's
+    storage layer does not persist a source file's namespace bindings (only
+    triples), and pyshifty's Python binding lowers a bare ``Graph`` argument to
+    N-Triples (no ``@prefix`` lines at all) before handing it to the native
+    engine. Together, those two facts meant a `sh:sparql`/`sh:rule` constraint
+    using a prefixed name in its query text would silently never fire once its
+    shapes came from a stored library -- no error, no diagnostic, just a
+    vacuous ``conforms``. See ``buildingmotif.shacl._shifty_shapes_input``."""
+    bm.shacl_engine = "pyshifty"
+    shape_graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix brick: <https://brickschema.org/schema/Brick#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix : <urn:shapes/> .
+        : a owl:Ontology .
+        :S a sh:NodeShape ; sh:targetClass brick:Zone_Air_Temperature_Sensor ;
+          sh:sparql [
+            a sh:SPARQLConstraint ;
+            sh:message "{$this} must not report a negative temperature." ;
+            sh:prefixes brick: ;
+            sh:select \"\"\"
+                SELECT $this ?val
+                WHERE {
+                    $this a brick:Zone_Air_Temperature_Sensor .
+                    OPTIONAL { $this brick:value ?val . }
+                    FILTER (BOUND(?val) && ?val < 0)
+                }
+            \"\"\" ;
+          ] .
+        """,
+        format="turtle",
+    )
+    # loaded through Library.load, so the shape collection is persisted via
+    # BuildingMOTIF's normal storage path (not just an in-memory Graph)
+    shape_lib = Library.load(ontology_graph=shape_graph)
+
+    model = Model.create(BLDG)
+    model.add_triples((BLDG["x"], A, BRICK["Zone_Air_Temperature_Sensor"]))
+    model.add_triples((BLDG["x"], BRICK["value"], Literal(-40)))
+
+    ctx = model.validate([shape_lib.get_shape_collection()])
+    assert not ctx.valid
+    witnesses = ctx.witnesses
+    assert len(witnesses) == 1
+    rw = witnesses[0]
+    assert rw.is_blocked  # opaque SPARQL: no algebraic repair possible
+    # the diagnostic proves the constraint actually executed against the
+    # data (found the -40 value), rather than silently no-oping
+    assert rw.sparql_diagnostics
+    assert "Brick" in rw.sparql_diagnostics[0].query
+
+    # a model with a non-negative reading conforms
+    model2 = Model.create(Namespace("urn:bldg2/"))
+    model2.add_triples((BLDG["x"], A, BRICK["Zone_Air_Temperature_Sensor"]))
+    model2.add_triples((BLDG["x"], BRICK["value"], Literal(72)))
+    ctx2 = model2.validate([shape_lib.get_shape_collection()])
     assert ctx2.valid
 
 

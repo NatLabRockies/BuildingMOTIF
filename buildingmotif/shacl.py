@@ -52,6 +52,60 @@ def require_shifty():
         ) from exc
 
 
+def _shifty_shapes_input(shape_graph: Graph) -> bytes:
+    """Serialize a shapes graph to Turtle text before handing it to ``shifty``.
+
+    ``shifty``'s Python binding lowers an ``rdflib.Graph`` argument to
+    N-Triples before passing it to the native engine (see ``shifty/__init__.py``
+    ``_to_rdf_input``) -- and N-Triples has no ``@prefix`` declarations at all.
+    A ``sh:sparql``/``sh:rule`` body resolves ``sh:prefixes`` against *the
+    prefixes declared in the document shifty parses*, so a shapes graph handed
+    over as a bare ``Graph`` object silently loses the ability to resolve any
+    prefixed name inside its embedded SPARQL query text -- the constraint or
+    rule then just never fires, with **no error and no diagnostic**, because a
+    query it cannot resolve is treated as an unsupported feature the engine
+    ignores by default. Passing Turtle text instead of a ``Graph`` keeps the
+    (already-declared) prefix table shifty's own parser depends on. The data
+    graph does not need this treatment: it doesn't carry any SPARQL query
+    literals for ``sh:prefixes`` to resolve against.
+
+    Verified empirically against pyshifty 0.2.7: an ``sh:rule``/``sh:construct``
+    with a query body that uses a prefixed name (e.g. ``ex:Foo``) infers 0
+    triples when the shapes graph is passed as a ``Graph`` object, and the
+    correct triples when passed as this function's Turtle text -- identical
+    input graph, only the wire representation differs.
+
+    Turtle text alone isn't a complete fix: BuildingMOTIF's storage layer
+    (``GraphConnection``/``BuildingMOTIFOxigraphGraph``) doesn't persist a
+    source file's ``@prefix`` bindings at all -- only triples -- so a shapes
+    graph loaded from a library and read back out has already lost them by
+    the time it reaches this function, regardless of how it's serialized here.
+    :func:`buildingmotif.namespaces.bind_prefixes` re-declares BuildingMOTIF's
+    own well-known prefixes (``brick:``, ``s223:``, ``qudt:``, ...), which
+    covers a constraint written against one of BuildingMOTIF's own ontologies
+    -- the realistic case, and the same mechanism
+    :meth:`buildingmotif.dataclasses.library.Library.load` already applies for
+    the same reason. It does **not** cover a fully custom, downstream-defined
+    namespace: that prefix binding is gone the moment its shape collection is
+    persisted, and restoring it would mean capturing/round-tripping namespace
+    bindings through the storage layer, well beyond this function.
+
+    Returns ``bytes``, not ``str``: shifty's ``_to_rdf_input`` treats a bare
+    ``str`` as a filesystem path first (``pathlib.Path(s).is_file()``) and
+    only falls back to raw Turtle text if that path doesn't exist. A large
+    serialized shapes graph is long enough to raise ``OSError: File name too
+    long`` from that existence check on some platforms, rather than failing
+    over gracefully -- ``bytes`` skips the path-guessing branch entirely and
+    is always treated as raw Turtle.
+    """
+    from buildingmotif.namespaces import bind_prefixes
+    from buildingmotif.utils import copy_graph
+
+    prefixed = copy_graph(shape_graph)
+    bind_prefixes(prefixed)
+    return prefixed.serialize(format="turtle", encoding="utf-8")
+
+
 @dataclass
 class ValidationGraphs:
     data_graph: Graph
@@ -204,7 +258,7 @@ class PyshiftyBackend(ShaclBackend):
 
         if shape_graph is None or len(shape_graph) == 0:  # type: ignore
             return shifty.infer(data_graph).graph()  # type: ignore
-        return shifty.infer(data_graph, shape_graph).graph()  # type: ignore
+        return shifty.infer(data_graph, _shifty_shapes_input(shape_graph)).graph()  # type: ignore
 
     def validate(
         self, data_graph: Graph, shape_graph: Optional[Graph] = None
@@ -218,7 +272,7 @@ class PyshiftyBackend(ShaclBackend):
             )
         return shifty.validate(  # type: ignore
             data_graph,
-            shape_graph,
+            _shifty_shapes_input(shape_graph),
             minimum_severity="violation",
         )
 

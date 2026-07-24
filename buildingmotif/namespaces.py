@@ -56,4 +56,7 @@ def bind_prefixes(graph):
     graph.bind("bsh", BSH)
     graph.bind("P", PARAM)
     graph.bind("constraint", CONSTRAINT)
+    graph.bind("ref", REF)
+    graph.bind("s223", S223)
+    graph.bind("bacnet", BACNET)
     graph.bind("bmotif", BM)
