@@ -278,8 +278,8 @@ Don't wait it out, and don't blame the library load — full Brick loads in ~6s.
 ```python
 t.parameters                       # required params
 t.optional_args                    # optional
-t.all_parameters()                 # including dependencies'
-t.parameter_counts()               # how often each is used
+t.all_parameters                   # including dependencies' (property, no parens)
+t.parameter_counts                 # how often each is used (property, no parens)
 
 # bind real identifiers -> Graph if fully bound, else a partially-bound Template
 g = t.evaluate({"name": BLDG["VAV-1"], "ztemp": BLDG["VAV1_ZN_T"]})
