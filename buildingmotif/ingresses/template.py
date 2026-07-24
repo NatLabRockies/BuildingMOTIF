@@ -12,6 +12,19 @@ from buildingmotif.ingresses.base import (
 )
 
 
+def _ready(templ: Template, require_optional_args: bool) -> bool:
+    """Whether ``templ`` can be turned into a graph under this handler's
+    optional-argument policy.
+
+    ``Template.is_complete`` is the lenient sense -- unbound *optional*
+    parameters are dropped by ``to_graph()``. When the handler requires
+    optional arguments too, nothing may be left unbound at all.
+    """
+    if require_optional_args:
+        return not templ.parameters
+    return templ.is_complete
+
+
 class TemplateIngress(GraphIngressHandler):
     """
     Reads records and attempts to instantiate the given template
@@ -73,20 +86,18 @@ class TemplateIngress(GraphIngressHandler):
         assert records is not None
         for rec in records:
             bindings = {self.mapper(k): _get_term(v, ns) for k, v in rec.fields.items()}
-            graph = self.template.evaluate(
-                bindings, require_optional_args=self.require_optional_args
-            )
-            # if it is a graph then all expected params were provided and we are done!
-            if isinstance(graph, Graph):
-                g += graph
+            filled = self.template.substitute(bindings)
+            if _ready(filled, self.require_optional_args):
+                # all expected params were provided and we are done!
+                g += filled.to_graph(require_optional_args=self.require_optional_args)
                 continue
-            # here, we know that the 'graph' variable is actually a Template. If fill_unused
-            # is True, we use 'fill' on the template to generate a new graph
+            # parameters are still unbound. If fill_unused is True, invent names
+            # for them; otherwise this record did not supply enough fields.
             if self.fill_unused:
-                _, graph = graph.fill(ns, include_optional=self.require_optional_args)
+                _, graph = filled.fill(ns, include_optional=self.require_optional_args)
                 g += graph
                 continue
-            raise Exception(f"Paramaters {graph.parameters} are still unused!")
+            raise Exception(f"Paramaters {filled.parameters} are still unused!")
         return g
 
 
@@ -154,12 +165,12 @@ class TemplateIngressWithChooser(GraphIngressHandler):
             if self.inline:
                 template = template.inline_dependencies()
             bindings = {self.mapper(k): _get_term(v, ns) for k, v in rec.fields.items()}
-            graph = template.evaluate(
-                bindings, require_optional_args=self.require_optional_args
-            )
-            if not isinstance(graph, Graph):
-                _, graph = graph.fill(ns)
-            g += graph
+            filled = template.substitute(bindings)
+            if _ready(filled, self.require_optional_args):
+                g += filled.to_graph(require_optional_args=self.require_optional_args)
+            else:
+                _, graph = filled.fill(ns)
+                g += graph
         return g
 
 

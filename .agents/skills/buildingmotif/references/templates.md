@@ -281,15 +281,34 @@ t.optional_args                    # optional
 t.all_parameters()                 # including dependencies'
 t.parameter_counts()               # how often each is used
 
-# bind real identifiers -> Graph if fully bound, else a partially-bound Template
-g = t.evaluate({"name": BLDG["VAV-1"], "ztemp": BLDG["VAV1_ZN_T"]})
-if isinstance(g, Graph):
-    model.add_graph(g)
+# bind real identifiers -> always a Template
+filled = t.substitute({"name": BLDG["VAV-1"], "ztemp": BLDG["VAV1_ZN_T"]})
+if filled.is_complete:
+    model.add_graph(filled.to_graph())
+else:
+    print("still need:", filled.missing_parameters)
 ```
 
-`evaluate()` returns a **`Template` when parameters remain unbound** and a `Graph` only
-when it's complete — always check, or bind incrementally and evaluate again. Unbound
-optional args are dropped from the body unless `require_optional_args=True`.
+**`substitute()` always returns a `Template`; `to_graph()` always returns a `Graph`.** No
+`isinstance` check. Bind incrementally by calling `substitute()` again on the result —
+it composes:
+
+```python
+g = t.substitute({"name": BLDG["VAV-1"]}).substitute({"ztemp": BLDG["VAV1_ZN_T"]}).to_graph()
+```
+
+`is_complete` is True once every *required* parameter is bound; `missing_parameters` lists
+the ones still outstanding. Unbound **optional** parameters do not block `to_graph()` — it
+drops the triples that mention them (which cascades: a triple is dropped if it mentions an
+unbound optional *anywhere*, even when its other terms are bound). Pass
+`to_graph(require_optional_args=True)` to require them instead. `to_graph()` raises
+`IncompleteTemplateError` (a `ValueError`) rather than silently handing back a template.
+
+```{note}
+The older `t.evaluate(bindings)` returns a `Template` *or* a `Graph` depending on whether
+the bindings happened to cover every parameter, which is why old code is full of
+`isinstance` checks. It still works but is deprecated — use `substitute()`/`to_graph()`.
+```
 
 `t.fill(BLDG)` autogenerates bindings (`name_a1b2c3`). It's for smoke tests and demos.
 **Never use it to build a real model**: it names real equipment with random hex. Bind to

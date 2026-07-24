@@ -225,9 +225,12 @@ def test_template_evaluate_with_optional(bm: BuildingMOTIF):
     assert isinstance(t, Template)
     assert t.parameters == {"occ"}
 
-    # assert no warning is raised when optional args are not required
+    # assert no unused-parameter warning is raised when optional args are not
+    # required. (evaluate() itself is deprecated and always warns about that,
+    # which is not what this assertion is about.)
     with warnings.catch_warnings():
-        warnings.simplefilter("error")
+        warnings.simplefilter("error", UserWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)
         t = templ.evaluate({"name": BLDG["vav"]})
 
     with pytest.warns():

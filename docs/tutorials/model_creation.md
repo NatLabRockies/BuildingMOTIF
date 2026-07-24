@@ -220,7 +220,7 @@ When creating a real Brick model, you would use BMS point names, equipment sched
 ```{code-cell}
 ahu_name = "Core_ZN-PSC_AC"
 ahu_binding_dict = {"name": BLDG[ahu_name]}
-ahu_graph = ahu_template.evaluate(ahu_binding_dict)
+ahu_graph = ahu_template.substitute(ahu_binding_dict).to_graph()
 
 # ahu_graph is just an instance of rdflib.Graph
 print(ahu_graph.serialize())
@@ -252,25 +252,25 @@ clg_coil_template = brick.get_template_by_name(BRICK.Cooling_Coil)
 # add fan
 fan_name = f"{ahu_name}-Fan"
 fan_binding_dict = {"name": BLDG[fan_name]}
-fan_graph = fan_template.evaluate(fan_binding_dict)
+fan_graph = fan_template.substitute(fan_binding_dict).to_graph()
 model.add_graph(fan_graph)
 
 # add outdoor air/return air damper
 oa_ra_damper_name = f"{ahu_name}-OutsideDamper"
 oa_ra_damper_binding_dict = {"name": BLDG[oa_ra_damper_name]}
-oa_ra_damper_graph = oa_ra_damper_template.evaluate(oa_ra_damper_binding_dict)
+oa_ra_damper_graph = oa_ra_damper_template.substitute(oa_ra_damper_binding_dict).to_graph()
 model.add_graph(oa_ra_damper_graph)
 
 # add other damper
 damper_name = f"{ahu_name}-Damper"
 damper_binding_dict = {"name": BLDG[damper_name]}
-damper_graph = damper_template.evaluate(damper_binding_dict)
+damper_graph = damper_template.substitute(damper_binding_dict).to_graph()
 model.add_graph(damper_graph)
 
 # add clg coil
 clg_coil_name = f"{ahu_name}-Clg_Coil"
 clg_coil_binding_dict = {"name": BLDG[clg_coil_name]}
-clg_coil_graph = clg_coil_template.evaluate(clg_coil_binding_dict)
+clg_coil_graph = clg_coil_template.substitute(clg_coil_binding_dict).to_graph()
 model.add_graph(clg_coil_graph)
 
 # connect zone-temp, fan, dampers, and clg coil to AHU
@@ -302,7 +302,7 @@ htg_coil_template = brick.get_template_by_name(BRICK.Heating_Coil)
 # add htg coil
 htg_coil_name = f"{ahu_name}-Htg_Coil"
 htg_coil_binding = {"name": BLDG[htg_coil_name]}
-htg_coil_graph = htg_coil_template.evaluate(htg_coil_binding)
+htg_coil_graph = htg_coil_template.substitute(htg_coil_binding).to_graph()
 model.add_graph(htg_coil_graph)
 
 # connect htg coil to AHU

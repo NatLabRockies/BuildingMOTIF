@@ -293,7 +293,7 @@ htg_coil_template = brick.get_template_by_name(BRICK.Heating_Coil)
 # add htg coil
 htg_coil_name = f"{ahu_name}-Htg_Coil"
 htg_coil_binding = {"name": BLDG[htg_coil_name]}
-htg_coil_graph = htg_coil_template.evaluate(htg_coil_binding)
+htg_coil_graph = htg_coil_template.substitute(htg_coil_binding).to_graph()
 model.add_graph(htg_coil_graph)
 
 # connect htg coil

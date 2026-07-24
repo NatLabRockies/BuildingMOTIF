@@ -772,8 +772,6 @@ class TemplateGuidedRepair:
     def _ground_template(self, tmpl: "Template", root: URIRef) -> Optional[Graph]:
         """Concretely ground a template at ``root`` (binding remaining params to
         minted IRIs) and return its body graph, or None if it cannot ground."""
-        from buildingmotif.dataclasses import Template
-
         bindings: Dict[str, Node] = {}
         if "name" in tmpl.parameters:
             bindings["name"] = root
@@ -783,10 +781,10 @@ class TemplateGuidedRepair:
             if param == "name":
                 continue
             bindings[param] = _mint_uri()
-        result = tmpl.evaluate(bindings, warn_unused=False)
-        if isinstance(result, Template):
+        filled = tmpl.substitute(bindings)
+        if not filled.is_complete:
             return None
-        return result
+        return filled.to_graph()
 
     # -- recursive ConformsTo synthesis ----------------------------------
 

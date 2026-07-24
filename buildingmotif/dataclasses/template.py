@@ -42,6 +42,22 @@ if TYPE_CHECKING:
     from buildingmotif.dataclasses.library import Library
 
 
+class IncompleteTemplateError(ValueError):
+    """Raised by :py:meth:`Template.to_graph` when parameters are still unbound.
+
+    Subclasses ``ValueError`` so existing ``except ValueError`` handlers around
+    template evaluation keep working.
+    """
+
+    def __init__(self, template_name: str, missing: Set[str]):
+        self.template_name = template_name
+        self.missing = set(missing)
+        super().__init__(
+            f"Template '{template_name}' cannot be turned into a graph: "
+            f"unbound parameter(s) {', '.join(sorted(self.missing))}"
+        )
+
+
 @dataclass
 class Template:
     """This class mirrors :py:class`database.tables.DBTemplate`."""
@@ -415,6 +431,113 @@ class Template:
 
         return templ
 
+    def substitute(
+        self,
+        bindings: Dict[str, Node],
+        warn_unused: bool = False,
+    ) -> "Template":
+        """Substitute the given bindings into this template.
+
+        **Always returns a Template**, whether or not the bindings covered every
+        parameter. Ask :py:attr:`is_complete` whether the result is ready to
+        become a graph, and call :py:meth:`to_graph` to make one. This is the
+        replacement for the deprecated :py:meth:`evaluate`, which returned
+        either a ``Template`` or an ``rdflib.Graph`` depending on the bindings
+        it happened to be given::
+
+            graph = template.substitute({"name": BLDG["ahu1"]}).to_graph()
+
+        :param bindings: map of parameter {name: RDF term} to substitute
+        :type bindings: Dict[str, Node]
+        :param warn_unused: if True, warn when the result still has unbound
+            parameters. Off by default -- with a single return type, an
+            incomplete result is an ordinary partial evaluation rather than
+            something that silently changed the return type. Defaults to False
+        :type warn_unused: bool
+        :return: a new template with the bindings applied
+        :rtype: Template
+        """
+        # TODO: handle datatype properties
+        templ = self.in_memory_copy()
+        # put all of the parameter names into the PARAM namespace so they can be
+        # directly subsituted in the template body
+        uri_bindings: Dict[Node, Node] = {PARAM[k]: v for k, v in bindings.items()}
+        # replace the param:<name> URIs in the template body with the bindings
+        replace_nodes(templ.body, uri_bindings)
+        if warn_unused and not templ.is_complete:
+            warnings.warn(
+                f"Parameters \"{', '.join(templ.parameters)}\" were not provided"
+                " during substitution",
+                UserWarning,
+            )
+        return templ
+
+    @property
+    def is_complete(self) -> bool:
+        """True iff every *required* parameter is bound.
+
+        Unbound optional parameters do not make a template incomplete -- they
+        are dropped by :py:meth:`to_graph`. Use
+        ``to_graph(require_optional_args=True)`` when optional parameters must
+        be bound too.
+
+        :return: whether this template can be turned into a graph
+        :rtype: bool
+        """
+        return self.parameters.issubset(set(self.optional_args))
+
+    @property
+    def missing_parameters(self) -> Set[str]:
+        """The required parameters that are still unbound. Empty iff
+        :py:attr:`is_complete`.
+
+        :return: set of unbound required parameters
+        :rtype: Set[str]
+        """
+        return self.parameters - set(self.optional_args)
+
+    def to_graph(
+        self,
+        namespaces: Optional[Dict[str, rdflib.Namespace]] = None,
+        require_optional_args: bool = False,
+    ) -> rdflib.Graph:
+        """Turn this template into a concrete graph.
+
+        Triples touching any *unbound optional* parameter are dropped, and
+        BuildingMOTIF's standard prefixes are bound on the result.
+
+        :param namespaces: additional namespace bindings to add to the graph,
+            defaults to None
+        :type namespaces: Optional[Dict[str, rdflib.Namespace]], optional
+        :param require_optional_args: if True, unbound *optional* parameters
+            also make the template incomplete, rather than being dropped;
+            defaults to False
+        :type require_optional_args: bool
+        :raises IncompleteTemplateError: if any parameter that must be bound is
+            not
+        :return: the graph this template evaluates to
+        :rtype: rdflib.Graph
+        """
+        if require_optional_args:
+            unbound = self.parameters
+        else:
+            unbound = self.missing_parameters
+        if unbound:
+            raise IncompleteTemplateError(self.name, unbound)
+
+        templ = self.in_memory_copy()
+        bind_prefixes(templ.body)
+        if namespaces:
+            for prefix, namespace in namespaces.items():
+                templ.body.bind(prefix, namespace)
+        if not require_optional_args:
+            # remove all triples that touch optional args that are still unbound;
+            # bound ones are no longer parameters, so intersecting with
+            # `parameters` is exactly "optional and still unbound"
+            for arg in set(templ.optional_args) & templ.parameters:
+                remove_triples_with_node(templ.body, PARAM[arg])
+        return templ.body
+
     def evaluate(
         self,
         bindings: Dict[str, Node],
@@ -423,6 +546,22 @@ class Template:
         warn_unused: bool = True,
     ) -> Union["Template", rdflib.Graph]:
         """Evaluate the template with the provided bindings.
+
+        .. deprecated::
+            Returns a ``Template`` *or* an ``rdflib.Graph`` depending on whether
+            the bindings happened to cover every parameter, so every caller has
+            to branch on ``isinstance``. Use :py:meth:`substitute` (always a
+            ``Template``) followed by :py:meth:`to_graph` (always a ``Graph``)::
+
+                # instead of:
+                result = template.evaluate(bindings)
+                if isinstance(result, Graph):
+                    model.add_graph(result)
+
+                # write:
+                filled = template.substitute(bindings)
+                if filled.is_complete:
+                    model.add_graph(filled.to_graph())
 
         If all parameters in the template have a provided binding, then a graph
         will be returned. Otherwise, a new Template will be returned that
@@ -449,14 +588,41 @@ class Template:
             parameters were provided
         :rtype: Union[Template, rdflib.Graph]
         """
-        # TODO: handle datatype properties
-        templ = self.in_memory_copy()
-        # put all of the parameter names into the PARAM namespace so they can be
-        # directly subsituted in the template body
-        uri_bindings: Dict[Node, Node] = {PARAM[k]: v for k, v in bindings.items()}
-        # replace the param:<name> URIs in the template body with the bindings
-        # provided in the call to evaluate()
-        replace_nodes(templ.body, uri_bindings)
+        warnings.warn(
+            "Template.evaluate() returns a Template or a Graph depending on its "
+            "bindings; use Template.substitute() (always a Template) and "
+            "Template.to_graph() (always a Graph) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._evaluate(
+            bindings,
+            namespaces=namespaces,
+            require_optional_args=require_optional_args,
+            warn_unused=warn_unused,
+        )
+
+    def _evaluate(
+        self,
+        bindings: Dict[str, Node],
+        namespaces: Optional[Dict[str, rdflib.Namespace]] = None,
+        require_optional_args: bool = False,
+        warn_unused: bool = True,
+    ) -> Union["Template", rdflib.Graph]:
+        """The un-deprecated body of :py:meth:`evaluate`, expressed in terms of
+        :py:meth:`substitute` / :py:meth:`to_graph` so the two paths cannot
+        drift. Exists so internal callers that genuinely want the old
+        either/or behavior do not have to emit a DeprecationWarning at
+        themselves.
+        """
+        templ = self.substitute(bindings, warn_unused=False)
+        complete = (
+            len(templ.parameters) == 0 if require_optional_args else templ.is_complete
+        )
+        if complete:
+            return templ.to_graph(
+                namespaces=namespaces, require_optional_args=require_optional_args
+            )
         leftover_params = (
             templ.parameters.difference(bindings.keys())
             if not require_optional_args
@@ -464,21 +630,6 @@ class Template:
                 bindings.keys()
             )
         )
-        # true if all parameters are now bound or only optional args are unbound
-        if len(templ.parameters) == 0 or (
-            not require_optional_args
-            and templ.parameters.issubset(set(self.optional_args))
-        ):
-            bind_prefixes(templ.body)
-            if namespaces:
-                for prefix, namespace in namespaces.items():
-                    templ.body.bind(prefix, namespace)
-            if not require_optional_args:
-                # remove all triples that touch unbound optional_args
-                unbound_optional_args = set(templ.optional_args) - set(bindings.keys())
-                for arg in unbound_optional_args:
-                    remove_triples_with_node(templ.body, PARAM[arg])
-            return templ.body
         if len(leftover_params) > 0 and warn_unused:
             warnings.warn(
                 f"Parameters \"{', '.join(leftover_params)}\" were not provided during evaluation",
@@ -504,9 +655,10 @@ class Template:
             for param in self.parameters
             if include_optional or param not in self.optional_args
         }
-        res = self.evaluate(bindings, require_optional_args=include_optional)
-        assert isinstance(res, rdflib.Graph)
-        return bindings, res
+        graph = self.substitute(bindings).to_graph(
+            require_optional_args=include_optional
+        )
+        return bindings, graph
 
     @property
     def defining_library(self) -> "Library":

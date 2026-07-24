@@ -133,11 +133,10 @@ class TemplateWrapper:
         :return: A graph containing the compiled template
         :rtype: Graph
         """
-        tmp = self.template.evaluate(self.bindings)
-        # if this is true, there are still parameters to be bound
-        if isinstance(tmp, Template):
-            bindings, graph = tmp.fill(self.ns, include_optional=False)
-            self.bindings.update(bindings)
-            return graph
-        else:
-            return tmp
+        tmp = self.template.substitute(self.bindings)
+        if tmp.is_complete:
+            return tmp.to_graph()
+        # there are still parameters to be bound; invent names for them
+        bindings, graph = tmp.fill(self.ns, include_optional=False)
+        self.bindings.update(bindings)
+        return graph

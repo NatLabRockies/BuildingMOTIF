@@ -376,10 +376,9 @@ def _prep_shape_graph() -> Graph:
 def _index_properties(
     templ: "Template", error_on_missing_dependency: bool = True
 ) -> _TemplateIndex:
-    templ_graph = templ.evaluate(
-        {p: PARAM[p] for p in templ.parameters}, {"mark": PARAM}
+    templ_graph = templ.substitute({p: PARAM[p] for p in templ.parameters}).to_graph(
+        {"mark": PARAM}
     )
-    assert isinstance(templ_graph, Graph)
 
     # pick a random node to act as the 'target' of the shape
     target = next(iter(templ_graph.subjects(RDF.type)))
@@ -402,9 +401,11 @@ def _index_properties(
         # maybe_param = str(o).removeprefix(PARAM) Python >=3.9
         maybe_param = str(o)[len(PARAM) :]
         if maybe_param in templ.dependency_parameters:
-            dep = templ.dependency_for_parameter(
-                maybe_param, error_on_missing_dependency
-            )
+            # dependency_for_parameter takes only the parameter name; it never
+            # accepted error_on_missing_dependency, so passing it was a
+            # TypeError waiting to happen (masked because template_to_shape,
+            # the only caller of this function, is dead code -- API-CLEANUP #20)
+            dep = templ.dependency_for_parameter(maybe_param)
             if dep is not None:
                 prop_shapes[p].append(URIRef(dep._name))
         elif o in param_types:

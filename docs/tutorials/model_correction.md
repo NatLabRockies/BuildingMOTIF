@@ -143,11 +143,13 @@ for templ in generated_templates.get_templates():
     bindings = {
         param: BLDG[ahu_name + suffix],
     }
-    thing = templ.evaluate(bindings)
-    if isinstance(thing, Template):
+    thing = templ.substitute(bindings)
+    if thing.is_complete:
+        model.add_graph(thing.to_graph())
+    else:
         # there might be other parameters on a template. Invent names for them
-        _, thing = thing.fill(BLDG)
-    model.add_graph(thing)
+        _, graph = thing.fill(BLDG)
+        model.add_graph(graph)
 ```
 
 We use the same code as before to ask BuildingMOTIF if the model is now valid:
@@ -199,8 +201,8 @@ for templ in generated_templates_sf.get_templates():
     bindings = {
         param: BLDG[sf_name + suffix],
     }
-    thing = templ.evaluate(bindings)
-    model.add_graph(thing)
+    thing = templ.substitute(bindings)
+    model.add_graph(thing.to_graph())
 ```
 
 We can re-check the validation of the model now:
