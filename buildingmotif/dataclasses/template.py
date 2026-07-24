@@ -196,31 +196,12 @@ class Template:
         self._bm.table_connection.delete_template_dependency(self.id, dependency.id)
 
     @property
-    def all_parameters(self, error_on_missing_dependency: bool = True) -> Set[str]:
-        """The set of all parameters used in this template *including* its
-        dependencies. Includes optional parameters.
-
-        :param error_on_missing_dependency: Raise an erorr if a template has a missing depedency
-        :type error_on_missing_dependency: bool
-        :return: set of parameters *with* dependencies
-        :rtype: Set[str]
-        """
-        # handle local parameters first
-        params = set(self.parameters)
-
-        # then handle dependencies
-        for dep in self.get_dependencies():
-            if dep.template is None:
-                if error_on_missing_dependency:
-                    raise TemplateNotFound(name=dep.dependency_template_name)
-                continue
-            params.update(dep.template.parameters)
-        return params
-
-    @property
     def parameters(self) -> Set[str]:
         """The set of all parameters used in this template *excluding* its
         dependencies. Includes optional parameters.
+
+        For the parameters a template's dependencies contribute, see
+        :py:meth:`parameters_with_dependencies`.
 
         :return: set of parameters *without* dependencies
         :rtype: Set[str]
@@ -230,34 +211,142 @@ class Template:
         params = {str(p)[len(PARAM) :] for p in nodes if str(p).startswith(PARAM)}
         return params
 
-    @property
-    def dependency_parameters(
-        self, error_on_missing_dependency: bool = True
+    def parameters_with_dependencies(
+        self,
+        transitive: bool = True,
+        renamed: bool = True,
+        include_self: bool = True,
+        error_on_missing_dependency: bool = True,
     ) -> Set[str]:
-        """The set of all parameters used in this template's dependencies, including
-        optional parameters.
+        """The parameters of this template and its dependencies.
 
-        :param error_on_missing_dependency: Raise an erorr if a template has a missing depedency
+        This is the single entry point for every "parameters including
+        dependencies" question. The template's *own* parameters are
+        :py:attr:`parameters`; everything below is about how far down the
+        dependency chain to look and which names to report.
+
+        The three combinations that had their own names before:
+
+        - ``transitive=False, renamed=False`` -- the old ``all_parameters``
+        - ``transitive=False, renamed=False, include_self=False`` -- the old
+          ``dependency_parameters``
+        - the defaults -- the old ``transitive_parameters``
+
+        :param transitive: if True (default), recurse through the whole
+            dependency chain; if False, look only at direct dependencies
+        :type transitive: bool
+        :param renamed: if True (default), report the names each parameter will
+            have *after inlining* -- a dependency's parameter is reported under
+            the name this template's ``args`` bind it to, or prefixed with the
+            dependency's ``name`` binding when ``args`` does not mention it. If
+            False, report dependencies' parameters under their own local names.
+            ``renamed=True`` is what you want to know "what will I have to bind
+            after :py:meth:`inline_dependencies`"; ``renamed=False`` tells you
+            what the dependency templates call things.
+        :type renamed: bool
+        :param include_self: if True (default), include this template's own
+            parameters; if False, report only what the dependencies contribute.
+            Note this is *not* the same as subtracting :py:attr:`parameters`,
+            because a dependency may legitimately use a parameter name this
+            template also uses.
+        :type include_self: bool
+        :param error_on_missing_dependency: if True (default), raise when a
+            dependency cannot be resolved; if False, skip it
         :type error_on_missing_dependency: bool
-        :return: set of parameters used in dependencies
+        :raises TemplateNotFound: if a dependency is unresolvable and
+            ``error_on_missing_dependency`` is True
+        :return: the set of parameter names
         :rtype: Set[str]
         """
-        params: Set[str] = set()
+        params: Set[str] = set(self.parameters) if include_self else set()
+
         for dep in self.get_dependencies():
             if dep.template is None:
                 if error_on_missing_dependency:
                     raise TemplateNotFound(name=dep.dependency_template_name)
                 continue
-            params = params.union(dep.template.parameters)
+            if transitive:
+                dep_params = dep.template.parameters_with_dependencies(
+                    transitive=True,
+                    renamed=renamed,
+                    include_self=True,
+                    error_on_missing_dependency=error_on_missing_dependency,
+                )
+            else:
+                dep_params = set(dep.template.parameters)
+
+            if not renamed:
+                params.update(dep_params)
+                continue
+
+            # Report each dependency parameter under the name it will carry once
+            # inlined: the name `args` binds it to, or -- for parameters `args`
+            # does not mention -- the dependency's `name` binding as a prefix.
+            # This mirrors the renaming inline_dependencies() performs.
+            rename: Dict[str, str] = dict(dep.args)
+            name_prefix = dep.args.get("name")
+            for param in dep_params:
+                if param not in dep.args and param != "name":
+                    rename[param] = f"{name_prefix}-{param}"
+            params.update(rename.values())
         return params
 
     @property
-    def parameter_counts(self, error_on_missing_dependency: bool = True) -> Counter:
-        """An addressable histogram of the parameter name counts in this
-        template and all of its transitive dependencies.
+    def all_parameters(self) -> Set[str]:
+        """This template's parameters plus those of its *direct* dependencies,
+        under the dependencies' own names.
 
-        :param error_on_missing_dependency: Raise an erorr if a template has a missing depedency
-        :type error_on_missing_dependency: bool
+        .. deprecated::
+            Use ``parameters_with_dependencies(transitive=False, renamed=False)``,
+            which says which of the three axes it means. See
+            :py:meth:`parameters_with_dependencies`.
+
+        :return: set of parameters *with* dependencies
+        :rtype: Set[str]
+        """
+        warnings.warn(
+            "Template.all_parameters is deprecated; use "
+            "Template.parameters_with_dependencies(transitive=False, renamed=False).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameters_with_dependencies(transitive=False, renamed=False)
+
+    @property
+    def dependency_parameters(self) -> Set[str]:
+        """The parameters of this template's *direct* dependencies, under the
+        dependencies' own names, excluding this template's own.
+
+        .. deprecated::
+            Use
+            ``parameters_with_dependencies(transitive=False, renamed=False, include_self=False)``.
+            See :py:meth:`parameters_with_dependencies`.
+
+        :return: set of parameters used in dependencies
+        :rtype: Set[str]
+        """
+        warnings.warn(
+            "Template.dependency_parameters is deprecated; use "
+            "Template.parameters_with_dependencies(transitive=False, renamed=False, "
+            "include_self=False).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameters_with_dependencies(
+            transitive=False, renamed=False, include_self=False
+        )
+
+    @property
+    def parameter_counts(self) -> Counter:
+        """An addressable histogram of the parameter name counts in this
+        template and all of its transitive dependencies, under the
+        dependencies' own names.
+
+        Counts how often each name is *used* across the chain, which
+        :py:meth:`parameters_with_dependencies` cannot tell you because it
+        returns a set. Raises :py:class:`TemplateNotFound` on an unresolvable
+        dependency.
+
         :return: count of parameters
         :rtype: Counter
         """
@@ -265,9 +354,7 @@ class Template:
         counts.update(self.parameters)
         for dep in self.get_dependencies():
             if dep.template is None:
-                if error_on_missing_dependency:
-                    raise TemplateNotFound(name=dep.dependency_template_name)
-                continue
+                raise TemplateNotFound(name=dep.dependency_template_name)
             counts.update(dep.template.parameter_counts)
         return counts
 
@@ -316,25 +403,23 @@ class Template:
 
     @property
     def transitive_parameters(self) -> Set[str]:
-        """Get all parameters used in this template and its dependencies.
+        """Every parameter in this template and its whole dependency chain,
+        under the names they will carry after inlining.
+
+        .. deprecated::
+            Use ``parameters_with_dependencies()`` -- these are its defaults.
+            See :py:meth:`parameters_with_dependencies`.
 
         :return: set of all parameters
         :rtype: Set[str]
         """
-        params = set(self.parameters)
-        for dep in self.get_dependencies():
-            if dep.template is None:
-                raise TemplateNotFound(name=dep.dependency_template_name)
-            transitive_params = dep.template.transitive_parameters
-            rename_params: Dict[str, str] = {
-                ours: theirs for ours, theirs in dep.args.items()
-            }
-            name_prefix = dep.args.get("name")
-            for param in transitive_params:
-                if param not in dep.args and param != "name":
-                    rename_params[param] = f"{name_prefix}-{param}"
-            params.update(rename_params.values())
-        return params
+        warnings.warn(
+            "Template.transitive_parameters is deprecated; use "
+            "Template.parameters_with_dependencies() (these are its defaults).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameters_with_dependencies()
 
     def inline_dependencies(self) -> "Template":
         """Copies this template with all dependencies recursively inlined.

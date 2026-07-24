@@ -278,8 +278,8 @@ Don't wait it out, and don't blame the library load — full Brick loads in ~6s.
 ```python
 t.parameters                       # required params
 t.optional_args                    # optional
-t.all_parameters()                 # including dependencies'
-t.parameter_counts()               # how often each is used
+t.parameters_with_dependencies()   # + deps, named as after inlining
+t.parameter_counts                 # how often each is used (a property, no parens)
 
 # bind real identifiers -> always a Template
 filled = t.substitute({"name": BLDG["VAV-1"], "ztemp": BLDG["VAV1_ZN_T"]})
@@ -295,6 +295,27 @@ it composes:
 
 ```python
 g = t.substitute({"name": BLDG["VAV-1"]}).substitute({"ztemp": BLDG["VAV1_ZN_T"]}).to_graph()
+```
+
+**Parameters come in one flavour plus one question.** `t.parameters` is the template's
+*own* parameters. Everything about dependencies goes through
+`t.parameters_with_dependencies(transitive=True, renamed=True, include_self=True)`:
+
+| what you want to know | call |
+|---|---|
+| what I must bind after `inline_dependencies()` | `t.parameters_with_dependencies()` (the defaults) |
+| direct dependencies' params under their own names | `t.parameters_with_dependencies(transitive=False, renamed=False)` |
+| only what dependencies contribute | add `include_self=False` |
+
+`renamed=True` reports the name each parameter will carry *after inlining* — a dependency's
+param appears under the name the parent's `args` bind it to, or prefixed with the
+dependency's `name` binding. `t.parameters_with_dependencies() == t.inline_dependencies().parameters`.
+
+```{note}
+`all_parameters`, `dependency_parameters`, and `transitive_parameters` are deprecated
+aliases for the three rows above — they had subtly different depth/renaming semantics that
+their names did not signal, and three of them declared an `error_on_missing_dependency`
+argument that, being properties, nobody could pass.
 ```
 
 `is_complete` is True once every *required* parameter is bound; `missing_parameters` lists

@@ -400,7 +400,9 @@ def _index_properties(
             continue
         # maybe_param = str(o).removeprefix(PARAM) Python >=3.9
         maybe_param = str(o)[len(PARAM) :]
-        if maybe_param in templ.dependency_parameters:
+        if maybe_param in templ.parameters_with_dependencies(
+            transitive=False, renamed=False, include_self=False
+        ):
             # dependency_for_parameter takes only the parameter name; it never
             # accepted error_on_missing_dependency, so passing it was a
             # TypeError waiting to happen (masked because template_to_shape,

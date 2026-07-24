@@ -102,7 +102,9 @@ class TemplateWrapper:
     def __getitem__(self, param):
         if param in self.bindings:
             return self.bindings[param]
-        elif param not in self.template.all_parameters:
+        elif param not in self.template.parameters_with_dependencies(
+            transitive=False, renamed=False
+        ):
             raise KeyError(f"Invalid parameter: {param}")
         # if the param is not bound, then invent a name
         # by prepending the parameter name to a random string
@@ -110,7 +112,9 @@ class TemplateWrapper:
         return self.bindings[param]
 
     def __setitem__(self, param, value):
-        if param not in self.template.all_parameters:
+        if param not in self.template.parameters_with_dependencies(
+            transitive=False, renamed=False
+        ):
             raise KeyError(f"Invalid parameter: {param}")
         # if value is not a URIRef, Literal or BNode, then put it in the namespace
         if not isinstance(value, (URIRef, Literal, BNode)):
