@@ -26,7 +26,14 @@ brick_graph = brick.get_shape_collection().graph
 
 ## Confirm a candidate class
 
-Before adding a type triple, test the candidate:
+Before adding a type triple, test the candidate — and check deprecation in the same pass.
+Brick marks retired classes with `owl:deprecated true` and points at the replacement with
+`brick:isReplacedBy`, plus a human-readable `brick:deprecationMitigationMessage` (199
+`brick:`-namespaced classes carry these in the packaged ontology, 198 of them with a
+replacement — e.g. `brick:Auditorium` is deprecated `brick:isReplacedBy rec:Auditorium`,
+"Brick location classes are being phased out in favor of RealEstateCore classes"; the
+reverse also happens — older `rec:` ICT classes deprecated in favor of newer `brick:`
+equivalents. **Check every candidate, don't assume a direction.**
 
 ```python
 def brick_class(local_name: str):
@@ -35,7 +42,15 @@ def brick_class(local_name: str):
         (cls, RDF.type, OWL.Class) in brick_graph
         or (cls, RDF.type, SH.NodeShape) in brick_graph
     )
-    return cls if is_class else None
+    if not is_class:
+        return None
+    deprecated = next(brick_graph.objects(cls, OWL.deprecated), None)
+    if deprecated is not None and deprecated.toPython():
+        replacement = next(brick_graph.objects(cls, BRICK.isReplacedBy), None)
+        message = next(brick_graph.objects(cls, BRICK.deprecationMitigationMessage), None)
+        print(f"WARNING: {local_name} is deprecated. {message}")
+        return replacement or cls  # prefer the replacement over asserting the deprecated class
+    return cls
 
 for name in [
     "Run_Status",
@@ -44,6 +59,11 @@ for name in [
 ]:
     print(name, bool(brick_class(name)))
 ```
+
+**Always prefer the non-deprecated class.** If `brick_class(...)` finds a match but it's
+deprecated, don't assert it just because the name matched what the user said — follow
+`isReplacedBy` to the current class and use that instead, and mention the substitution when
+you report the mapping (see "Output to produce for the user" below).
 
 If this returns `False`, do not assert that class. Search for the real one instead. This
 is how you catch errors like assuming `brick:Run_Status_Sensor` exists when Brick has

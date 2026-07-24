@@ -100,6 +100,7 @@ repairs interact, and you won't know which one broke or unblocked what.
 | **Validate a model** and read/expose failures; list templates; inspect a shape library; write the validate-and-report script | `references/validation.md` |
 | **Build a model** — template library + `Model.create` + `TemplateBuilderContext`, bind to evidence, compile, validate | `references/building_models.md` |
 | Discover/verify Brick class names and inspect class shapes before asserting `a brick:X` | `references/brick_vocabulary.md` |
+| Model ASHRAE 223P (`s223:`) topology — equipment/connections/connection points, properties, roles/domains/media | `references/223p_vocabulary.md` |
 | Build from point lists, BMS labels, BACnet object names, or other source metadata; map suffixes/tokens to Brick classes | `references/point_labels.md` |
 | **Fix a model** — propose/apply repairs, drive the gap→evidence→user→apply loop | `references/repair.md` |
 | **Write shapes** (pointlists, app requirements, manifests, `bmotif:` tags, `constraint:` vocabulary) | `references/writing_shapes.md` |
@@ -177,7 +178,7 @@ resolves, or a local copy for `ontology_search_directories` / offline loads:
 | Ontology | Where to get it | Notes |
 |---|---|---|
 | **Brick** (unreleased/newer than the builtin) | [Nightly Build release on GitHub](https://github.com/BrickSchema/Brick/releases/tag/nightly) — `Brick.ttl` asset, rebuilt continuously off `master` | The builtin `brick/Brick.ttl` (above) is pinned to a release; use the nightly asset when you need a fix that hasn't been tagged yet. `Brick-only.ttl` (no imports) and `Brick+imports.ttl` are also published there. |
-| **223P** | [open223.info](https://open223.info) — `/223p.ttl` for the current version | Community-maintained ASHRAE 223P tooling/ontology hub, not an official ASHRAE distribution. |
+| **223P** | [open223.info](https://open223.info) — `/223p.ttl` for the current version | Community-maintained ASHRAE 223P tooling/ontology hub, not an official ASHRAE distribution. Modeling patterns and vocabulary: `references/223p_vocabulary.md`. |
 | **WATR** | [watermetadata.org](https://watermetadata.org) — ontology download link on the site (`water.ttl`); source at [github.com/DataDrivenCPS/water-ontology](https://github.com/DataDrivenCPS/water-ontology) | NAWI-funded water-systems metadata ontology; Brick's counterpart for water. |
 | **QUDT** | dereference its own namespace URIs (e.g. `http://qudt.org/schema/qudt/`, `http://qudt.org/vocab/unit/`) | Don't vendor a copy — QUDT's IRIs are the canonical, dereferenceable source; OntoEnv/rdflib resolve them directly when fetching is on. |
 
@@ -239,7 +240,8 @@ Most real requests are one of these:
    to real identifiers from evidence, then compile and validate. →
    `references/building_models.md` (+ `references/writing_templates.md` if you need to
    author templates, `references/evidence.md` for the identifiers,
-   `references/brick_vocabulary.md` to verify class names).
+   `references/brick_vocabulary.md` to verify class names — or
+   `references/223p_vocabulary.md` if the model is 223P topology, not Brick points).
 4. *"Build a model from this point list / BMS labels / BACnet object names / schedule."*
    → first map source tokens to verified Brick classes, then synthesize graph fragments or
    template bindings and validate. → `references/point_labels.md` +

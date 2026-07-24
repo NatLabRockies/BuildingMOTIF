@@ -15,6 +15,7 @@ in the repository:
 .agents/skills/buildingmotif/
 ├── SKILL.md                        # entry point: when to use this, workflow router, setup
 └── references/
+    ├── 223p_vocabulary.md          # ASHRAE 223P (s223:) topology, connections, properties
     ├── brick_vocabulary.md         # verify Brick class names before asserting `a brick:X`
     ├── building_models.md          # Model.create + TemplateBuilderContext + evidence
     ├── evidence.md                 # finding evidence in point lists / submittals / BACnet
