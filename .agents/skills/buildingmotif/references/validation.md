@@ -252,7 +252,7 @@ t = lib.get_template_by_name("vav-cooling-only")
 t.name                  # "vav-cooling-only"
 t.parameters            # set of *local* params (excluding deps), e.g. {'name','ztemp'}
 t.optional_args         # set of optional params
-t.all_parameters()      # including dependencies' params
+t.all_parameters        # including dependencies' params (property, no parens)
 t.parameter_counts      # Counter over this template + transitive deps
 t.body                  # rdflib.Graph — the template body (PARAM nodes are the params)
 t.get_dependencies()    # tuple of Dependency records (template + arg bindings)
