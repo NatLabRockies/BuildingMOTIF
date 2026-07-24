@@ -11,6 +11,8 @@ Each entry says what's wrong, where, what to do, and whether the fix breaks call
 
 ## Done on this branch
 
+(Numbering follows the original review order, so the "done" items are not contiguous.)
+
 ### 1. Tables are created for every backend — **done**
 
 `BuildingMOTIF.__init__` only auto-created tables for in-memory SQLite, so the first
@@ -66,24 +68,56 @@ path), so `Model.load(name=...)` leaked a raw SQLAlchemy exception while
 `Model.load(id=...)` raised `ModelNotFound`. Same fix applied to
 `update_db_template_optional_args`.
 
+### 5. `Template.evaluate()` returns `Template | Graph` — **done**
+
+Which type you got depended on whether the bindings happened to cover every parameter — a
+*runtime* property of the arguments. The package carried **ten `isinstance` checks** that
+existed only to unpack that union, in `model_builder.py`, `template_matcher.py`,
+`utils.py`, both ingress handlers, the API views, and the algebraic repair engine.
+
+Replaced with two single-typed operations on `Template`:
+
+- `substitute(bindings, warn_unused=False)` → **always** a `Template`. Composes, so partial
+  binding is `t.substitute(a).substitute(b)`.
+- `to_graph(namespaces=None, require_optional_args=False)` → **always** an
+  `rdflib.Graph`; raises `IncompleteTemplateError` (a `ValueError`) rather than silently
+  handing back a template.
+- `is_complete` → every *required* parameter is bound; `missing_parameters` → the ones that
+  are not.
+
+All ten internal call sites migrated and every one of those `isinstance` checks deleted.
+`evaluate()` is kept, unchanged in behavior, and now raises a `DeprecationWarning`; it is
+implemented on top of `substitute`/`to_graph` so the two paths cannot drift.
+
+The deprecation shim originally sketched here — have `evaluate()` return a `Template`
+subclass that also proxies `Graph` — was **rejected on implementation**: satisfying
+`isinstance(x, rdflib.Graph)` requires actually inheriting from `Graph`, and `Template` is
+a `@dataclass` (generated `__eq__`) while `Graph` defines its own `__eq__`/`__hash__` by
+identifier. The hybrid would have silently changed template equality semantics. Keeping
+`evaluate()` behaviorally identical and adding the new API alongside gets the same
+migration window with none of that risk.
+
+**Known cost, deliberately accepted:** `substitute()` and `to_graph()` each copy the body,
+so `t.substitute(b).to_graph()` copies twice where the old `evaluate()` copied once.
+Measured on an inlined 34-triple, 17-parameter template: 2.74 ms per call, of which the
+extra `in_memory_copy()` is 0.85 ms (~31%). That matters only on per-record ingress paths
+(`ingresses/template.py`, `ingresses/brick.py`) at thousands of records. It was accepted
+because making `to_graph()` mutate in place would break the property that it is repeatable
+and leaves the template alone — a much worse trade for a method callers may reasonably call
+twice. If profiling ever justifies it, the fix is a private `_finalize()` that mutates a
+provably-fresh template, called only where the intermediate is a temporary.
+
+One asymmetry worth knowing: `is_complete` is the *lenient* sense (unbound optionals are
+fine, `to_graph()` drops them), while `to_graph()` takes `require_optional_args`. For the
+strict sense, `not templ.parameters` says "nothing unbound at all" — see `_ready()` in
+`ingresses/template.py`. Folding the flag into `is_complete` would mean making it a method;
+it was left as a property because the lenient question is the common one.
+
 ---
 
 ## Proposed, not yet done
 
 Roughly in priority order.
-
-### 5. `Template.evaluate()` returns `Template | Graph`
-
-`dataclasses/template.py:418`. Which one you get depends on whether the bindings you passed
-happened to cover every parameter — a *runtime* property of your arguments. Every caller
-branches: `model_builder.py:136-142` does, and so does every notebook that uses templates.
-
-Proposal: `evaluate()` always returns a `Template`, which grows `.is_complete` and
-`.graph` (raising if incomplete). Add `evaluate_graph(bindings)` for "I know this is
-complete, give me the graph or raise". Keep `fill()` as-is.
-
-Breaking. Needs a deprecation window: have `evaluate()` return a `Template` subclass that
-also proxies `Graph`'s interface for one release, warning on graph-style use.
 
 ### 6. `Library.load()` is four constructors in a trenchcoat
 
@@ -235,7 +269,32 @@ a detached graph the caller must `add_graph` themselves.
 
 Deferred deliberately — noted here so it isn't rediscovered as new.
 
-### 20. Smaller things
+### 20. `utils.template_to_shape` is dead *and* broken
+
+`utils.py:451`. No callers anywhere — package, tests, docs, or notebooks. It is also
+broken for any template with required parameters: `_index_properties` (`utils.py:376`)
+binds every parameter to *itself* (`{p: PARAM[p] ...}`), which is an identity
+substitution, so the template is still incomplete afterwards. The old code then hit
+`assert isinstance(templ_graph, Graph)` and raised `AssertionError`; after the item-5
+migration it raises the clearer `IncompleteTemplateError`. Either way it cannot work.
+
+Verified pre-existing: the original `evaluate()` returns a `Template` for that exact call,
+so the assertion failed before this branch too.
+
+The same function had a second latent bug on the line below:
+`templ.dependency_for_parameter(maybe_param, error_on_missing_dependency)` passed two
+arguments to a method that takes one — a `TypeError` on any template with dependency
+parameters. Fixed in passing (the method never accepted the flag). It surfaced only
+because the item-5 commit staged `utils.py` and `template.py` together, putting them in a
+single mypy invocation for the first time; pre-commit's mypy 1.10 catches it, the venv's
+1.9 does not. Two runtime bugs in one unreachable function is the argument for deleting
+it.
+
+Fix: either delete it, or make `_index_properties` operate on the parameterized body
+directly instead of round-tripping through a substitution that does nothing. Deleting is
+probably right — `ShapeCollection.infer_templates` is the direction that's actually used.
+
+### 21. Smaller things
 
 - `Model.graph` is a `cached_property` whose cache is invalidated by hand
   (`model.py:206`, `dict.pop("graph", None)`). Same pattern in `CompiledModel.add_graph`.
