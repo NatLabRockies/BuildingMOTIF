@@ -105,7 +105,7 @@ setting: it names the generated parameter instead of inventing one.
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library
 
-bm = BuildingMOTIF("sqlite://"); bm.setup_tables()
+bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # 1. Brick FIRST — builtin resource, auto-resolved from the installed package.
 #    run_shacl_inference=False is required: inference-on does NOT produce the class

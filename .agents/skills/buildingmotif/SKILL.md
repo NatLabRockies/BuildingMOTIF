@@ -120,8 +120,23 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model, Library
 
 bm = BuildingMOTIF("sqlite://")   # in-memory; use a file/postgres URI to persist
-bm.setup_tables()
 ```
+
+Missing tables are created automatically for every backend, so there is no `setup_tables()`
+call to remember. **When you persist to a file or Postgres, run the work inside a `with`
+block** — triples are written through to the graph store immediately, but the rows that
+point at them are only durable once the SQL session commits:
+
+```python
+with BuildingMOTIF("sqlite:///bldg.db") as bm:
+    model = Model.create("urn:bldg/")
+    model.add_graph(g)
+# committed and closed here; rolled back instead if an exception escaped
+```
+
+Leaving the block also resets the singleton, so a later `BuildingMOTIF(...)` builds a fresh
+instance rather than handing back the closed one. Without the context manager you must call
+`bm.session.commit()` yourself.
 
 `shacl_engine` defaults to **`pyshifty`**, so `model.validate(...)` already returns an
 `AlgebraicValidationContext` (witnesses + repair). You do not need to pass

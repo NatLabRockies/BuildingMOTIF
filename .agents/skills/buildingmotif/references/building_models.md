@@ -42,7 +42,7 @@ from buildingmotif.dataclasses import Library, Model
 from buildingmotif.model_builder import TemplateBuilderContext
 from buildingmotif.namespaces import BRICK
 
-bm = BuildingMOTIF("sqlite://"); bm.setup_tables()
+bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 BLDG = Namespace("urn:bldg/")
 
 # 1. Create (or load) a reusable template LIBRARY.

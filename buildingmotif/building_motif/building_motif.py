@@ -38,6 +38,7 @@ class BuildingMOTIF(metaclass=Singleton):
         ontology_offline: bool = False,
         ontology_strict: bool = False,
         graph_store_path: Optional[Union[str, Path]] = None,
+        create_tables: bool = True,
     ) -> None:
         """Class constructor.
 
@@ -64,6 +65,12 @@ class BuildingMOTIF(metaclass=Singleton):
             databases default to <sqlite-db-file>.oxigraph. In-memory SQLite
             databases use an in-memory graph store. Other databases default to
             .buildingmotif-oxigraph in the current working directory.
+        :param create_tables: if true (the default), create any missing
+            BuildingMOTIF tables in the database. This is idempotent and never
+            drops or alters an existing table. Pass False when the schema is
+            managed out of band -- e.g. by the Alembic migrations under
+            ``migrations/`` -- so this instance never touches the schema.
+        :type create_tables: bool
         """
         self.db_uri = db_uri
         self.shacl_engine = normalize_shacl_engine(shacl_engine)
@@ -79,8 +86,12 @@ class BuildingMOTIF(metaclass=Singleton):
 
         self.setup_logging(log_level)
 
-        # setup tables automatically if using a in-memory sqlite database
-        if self._is_in_memory_sqlite():
+        # Create any missing tables up front. This used to happen only for
+        # in-memory SQLite, so the first thing a user did against a file-backed
+        # or Postgres database failed with a bare "no such table" from the
+        # driver unless they knew to call setup_tables() themselves. create_all
+        # is idempotent and only ever adds missing tables.
+        if create_tables:
             self.setup_tables()
 
         self.table_connection = TableConnection(self.engine, self)
@@ -197,6 +208,58 @@ class BuildingMOTIF(metaclass=Singleton):
         """
         live_ids = self.table_connection.get_all_graph_ids()
         return self.graph_connection.collect_garbage(live_ids)
+
+    def __enter__(self) -> "BuildingMOTIF":
+        """Enter a BuildingMOTIF session.
+
+        Using the instance as a context manager ties the SQL side of the two
+        stores to the block::
+
+            with BuildingMOTIF("sqlite:///bldg.db") as bm:
+                model = Model.create("urn:bldg/")
+                model.add_graph(g)
+            # committed and closed here
+
+        On a clean exit the session is committed; on an exception it is rolled
+        back. Either way the instance is closed (which also reclaims orphaned
+        graphs) and the singleton is reset, so a later ``BuildingMOTIF(...)``
+        constructs a fresh instance instead of handing back this closed one.
+
+        This matters because BuildingMOTIF spans two stores: triples are written
+        through to Oxigraph immediately, while the rows that point at them live
+        in SQL and are only durable once the session commits. Leaving the block
+        without committing would leave triples on disk that no model or library
+        row references.
+
+        :return: this instance
+        :rtype: BuildingMOTIF
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Commit (or roll back) and close the instance. See :py:meth:`__enter__`."""
+        try:
+            if exc_type is None:
+                # let a failed commit propagate -- the caller needs to know
+                # their work did not persist
+                self.session.commit()
+            else:
+                # best-effort: a failure here must not mask the exception that
+                # is already on its way out of the block
+                try:
+                    self.session.rollback()
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "Rollback failed while exiting the BuildingMOTIF context",
+                        exc_info=True,
+                    )
+        finally:
+            try:
+                self.close()
+            finally:
+                # drop the singleton so the next constructor call builds a new
+                # instance rather than returning this closed one
+                type(self).clean()  # type: ignore[attr-defined]
 
     def close(self) -> None:
         """Close session and engine."""

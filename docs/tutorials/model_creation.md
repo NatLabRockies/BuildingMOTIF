@@ -40,6 +40,29 @@ from buildingmotif import BuildingMOTIF
 bm = BuildingMOTIF("sqlite://") # in-memory instance
 ```
 
+Any missing tables are created for you, whether the database is in-memory or on disk, so there is nothing else to set up.
+
+```{margin}
+```{note}
+If your schema is managed out of band -- for example by the Alembic migrations in the repository's `migrations/` directory -- pass `create_tables=False` so BuildingMOTIF never touches it.
+```
+
+### Persisting your work
+
+For a *persistent* database, pass a file or Postgres URI instead. BuildingMOTIF spans two stores: RDF triples are written through to the graph store immediately, but the rows that point at them live in SQL and are only durable once the session is committed. Using the instance as a context manager handles that for you -- it commits when the block ends normally, rolls back if an exception escapes, and closes the instance either way:
+
+```python
+from buildingmotif import BuildingMOTIF
+from buildingmotif.dataclasses import Model
+
+with BuildingMOTIF("sqlite:///my_building.db") as bm:
+    model = Model.create("urn:bldg/")
+    model.add_graph(my_graph)
+# committed and closed here
+```
+
+Without the context manager you are responsible for calling `bm.session.commit()` yourself before the process ends, otherwise the triples you wrote will be on disk with no model referencing them.
+
 ```{margin}
 ```{note}
 A `Model` is an RDF graph representing part or all of a building.
@@ -207,7 +230,7 @@ print(ahu_graph.serialize())
 
 ```{margin}
 ```{note}
-If using a persistent (disk-backed) instance of BuildingMOTIF instead of an in-memory instance, be sure to use `bm.session.commit()` to save your work after calling `add_graph`.
+If using a persistent (disk-backed) instance of BuildingMOTIF instead of an in-memory instance, run your work inside a `with BuildingMOTIF(...)` block (see "Persisting your work" above) or call `bm.session.commit()` yourself after calling `add_graph`.
 ```
 
 Now that we have an RDF graph representing an AHU, let's add it to the model using the `add_graph` function. 
