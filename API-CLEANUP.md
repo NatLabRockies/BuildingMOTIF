@@ -165,33 +165,78 @@ Also fixed two skill-doc snippets that wrote `t.all_parameters()` and
 `t.parameter_counts()` **with parentheses** — both were properties, so those examples would
 have raised `TypeError` on the returned set/Counter.
 
+### 6. `Library.load()` is four constructors in a trenchcoat — **done**
+
+Eight optional keywords, dispatch on which one you happened to pass, ~130 lines of
+branching, and `raise Exception("No library information provided")` if you guessed wrong.
+`db_id` / `ontology_graph` / `directory` / `name` are four genuinely different operations.
+
+Replaced with named constructors:
+
+- `Library.from_ontology(ontology, overwrite=, infer_templates=, run_shacl_inference=,
+  fetch_imports=)` -- takes an `rdflib.Graph`, a path/URL string, **or a `pathlib.Path`**
+  (new; `load()` only took `str`).
+- `Library.from_directory(directory, ...)` -- also accepts `pathlib.Path`.
+- `Library.by_name(name)` / `Library.by_id(db_id)` -- database lookups, no disk access.
+
+`load()` remains, behavior unchanged, now raising a `DeprecationWarning` and dispatching to
+the four. It keeps `db_id` as its first *positional* parameter because the package itself
+called `Library.load(library_id)` positionally in three places. Its no-argument error is now
+a `ValueError` naming the four options rather than a bare `Exception`.
+
+The two string-path branches (str vs `Graph`) had duplicated the whole
+load-imports-then-infer-templates tail; they are now one path, which is what made the
+method shrink.
+
+**The two behavioral warts, both fixed:**
+
+- `overwrite=False` logged a *warning* and returned the existing library. Returning the
+  existing library is what `overwrite=False` means, so it is now logged at INFO with
+  accurate wording (the old message in `create()` also said "ovewrite"), and the docstrings
+  state the no-op explicitly.
+- Builtin-vs-filesystem shadowing is unchanged in *behavior* (builtins still win) but is no
+  longer silent: `_resolve_builtin()` logs at INFO when a local path of the same name
+  existed and was skipped, and tells you to pass an absolute path to get the local one.
+
+**Two bugs fixed on the way:**
+
+- `resource_exists()` was called with the raw `directory` argument, so passing an absolute
+  path emitted `DeprecationWarning: Use of .. or absolute path in a resource path is not
+  allowed and will raise exceptions in a future release` -- visible in the test suite today
+  and slated to become an error. `_resolve_builtin()` now short-circuits absolute paths,
+  which is also strictly more correct: an absolute path can never name a packaged resource.
+- **`Library.from_ontology(...).name` returned an `rdflib.URIRef`, not a `str`**, while
+  `by_name()`/`by_id()` returned `str`. Since `URIRef.__eq__` is type-strict,
+  `Library.from_ontology(g).name == "urn:ex/ont"` was `False`. `Model.from_graph` has always
+  normalized this (with a comment saying why); `Library.create` did not. Now it does. This
+  also revived a dead guard: `_load_imported_ontology_libraries` skips the root ontology via
+  `ontology_name == root_name`, comparing OntoEnv's plain-`str` closure names against that
+  `URIRef` -- always `False`. The redundant work was caught by the `_library_exists` check
+  immediately after, so this was a wasted query rather than a visible failure.
+
+Non-breaking throughout: `load()` still works with every keyword combination it ever
+accepted, including `overwrite=None` (the flags are passed through *uncoerced*, because
+`None` was not equivalent to `False` -- it reached OntoEnv as `overwrite is not False` ->
+`True` while still taking the `if not overwrite` branch).
+
+**`load()` is now the by-id loader.** Not a shim: `Template.load(id)`,
+`ShapeCollection.load(id)`, and `Dependency.load(id)` have always meant "load the row with
+this id", and `Library.load` with eight keywords was the outlier. It now does that and
+nothing else; `ontology_graph=` / `directory=` / `name=` still work but each warns and
+names its replacement. This made the `by_id()` I had first added redundant, so it is gone.
+Two new guards: `load()` with no arguments and `load(id, directory=...)` (previously the id
+silently won and the other argument was ignored) both raise `ValueError`.
+
+**The whole codebase moved to the new API**, not just the package: 134 `Library.load(kw=)`
+call sites across tests, notebooks, `docs/`, and `.agents/`, plus every `Template.evaluate()`
+and every deprecated parameter property. The only remaining uses of the deprecated paths are
+the tests that exist to cover them.
+
 ---
 
 ## Proposed, not yet done
 
 Roughly in priority order.
-
-### 6. `Library.load()` is four constructors in a trenchcoat
-
-`dataclasses/library.py:76-208`. Eight optional kwargs, dispatch on which one is non-`None`,
-~130 lines of branching, `raise Exception("No library information provided")` if you guess
-wrong. `db_id` / `ontology_graph` / `directory` / `name` are four genuinely different
-operations sharing one entry point.
-
-Proposal: `Library.from_ontology(...)`, `Library.from_directory(...)`, `Library.by_name(...)`,
-`Library.by_id(...)`; keep `load()` as a thin deprecated shim that dispatches to them.
-Non-breaking if the shim stays.
-
-Two behavioral warts to fix in the same pass:
-
-- `overwrite=False` **logs a warning and returns the existing library**
-  (`library.py:310-315`, `431-436`). Silent-ish success with different semantics than
-  `overwrite=True`. It should either be a documented no-op returning the existing library
-  (fine — but then don't warn) or raise.
-- Builtin-vs-filesystem resolution tries `resource_exists("buildingmotif.libraries", path)`
-  *before* the filesystem (`library.py:130-138`, `188-194`), so a user's local `brick/`
-  directory is silently shadowed by the packaged one. Should at minimum log at INFO which
-  one won; better, make it explicit (`Library.from_builtin("brick/Brick.ttl")`).
 
 ### 9. `ValidationContext.as_templates()` raises on `sh:or` violations
 
