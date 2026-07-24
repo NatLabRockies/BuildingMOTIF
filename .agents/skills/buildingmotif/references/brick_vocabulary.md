@@ -19,7 +19,7 @@ from buildingmotif.namespaces import BRICK, RDF, RDFS, OWL, SH, SKOS
 bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # Builtin Brick. `run_shacl_inference=False` is the recipe that creates class templates.
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 brick_graph = brick.get_shape_collection().graph
 ```
 

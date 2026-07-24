@@ -45,15 +45,15 @@ BLDG = Namespace('urn:bldg/')
 model = Model.create(BLDG, description="This is a test model for a simple building")
 
 # load libraries included with the python package
-constraints = Library.load(ontology_graph="constraints/constraints.ttl")
+constraints = Library.from_ontology("constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
-g36 = Library.load(directory="../../libraries/ashrae/guideline36")
+brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
+g36 = Library.from_directory("../../libraries/ashrae/guideline36")
 
 # load tutorial 2 model and manifest
 model.graph.parse("tutorial2_model.ttl", format="ttl")
-manifest = Library.load(ontology_graph="tutorial2_manifest.ttl")
+manifest = Library.from_ontology("tutorial2_manifest.ttl")
 
 # assign the manifest to our model
 model.update_manifest(manifest.get_shape_collection())

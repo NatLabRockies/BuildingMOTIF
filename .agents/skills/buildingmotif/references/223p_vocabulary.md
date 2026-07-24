@@ -23,7 +23,7 @@ ontologies" table — `/223p.ttl` for the current version), then load it exactly
 from buildingmotif.dataclasses import Library
 from buildingmotif.namespaces import S223, bind_prefixes  # S223 is already defined for you
 
-s223 = Library.load(ontology_graph="path/to/223p.ttl", run_shacl_inference=False)
+s223 = Library.from_ontology("path/to/223p.ttl", run_shacl_inference=False)
 s223_graph = s223.get_shape_collection().graph
 ```
 

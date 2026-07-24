@@ -28,7 +28,7 @@ class BACnetToBrickIngress(GraphIngressHandler):
         """
         super().__init__(bm)
         self.upstream = upstream
-        self.bacnet_lib = Library.load(directory="bacnet")
+        self.bacnet_lib = Library.from_directory("bacnet")
         self.device_template = self.bacnet_lib.get_template_by_name("brick-device")
         self.object_template = self.bacnet_lib.get_template_by_name("brick-point")
 

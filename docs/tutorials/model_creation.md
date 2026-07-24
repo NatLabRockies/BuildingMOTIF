@@ -98,7 +98,7 @@ The `model.graph` object is just the RDFLib Graph[^4] that stores the model. You
 `Libraries` are collections of Templates and Shapes.
 ```
 
-Before we can add semantic metadata to the model, we need to import some `Libraries`. We import libraries by calling `Library.load` in BuildingMOTIF. Libraries can be loaded from directories containing `.yml` and `.ttl` files (for Templates and Shapes, respectively), or from ontology files directly. The code below contains an example of importing the `brick` library, which is simply the Brick ontology. This allows BuildingMOTIF to take advantage of the classes and relationships defined by Brick when validating the model. Loading in these definitions also allows other libraries to refer to Brick definitions. You can also ask a library for the names of the templates it defines, which we'll limit to the first ten below.
+Before we can add semantic metadata to the model, we need to import some `Libraries`. We import libraries by calling `Library.from_ontology` (for an ontology file or graph) or `Library.from_directory` (for a directory) in BuildingMOTIF. Libraries can be loaded from directories containing `.yml` and `.ttl` files (for Templates and Shapes, respectively), or from ontology files directly. The code below contains an example of importing the `brick` library, which is simply the Brick ontology. This allows BuildingMOTIF to take advantage of the classes and relationships defined by Brick when validating the model. Loading in these definitions also allows other libraries to refer to Brick definitions. You can also ask a library for the names of the templates it defines, which we'll limit to the first ten below.
 
 ```{margin}
 ```{warning}
@@ -108,7 +108,7 @@ Currently, libraries in `../../buildingmotif/libraries/` are *included* and libr
 ```{code-cell}
 # load a library
 from buildingmotif.dataclasses import Library
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
 
 # print the first 10 templates
 print("The Brick library contains the following templates:")

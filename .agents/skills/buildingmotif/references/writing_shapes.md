@@ -209,11 +209,11 @@ which ship in the builtin `constraints/constraints.ttl` library:
 
 `constraint:exactCount N` + `constraint:class <Class>` on a `sh:targetNode :` shape
 asserts "the model contains exactly N instances of Class." Load the constraints library
-(`Library.load(ontology_graph="constraints/constraints.ttl")`) and the manifest, then
+(`Library.from_ontology("constraints/constraints.ttl")`) and the manifest, then
 associate it:
 
 ```python
-manifest = Library.load(ontology_graph="my_manifest.ttl")
+manifest = Library.from_ontology("my_manifest.ttl")
 model.update_manifest(manifest.get_shape_collection())
 ctx = model.validate()   # validates against the manifest by default
 ```

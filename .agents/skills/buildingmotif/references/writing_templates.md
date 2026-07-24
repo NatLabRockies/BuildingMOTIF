@@ -186,7 +186,7 @@ parameter. If the property shape has a **`sh:name`**, that string seeds the gene
 parameter name (e.g. `sh:name "ztemp"` → param `ztemp` — a recognizable name, instead of
 the invented `p1`, `p2`, …). The template's name is the IRI of the node shape.
 
-Disable with `Library.load(..., infer_templates=False)`. You can also decompile an
+Disable with `infer_templates=False` on the loader. You can also decompile an
 existing `ShapeCollection` on demand:
 
 ```python
@@ -217,7 +217,7 @@ why `sh:name` on a property shape is worth setting even when you write the shape
 
 The repo's `libraries/` use **both** side by side: `.yml` files for equipment templates
 (exhaust fan, VAV) and `.ttl` files for the SHACL shapes (system specifications). A
-library directory can hold both; `Library.load(directory=...)` loads all `.yml` as
+library directory can hold both; `Library.from_directory(...)` loads all `.yml` as
 templates and all `.ttl` as shapes (decompiling the instantiable ones).
 
 ## Authoring checklist
@@ -246,7 +246,7 @@ others):
 from rdflib import Namespace
 from buildingmotif.dataclasses import Library
 BLDG = Namespace("urn:bldg/")
-lib = Library.load(directory="my_library")
+lib = Library.from_directory("my_library")
 t = lib.get_template_by_name("vav-cooling-only")
 g = t.substitute({"name": BLDG["vav1"], "ztemp": BLDG["vav1_ZN_T"], "dmp": BLDG["vav1_dmp"],
                 "zone": BLDG["zone1"], "dat": BLDG["vav1_DAT"], "occ": BLDG["vav1_occ"],

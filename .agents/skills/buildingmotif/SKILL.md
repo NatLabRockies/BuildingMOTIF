@@ -165,7 +165,7 @@ inside `buildingmotif/libraries/` (via `pkg_resources.resource_exists` on the
 `buildingmotif.libraries` namespace). These ship with the package install (see
 "Installation" above):
 
-| Builtin path (pass to `Library.load`) | Contents |
+| Builtin path (pass to `Library.from_ontology`/`from_directory`) | Contents |
 |---|---|
 | `brick/Brick.ttl` | the full Brick ontology — **1444 templates**, including the class templates other libraries depend on |
 | `constraints/constraints.ttl` | `bmotif:` constraint shapes (`exactCount`, etc.) for writing manifests |
@@ -176,7 +176,7 @@ inside `buildingmotif/libraries/` (via `pkg_resources.resource_exists` on the
 package** (see [NatLabRockies/BuildingMOTIF#133](https://github.com/NatLabRockies/BuildingMOTIF/issues/133)).
 They live only in the repository's `libraries/` directory. To use them as a package user:
 
-- **clone the repo** and point `Library.load(directory=...)` at the path, **or**
+- **clone the repo** and point `Library.from_directory(...)` at the path, **or**
 - **bulk-load via `libraries.yml`** with a `git:` entry that clones the repo at load
   time (see `references/templates.md`), **or**
 - write your own templates/shapes inline — the YAML and SHACL formats are documented in
@@ -207,7 +207,7 @@ class templates, load that ontology **before** the dependent library.
 # ~6s; with ontology_fetch_imports=True (the default) OntoEnv also resolves Brick's
 # owl:imports (REC, QUDT pieces). If you only need the class templates and want it
 # faster, pass fetch_imports=False — the 1444 class templates load regardless.
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 ```
 
 Load Brick **before** any library that depends on it. Libraries like

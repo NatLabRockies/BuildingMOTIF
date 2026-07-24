@@ -88,8 +88,8 @@ from buildingmotif.dataclasses import Library, Model
 bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # Load the ontology + shapes you need (see ontology_imports.md for owl:imports).
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
-shapes_lib = Library.load(ontology_graph="path/to/my_shapes.ttl")  # or inline graph
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
+shapes_lib = Library.from_ontology("path/to/my_shapes.ttl")  # or inline graph
 
 # Load (or create) the model.
 model = Model.from_file("path/to/model.ttl")
@@ -249,7 +249,7 @@ A `Library` holds **templates** (YAML-defined or decompiled from shapes) and a *
 collection** (the RDF graph the templates/shapes live in). Two views:
 
 ```python
-lib = Library.load(directory="/path/to/library")   # or ontology_graph=..., name=...
+lib = Library.from_directory("/path/to/library")   # or ontology_graph=..., name=...
 
 # Templates in the library:
 for t in lib.get_templates():
@@ -263,7 +263,7 @@ print(sc.graph_name)   # the owl:Ontology IRI, or None
 ```
 
 `lib.name` is the ontology IRI (the subject of `a owl:Ontology` in the loaded graph) —
-that's how a library is keyed in the DB, and how `Library.load(name=...)` reloads it.
+that's how a library is keyed in the DB, and how `Library.by_name(...)` reloads it.
 
 ### Inspecting a template
 
@@ -327,8 +327,8 @@ from buildingmotif.namespaces import SH
 bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # 1. Load ontologies + the application's shapes.
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
-app_shapes = Library.load(ontology_graph="my_app_requirements.ttl")
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
+app_shapes = Library.from_ontology("my_app_requirements.ttl")
 
 # 2. Load the model.
 model = Model.from_file("building.ttl")

@@ -80,7 +80,7 @@ string seeds the generated parameter name (e.g. `sh:name "ztemp"` → param `zte
 recognizable name, instead of the invented `p1`, `p2`, …). The template's name is the
 IRI of the node shape.
 
-Disable with `Library.load(..., infer_templates=False)`. You can also decompile an
+Disable with `infer_templates=False` on the loader. You can also decompile an
 existing `ShapeCollection` on demand:
 
 ```python
@@ -112,11 +112,11 @@ bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 #    templates other libraries depend on. By default (ontology_fetch_imports=True)
 #    OntoEnv also resolves Brick's owl:imports (REC, QUDT pieces); pass
 #    fetch_imports=False to load just Brick faster if you only need class templates.
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 
 # 2. then libraries that depend on it. guideline36 is repo-only (not packaged) —
 #    load it from a clone, or git-load it (see "Getting repo-only libraries" below).
-g36 = Library.load(directory="/path/to/clone/libraries/ashrae/guideline36")  # 115 templates
+g36 = Library.from_directory("/path/to/clone/libraries/ashrae/guideline36")  # 115 templates
 ```
 
 Deviating from this recipe is the top cause of
@@ -127,11 +127,11 @@ way that didn't infer class templates). Fix the load order; don't edit the libra
 ### Getting repo-only libraries (guideline36, chiller-plant, pointlist-test, 223p, …)
 
 Only `brick/`, `constraints/`, and `bacnet/` ship in the package. For everything else,
-three options, all of which end in a directory or ontology graph that `Library.load`
-accepts:
+three options, all of which end in a directory or ontology graph that
+`Library.from_directory`/`Library.from_ontology` accepts:
 
 1. **Clone the repo** once and pass the directory path:
-   `Library.load(directory="/abs/path/to/libraries/ashrae/guideline36")`.
+   `Library.from_directory("/abs/path/to/libraries/ashrae/guideline36")`.
    Templates in a directory library are the `.yml` files; shapes are the `.ttl` files.
 2. **`libraries.yml` + git** — let BuildingMOTIF clone it at load time:
    ```yaml
@@ -146,10 +146,10 @@ accepts:
    `libraries.default.yml` in the cwd showing all three keys (`directory`, `ontology`,
    `git`).
 3. **Load a remote ontology URL** directly — e.g. the nightly Brick:
-   `Library.load(ontology_graph="https://github.com/BrickSchema/Brick/releases/download/nightly/Brick.ttl")`.
+   `Library.from_ontology("https://github.com/BrickSchema/Brick/releases/download/nightly/Brick.ttl")`.
    (The builtin `brick/Brick.ttl` already covers the Brick case without a download.)
 
-`Library.load(ontology_graph=<str>)` treats the string as a **path** (builtin resource
+`Library.from_ontology(<str>)` treats the string as a **path** (builtin resource
 lookup first, then the local filesystem) **or a URL**. To load **inline** Turtle from a
 Python string, parse it into an `rdflib.Graph` first and pass the graph — passing the
 raw string will be misread as a filename:
@@ -157,12 +157,12 @@ raw string will be misread as a filename:
 ```python
 import rdflib
 g = rdflib.Graph(); g.parse(data=turtle_string, format="turtle")
-lib = Library.load(ontology_graph=g)
+lib = Library.from_ontology(g)
 ```
 
 Brick load takes **seconds**, not minutes. Persist it if you want: use a file URI
 (`BuildingMOTIF("sqlite:///bm.db")`) once, then on later runs
-`Library.load(name="Brick")` (loads the previously-stored DB record by name).
+`Library.by_name("Brick")` (loads the previously-stored DB record by name).
 
 ## Finding the right template
 
