@@ -113,6 +113,58 @@ strict sense, `not templ.parameters` says "nothing unbound at all" — see `_rea
 `ingresses/template.py`. Folding the flag into `is_complete` would mean making it a method;
 it was left as a property because the lenient question is the common one.
 
+### 7 + 8. `Template` parameter accessors — **done**
+
+Two problems on the same five members, fixed together.
+
+**#7, the phantom argument.** `all_parameters`, `dependency_parameters`, and
+`parameter_counts` were `@property` but declared `error_on_missing_dependency: bool = True`.
+Being properties, nobody could ever supply it, so the default was the only reachable
+behavior — a plain bug.
+
+**#8, five overlapping notions of "parameters".** `parameters` (local),
+`all_parameters` (direct deps, raw names), `dependency_parameters` (direct deps only, raw),
+`transitive_parameters` (whole chain, renamed as inlining would), `parameter_counts`
+(whole chain, raw, as a histogram). Three independent axes — depth, renaming, whether to
+include the template's own — encoded in names that signalled none of them.
+
+`parameters` **stays exactly as it is**: a property, local-only, and by far the most-used
+member (it is all over the package, the tests, and the new `substitute`/`to_graph` code).
+Making it a method, as this entry originally proposed, would have been a large break for
+the one accessor that was never confusing.
+
+Everything else collapses into one method with the axes named:
+
+```python
+parameters_with_dependencies(
+    transitive=True, renamed=True, include_self=True, error_on_missing_dependency=True
+)
+```
+
+- `transitive=False, renamed=False` → the old `all_parameters`
+- `transitive=False, renamed=False, include_self=False` → the old `dependency_parameters`
+- defaults → the old `transitive_parameters`
+
+Those three are kept as deprecated properties that delegate, with the phantom argument
+gone. Tests pin each equivalence. `parameter_counts` keeps its own implementation (a
+`Counter` is a genuinely different result, not a flag on a set-returning method) and just
+loses the phantom argument.
+
+Two things worth knowing:
+
+- **`renamed=True` is exactly what inlining produces.** Verified as an invariant and
+  asserted in tests: `t.parameters_with_dependencies() == t.inline_dependencies().parameters`.
+  That is the useful meaning — "what will I have to bind after inlining" — answered without
+  doing the inlining.
+- **`include_self=False` is not `all - parameters`.** A dependency may legitimately use a
+  parameter name the parent also uses (the `vav` fixture's dependency has its own `name`),
+  so the set difference silently loses it. This is why `include_self` is a real axis rather
+  than something callers subtract; there is a test for exactly this.
+
+Also fixed two skill-doc snippets that wrote `t.all_parameters()` and
+`t.parameter_counts()` **with parentheses** — both were properties, so those examples would
+have raised `TypeError` on the returned set/Counter.
+
 ---
 
 ## Proposed, not yet done
@@ -140,27 +192,6 @@ Two behavioral warts to fix in the same pass:
   *before* the filesystem (`library.py:130-138`, `188-194`), so a user's local `brick/`
   directory is silently shadowed by the packaged one. Should at minimum log at INFO which
   one won; better, make it explicit (`Library.from_builtin("brick/Brick.ttl")`).
-
-### 7. `@property` methods with arguments that can never be passed
-
-`dataclasses/template.py:183, 219, 239`. `all_parameters`, `dependency_parameters`, and
-`parameter_counts` are decorated `@property` but declare
-`error_on_missing_dependency: bool = True`. Nobody can ever supply it; the default is the
-only reachable behavior. Plain bug.
-
-Fix: drop the parameter, or drop `@property` and make them methods. Dropping the parameter
-is non-breaking (nobody can be passing it).
-
-### 8. Five overlapping notions of "parameters" on `Template`
-
-`parameters` (local), `all_parameters` (local + direct deps, unrenamed), `dependency_parameters`
-(deps only), `transitive_parameters` (recursive, *with* dependency renaming),
-`parameter_counts` (histogram). The transitivity and renaming semantics differ subtly and
-the names don't signal which is which.
-
-Proposal: collapse to `parameters(transitive: bool = False, renamed: bool = True)` plus
-`parameter_counts()`. Deprecate the rest. Breaking; do it with the #7 fix since it touches
-the same properties.
 
 ### 9. `ValidationContext.as_templates()` raises on `sh:or` violations
 
