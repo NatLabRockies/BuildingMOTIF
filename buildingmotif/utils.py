@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 from rdflib import BNode, Graph, Literal, URIRef
+from rdflib.collection import Collection as RDFCollection
 from rdflib.compare import _TripleCanonicalizer
 from rdflib.paths import ZeroOrOne
 from rdflib.term import Node
@@ -52,9 +53,12 @@ def _param_name(param: URIRef) -> str:
 def _guarantee_unique_template_name(library: "Library", name: str) -> str:
     """
     Ensure that the template name is unique by appending an increasing number.
-    This is only called when we are generating templates from GraphDiffs / repair
-    proposals. The Library is intended to be ephemeral so these names will not be
-    around for long.
+
+    Used when generating templates whose names we derive rather than read: the
+    GraphDiff / repair-proposal path (where the Library is ephemeral, so the
+    names are short-lived), and the ``sh:or`` alternatives inferred by
+    ShapeCollection.infer_templates (where a shape could in principle already be
+    named like a generated alternative).
 
     Template names are unique within a library, so names already taken by other
     libraries do not need to be skipped. ``get_template_by_name`` raises
@@ -248,7 +252,9 @@ def get_template_parts_from_shape(
     :return: template parts
     :rtype: Tuple[Graph, List[Dict]]
     """
-    # TODO: sh:or?
+    # sh:or on the node shape is *not* folded in here: a disjunction has no
+    # single body. ShapeCollection.infer_templates decompiles each branch
+    # into its own alternative template via get_shape_or_branches().
     # the template body
     body = Graph()
     root_param = PARAM["name"]
@@ -350,6 +356,37 @@ def get_template_parts_from_shape(
         )  # tie to root param
 
     return body, deps
+
+
+def get_shape_or_branches(shape_name: Node, shape_graph: Graph) -> List[Node]:
+    """The branches of a node shape's ``sh:or``, in declaration order.
+
+    ``sh:or`` takes an ``rdf:List``, which *is* ordered, so this preserves the
+    order the shape author wrote. That ordering is the only ranking signal the
+    shape carries, and authors conventionally put the common or preferred
+    alternative first -- so callers that must present alternatives should
+    present them in this order rather than inventing a ranking.
+
+    Only ``sh:or`` directly on the node shape is returned: that is the
+    "alternative ways to be this thing" case. An ``sh:or`` nested inside a
+    property shape constrains one value's type instead, and is not handled here.
+
+    :param shape_name: the node shape
+    :type shape_name: Node
+    :param shape_graph: the graph holding the shape
+    :type shape_graph: Graph
+    :return: the branch shapes, in order; empty if the shape has no ``sh:or``
+    :rtype: List[Node]
+    """
+    branches: List[Node] = []
+    for or_list in shape_graph.objects(subject=shape_name, predicate=SH["or"]):
+        try:
+            branches.extend(iter(RDFCollection(shape_graph, or_list)))
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "could not read the sh:or list on %s", shape_name, exc_info=True
+            )
+    return branches
 
 
 @dataclass

@@ -80,6 +80,30 @@ string seeds the generated parameter name (e.g. `sh:name "ztemp"` → param `zte
 recognizable name, instead of the invented `p1`, `p2`, …). The template's name is the
 IRI of the node shape.
 
+### `sh:or` becomes alternative templates
+
+A template generates a *fragment*; it cannot itself be disjunctive. So a node shape carrying
+`sh:or` decompiles into **several** templates -- one per way of satisfying it -- rather than
+one template that somehow means both:
+
+| template | body |
+|---|---|
+| `<shape>` | the shape's non-disjunctive requirements only |
+| `<shape>-alt1` | those requirements **+ the first `sh:or` branch** |
+| `<shape>-alt2` | those requirements **+ the second branch** |
+
+Fill **one** alternative, not all of them. Each already includes the common part, so any
+single one satisfies the shape; filling two would assert both branches, which is exactly the
+false-metadata trap `sh:or` exists to avoid.
+
+**Order is meaningful.** `sh:or` takes an `rdf:List`, which is ordered, and that authoring
+order is the only ranking the shape carries -- authors conventionally put the common or
+preferred case first. `-alt1` is the first branch written. Present alternatives in that order
+rather than inventing a ranking.
+
+`sh:or` nested inside a *property* shape (constraining one value's type, rather than the
+whole entity) is still not decompiled.
+
 Disable with `infer_templates=False` on the loader. You can also decompile an
 existing `ShapeCollection` on demand:
 
