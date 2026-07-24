@@ -32,14 +32,14 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import product
-from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Set, Tuple, Union
 
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
 from rdflib.util import from_n3
 
 from buildingmotif.namespaces import BRICK, OWL, PARAM, RDF, RDFS, SH
-from buildingmotif.shacl import require_shifty
+from buildingmotif.shacl import _shifty_shapes_input, require_shifty
 from buildingmotif.utils import copy_graph, replace_nodes
 
 if TYPE_CHECKING:
@@ -99,6 +99,39 @@ def _triples_to_graph(triples) -> Graph:
     for s_nt, p_nt, o_nt in triples:
         g.add((_nt_to_node(s_nt), _nt_to_node(p_nt), _nt_to_node(o_nt)))
     return g
+
+
+def _render_sparql_diagnostic(diag: "object") -> str:
+    """Render a pyshifty ``SparqlDiagnostic`` (``Reason.sparql_diagnostic``) as
+    human-readable text: the query actually executed, its ``$this``/prebound
+    variables, and the solution rows it produced.
+
+    Mirrors the detail ``shifty.validate(...)``'s own ``results_text`` already
+    prints for a failed ``sh:sparql`` constraint on the W3C-report path -- this
+    is what makes the same detail available on the *algebraic* path (i.e. from
+    :class:`AlgebraicReason`/:class:`RepairWitness`), where a SPARQL failure
+    would otherwise be reported as opaque with no further explanation.
+    """
+    lines = [f"query: {getattr(diag, 'query', '')}"]
+    bindings = getattr(diag, "bindings", None)
+    if bindings:
+        bound = ", ".join(f"${name} = {value}" for name, value in bindings)
+        lines.append(f"bound: {bound}")
+    results = getattr(diag, "results", None)
+    if results:
+        rows = [
+            "(" + ", ".join(f"{name} = {value}" for name, value in row) + ")"
+            if row
+            else "()"
+            for row in results
+        ]
+        lines.append(f"results: {'; '.join(rows)}")
+    else:
+        lines.append("results: (no rows)")
+    fallback_reason = getattr(diag, "fallback_reason", None)
+    if fallback_reason:
+        lines.append(f"fallback: {fallback_reason}")
+    return " | ".join(lines)
 
 
 def _ontology_projection(ontology: Graph) -> Graph:
@@ -181,13 +214,27 @@ class AlgebraicReason:
         return getattr(self.raw, name)
 
     def reason(self) -> str:
-        message = getattr(self.raw, "message", None)
+        # `author_message` (the shape's own `sh:message`, `{$this}`/`{?var}`
+        # already resolved) is what pyshifty itself recommends preferring over
+        # the engine-generated `message` when the shape author supplied one.
+        message = getattr(self.raw, "author_message", None) or getattr(
+            self.raw, "message", None
+        )
         value = getattr(self.raw, "value", None)
-        if message and value:
-            return f"{value} {message}"
-        if message:
-            return str(message)
-        return str(self.raw)
+        # a message built from a `{$this}`-style sh:message template already
+        # names the focus -- prepending value would just repeat it
+        if message and value and str(value) not in str(message):
+            text = f"{value} {message}"
+        elif message:
+            text = str(message)
+        else:
+            text = str(self.raw)
+        # present only for a failed sh:sparql/custom SPARQL-based constraint;
+        # surfaces the query/bindings/results instead of leaving it a dead end
+        diagnostic = getattr(self.raw, "sparql_diagnostic", None)
+        if diagnostic is not None:
+            text = f"{text} [{_render_sparql_diagnostic(diagnostic)}]"
+        return text
 
     def __str__(self) -> str:
         return self.reason()
@@ -338,6 +385,13 @@ class RepairWitness:
     witness: "object"
     # back-reference to the owning context (holds the session + repair engine)
     context: "AlgebraicValidationContext"
+    # this witness's summary() atoms, best-effort aligned 1:1 with the pyshifty
+    # Reason objects from the context's validate_algebra() run for the same
+    # focus (see AlgebraicValidationContext._reasons_for) -- () when no
+    # alignment could be established. This is what lets a SPARQL-based leaf
+    # (always reported as opaque on the repair-tree side) be explained with
+    # the query/bindings/results pyshifty already computed on the algebra side.
+    reasons: Tuple = ()
 
     def _get_summary(self):
         try:
@@ -389,25 +443,55 @@ class RepairWitness:
             )
             return False
 
+    @property
+    def sparql_diagnostics(self) -> List["object"]:
+        """The pyshifty ``SparqlDiagnostic`` for every SPARQL-based leaf of this
+        failure that could be aligned with :attr:`reasons` -- query text, its
+        ``$this``/prebound variables, and the solution rows it produced.
+
+        Empty when this failure has no SPARQL-based leaf, or when
+        :attr:`reasons` couldn't be aligned with :meth:`_get_summary` (a
+        mismatched count means the two pyshifty calls diverged for this focus,
+        so no enrichment is safer than a wrong pairing)."""
+        diagnostics = []
+        for reason in self.reasons:
+            diagnostic = getattr(reason, "sparql_diagnostic", None)
+            if diagnostic is not None:
+                diagnostics.append(diagnostic)
+        return diagnostics
+
     def explain(self) -> str:
-        """The repair tree rendered as indented text."""
+        """The repair tree rendered as indented text, with any SPARQL-based
+        leaf's query/bindings/results appended (see :attr:`sparql_diagnostics`)
+        -- otherwise a SPARQL constraint failure explains as an opaque dead
+        end."""
         try:
-            return self.repair_tree.explain()
+            text = self.repair_tree.explain()
         except Exception:
             logger.debug(
                 "explain: repair_tree.explain() raised for focus %s",
                 self.focus,
                 exc_info=True,
             )
-            return ""
+            text = ""
+        rendered = [_render_sparql_diagnostic(d) for d in self.sparql_diagnostics]
+        if rendered:
+            text = "\n".join([text, *rendered]) if text else "\n".join(rendered)
+        return text
 
     def reason(self) -> str:
         """Human-readable explanation of this failure (mirrors
-        :meth:`buildingmotif.dataclasses.validation.GraphDiff.reason`)."""
+        :meth:`buildingmotif.dataclasses.validation.GraphDiff.reason`).
+
+        A SPARQL-based leaf (``WitnessKind.Opaque``) is annotated with its
+        pyshifty ``SparqlDiagnostic`` when :attr:`reasons` aligns 1:1 with
+        :meth:`_get_summary` -- see
+        :meth:`AlgebraicValidationContext._reasons_for`."""
         summary = self._get_summary()
         if isinstance(summary, (list, tuple)) and summary:
+            aligned = self.reasons if len(self.reasons) == len(summary) else ()
             parts = []
-            for atom in summary:
+            for i, atom in enumerate(summary):
                 kind = str(getattr(atom, "kind", "")).split(".")[-1]
                 path = getattr(atom, "path", None)
                 detail = getattr(atom, "detail", None)
@@ -416,15 +500,20 @@ class RepairWitness:
                     seg += f" on path {path}"
                 if detail:
                     seg += f" ({detail})"
+                diagnostic = (
+                    getattr(aligned[i], "sparql_diagnostic", None) if aligned else None
+                )
+                if diagnostic is not None:
+                    seg += f" [{_render_sparql_diagnostic(diagnostic)}]"
                 parts.append(seg)
             return "; ".join(parts)
         if summary:
             return str(summary)
         try:
-            target = self.witness.target()  # type: ignore
+            target = self.witness.target  # type: ignore
         except Exception:
             logger.debug(
-                "reason: witness.target() raised for focus %s",
+                "reason: witness.target raised for focus %s",
                 self.focus,
                 exc_info=True,
             )
@@ -1103,10 +1192,14 @@ class AlgebraicValidationContext:
         shifty = require_shifty()
 
         self.shapes_graph = _without_redundant_point_inverse_axioms(self.shapes_graph)
-        self._session = shifty.RepairSession(self.shapes_graph, self.data_graph)
+        # Turtle text, not the bare Graph -- see _shifty_shapes_input for why a
+        # Graph object silently loses the prefixes any sh:sparql/sh:rule body
+        # needs to resolve its query text.
+        shapes_input = _shifty_shapes_input(self.shapes_graph)
+        self._session = shifty.RepairSession(shapes_input, self.data_graph)
         self._algebra = shifty.validate_algebra(
             self.data_graph,
-            self.shapes_graph,
+            shapes_input,
             minimum_severity="violation",
         )
         # ontology used by the monomorphism search (class hierarchy lives here)
@@ -1182,18 +1275,57 @@ class AlgebraicValidationContext:
         else:
             _, report_graph, _ = shifty.validate(
                 self.data_graph,
-                self.shapes_graph,
+                _shifty_shapes_input(self.shapes_graph),
                 minimum_severity="violation",
             )
         return report_graph
+
+    @cached_property
+    def _violations_by_focus(self) -> Dict[Optional[URIRef], List[Any]]:
+        """``self._algebra.violations``, grouped by focus and kept in the
+        engine's own per-focus order -- used by :meth:`_reasons_for` to align
+        with :meth:`_session.witnesses`, which pyshifty computes independently
+        (a second pass over the same shapes/data)."""
+        grouped: Dict[Optional[URIRef], List[Any]] = defaultdict(list)
+        for v in self._algebra.violations:
+            grouped[_focus_to_node(v.focus_node)].append(v)
+        return dict(grouped)
+
+    def _reasons_for(self, focus: Optional[URIRef], index: int) -> Tuple:
+        """Best-effort pyshifty ``Reason`` objects for the ``index``-th
+        ``FocusWitness`` pyshifty returned for ``focus`` (in
+        ``RepairSession.witnesses()`` order), aligned with the corresponding
+        ``Violation.reasons`` from the *separate* ``validate_algebra()`` call
+        this context also runs.
+
+        Neither pyshifty API documents an explicit key to join a
+        ``FocusWitness`` to its ``Violation`` -- both are independent
+        evaluations of the same compiled shapes over the same data, in the
+        engine's own constraint-declaration order, which is what makes the
+        positional pairing hold in practice (verified: a witness's
+        ``summary()`` atoms and its matched violation's ``reasons`` line up
+        1:1, including for multiple ``sh:sparql`` constraints on one shape).
+        A count mismatch just means "don't enrich this one" -- never a wrong
+        pairing.
+        """
+        violations = self._violations_by_focus.get(focus, [])
+        if index >= len(violations):
+            return ()
+        return tuple(violations[index].reasons)
 
     @cached_property
     def witnesses(self) -> List[RepairWitness]:
         """The violation horizon: one :class:`RepairWitness` per failing
         ``(focus, statement)``. Empty iff the graph conforms."""
         out: List[RepairWitness] = []
+        seen_at_focus: Dict[Optional[URIRef], int] = defaultdict(int)
         for w in self._session.witnesses():
-            out.append(RepairWitness(_focus_to_node(w.focus), w, self))  # type: ignore
+            focus = _focus_to_node(w.focus)
+            index = seen_at_focus[focus]
+            seen_at_focus[focus] += 1
+            out.append(
+                RepairWitness(focus, w, self, self._reasons_for(focus, index))  # type: ignore
+            )
         return out
 
     def witnesses_by_focus(self) -> Dict[Optional[URIRef], List[RepairWitness]]:

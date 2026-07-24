@@ -76,7 +76,12 @@ def _guarantee_unique_template_name(library: "Library", name: str) -> str:
 
 def copy_graph(g: Graph, preserve_blank_nodes: bool = True) -> Graph:
     """
-    Copy a graph. Creates new blank nodes so that these remain unique to each Graph
+    Copy a graph. Creates new blank nodes so that these remain unique to each Graph.
+    Namespace bindings are copied too -- losing them would silently rename a
+    prefix on serialization (e.g. via ``graph.serialize(format="turtle")``),
+    which breaks anything that resolves a prefixed name against the
+    document's *declared* prefixes rather than the graph's triples (e.g. a
+    SHACL ``sh:sparql``/``sh:rule`` body's ``sh:prefixes``).
 
     :param g: the graph to copy
     :type g: Graph
@@ -86,6 +91,8 @@ def copy_graph(g: Graph, preserve_blank_nodes: bool = True) -> Graph:
     :rtype: Graph
     """
     c = Graph()
+    for prefix, namespace in g.namespaces():
+        c.bind(prefix, namespace, override=True)
     new_prefix = secrets.token_hex(4)
     for t in g.triples((None, None, None)):
         assert isinstance(t, tuple)

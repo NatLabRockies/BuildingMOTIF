@@ -387,13 +387,17 @@ def test_pyshifty_validate_dispatches_to_shifty_module(monkeypatch):
         report_graph,
         "ok",
     )
-    assert calls == [
-        (
-            "validate",
-            (data_graph, shape_graph),
-            {"minimum_severity": "violation"},
-        ),
-    ]
+    # the shapes graph is handed to shifty as Turtle text (not the bare Graph)
+    # so its embedded sh:sparql/sh:rule bodies can resolve sh:prefixes -- see
+    # buildingmotif.shacl._shifty_shapes_input
+    assert len(calls) == 1
+    name, args, kwargs = calls[0]
+    called_data, called_shapes = args
+    assert name == "validate"
+    assert called_data == data_graph
+    assert isinstance(called_shapes, bytes)
+    assert set(Graph().parse(data=called_shapes, format="turtle")) == set(shape_graph)
+    assert kwargs == {"minimum_severity": "violation"}
 
 
 def test_pyshifty_validate_omits_empty_shape_graph(monkeypatch):
@@ -436,7 +440,14 @@ def test_pyshifty_inference_removes_shape_graph(monkeypatch):
     inferred_graph = data_graph + shape_graph
 
     def infer(*args):
-        assert args == (data_graph, shape_graph)
+        # the shapes graph is handed to shifty as Turtle text (not the bare
+        # Graph) -- see buildingmotif.shacl._shifty_shapes_input
+        called_data, called_shapes = args
+        assert called_data == data_graph
+        assert isinstance(called_shapes, bytes)
+        assert set(Graph().parse(data=called_shapes, format="turtle")) == set(
+            shape_graph
+        )
         return SimpleNamespace(graph=lambda: inferred_graph)
 
     monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
@@ -460,7 +471,14 @@ def test_pyshifty_inference_removes_redundant_is_point_of(monkeypatch):
     inferred_graph.add(inferred_inverse_triple)
 
     def infer(*args):
-        assert args == (data_graph, shape_graph)
+        # the shapes graph is handed to shifty as Turtle text (not the bare
+        # Graph) -- see buildingmotif.shacl._shifty_shapes_input
+        called_data, called_shapes = args
+        assert called_data == data_graph
+        assert isinstance(called_shapes, bytes)
+        assert set(Graph().parse(data=called_shapes, format="turtle")) == set(
+            shape_graph
+        )
         return SimpleNamespace(graph=lambda: inferred_graph)
 
     monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
