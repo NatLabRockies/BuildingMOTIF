@@ -232,24 +232,82 @@ call sites across tests, notebooks, `docs/`, and `.agents/`, plus every `Templat
 and every deprecated parameter property. The only remaining uses of the deprecated paths are
 the tests that exist to cover them.
 
+### 9. `ValidationContext.as_templates()` raises on `sh:or` violations — **done**
+
+`OrShape` was the only `GraphDiff` subclass without a `resolve()`, so it inherited the
+base's `raise NotImplementedError`. Any model with an `sh:or` violation made
+`as_templates()` blow up.
+
+**Why it was never implemented — this is the interesting part.** It is not an omission.
+Every template `resolve()` returns for a focus node is **joined into one** by
+`merge_templates_for_focus` — a conjunction. So emitting one template per `sh:or` branch
+would build a repair satisfying *every* alternative at once: for
+`sh:or ( ElectricMeterShape GasMeterShape )` it would assert the meter is both, inventing
+metadata that is false of the building. Picking one branch arbitrarily is no better, since
+nothing in the shape says which is true here. **The legacy contract cannot express "choose
+one"**, so there is no correct value for `resolve()` to return.
+
+`resolve()` therefore returns `[]`, with the reasoning in its docstring. The win is not
+"no crash" but that the *other* failures survive: one unresolvable diff used to discard
+every repair in the report. There is a test for exactly that.
+
+**The algebraic backend handles it properly, and structurally.** pyshifty models `sh:or` as
+an `Any` node in the repair tree; `TemplateGuidedRepair._base_specs` enumerates those
+branches as *separate base plans*, each independently soundness-gated, bounded by
+`RepairConfig.max_branches`. Verified on a meter that must have either an electric or a gas
+reading: the legacy path raises, while the algebraic path returns eight sound proposals,
+some adding `ex:elec` and some `ex:gas`, and no single proposal conjoins the two. That menu
+of alternatives is the right representation, and it is what the legacy API structurally
+lacks.
+
+**Second bug fixed here:** `OrShape.reason()` did `', '.join(self.shapes)`. `sh:or` branches
+are written inline far more often than as named shapes, so they are blank nodes and the
+message read `... needs to match one of: n785034978df14dae..., n785034978df14dae...`. It now
+describes each branch by what it constrains (`[ns1:elec], [ns1:gas]`), which is the only
+part of `OrShape` a user could act on.
+
+### Bonus: `sh:or` is no longer ignored when decompiling shapes (issue #306)
+
+Came out of #9. `get_template_parts_from_shape` carried a literal `# TODO: sh:or?`, so a
+shape with a disjunction produced templates for its *other* requirements and silently
+dropped the alternatives.
+
+We deliberately did **not** add disjunction to templates. A template generates a fragment;
+alternation is a property of the *requirement*, not of the generator, and making a template
+disjunctive would force it to choose a branch at fill time -- pushing branch selection into
+every caller and making `inline_dependencies` / `parameters` / `to_graph` branch-aware.
+
+Instead a node shape's `sh:or` decompiles into **one template per branch**:
+
+- `<shape>` -- the non-disjunctive requirements (unchanged; dependencies that name the shape
+  keep resolving)
+- `<shape>-alt1`, `-alt2`, ... -- those requirements plus exactly one branch
+
+so filling any single alternative satisfies the shape, and no template conjoins the
+branches. Ordering is the `sh:or` `rdf:List` declaration order -- the only ranking the shape
+actually carries, and authors put the common case first. `get_shape_or_branches()` is the
+accessor.
+
+Blast radius is small: exactly **1 of Brick's 1444** class+nodeshape candidates carries a
+node-level `sh:or` (`ref#BACnetReference`, 2 branches).
+
+Still not handled: `sh:or` nested inside a *property* shape, which constrains one value's
+type rather than the whole entity. The other half of the old TODO
+(`# TODO: expand otypes to include sh:in, sh:or`) is that case.
+
+**Rejected along the way:** expressing disjunction as several same-named templates in a
+library. `tables.py` has `UniqueConstraint("name", "library_id")`, so it is forbidden at the
+schema level and would need a migration. Beyond that it destroys a diagnostic (a duplicate
+name today is a copy-paste error and nothing else checks library YAML for that), makes
+dependencies -- which reference templates *by name* -- fork combinatorially through
+inlining, and conflates identity with alternation. An explicit `oneOf:` key listing named
+alternatives would be the better shape if this is ever wanted in YAML.
+
 ---
 
 ## Proposed, not yet done
 
 Roughly in priority order.
-
-### 9. `ValidationContext.as_templates()` raises on `sh:or` violations
-
-`dataclasses/validation.py:118`. `OrShape` is the only `GraphDiff` subclass that doesn't
-implement `resolve()`, so it inherits the base's `raise NotImplementedError`
-(`validation.py:56`). Any model with an `sh:or` violation makes the legacy
-`as_templates()` blow up rather than return the templates it *could* produce. The code
-already admits this: *"this is still kind of broken...ideally we would actually interpret
-the shapes inside the or clause"* (`validation.py:682`).
-
-Minimum fix: `OrShape.resolve()` returns `[]` so a partial result still comes back. Better:
-generate one template per branch of the `sh:or`. Non-breaking either way — it can only
-turn a crash into a result.
 
 ### 10. Bare `Exception` in the dataclasses
 
