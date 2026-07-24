@@ -7,8 +7,9 @@ the second half of the loop; the first half — *validate and read the failures*
 
 Repair is only available on the **`pyshifty`** engine (the default), which returns an
 `AlgebraicValidationContext` from `model.validate(...)`. The legacy `ValidationContext`
-(pyshacl/topquadrant) can parse failures into `GraphDiff`s but cannot propose sound
-repairs — if you need repair, do not pass another `shacl_engine`.
+(`topquadrant`, or `pyshacl` — never use `pyshacl`, see `validation.md`) can parse
+failures into `GraphDiff`s but cannot propose sound repairs — if you need repair, do not
+pass another `shacl_engine`.
 
 Source of truth: `buildingmotif.dataclasses.algebraic_validation` — find it on disk with
 `python -c "import buildingmotif.dataclasses.algebraic_validation as m; print(m.__file__)"`.

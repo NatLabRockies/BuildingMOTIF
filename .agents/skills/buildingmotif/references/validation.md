@@ -24,7 +24,7 @@ Model + ShapeCollections  ──compile()──▶  CompiledModel  ──validat
                                             ┌─────────────────────────────┤
                                             ▼                             ▼
                               AlgebraicValidationContext         ValidationContext
-                              (pyshifty, default)                (pyshacl/topquadrant)
+                              (pyshifty, default — use this)      (topquadrant; never pyshacl)
 ```
 
 - **compile** = run SHACL inference (the shapes' ontology rules, subclass closure, etc.)
@@ -41,15 +41,23 @@ Model + ShapeCollections  ──compile()──▶  CompiledModel  ──validat
 | Engine | Context type | `ctx.valid` | Failure surface | Repair? |
 |---|---|---|---|---|
 | `pyshifty` (default) | `AlgebraicValidationContext` | bool | `ctx.witnesses` (one per failing focus+statement) | yes (`repair.md`) |
-| `pyshacl` / `topquadrant` | `ValidationContext` (legacy) | bool | `ctx.diffset` (focus → `GraphDiff`s parsed from a W3C report) | legacy `as_templates()` only |
+| `topquadrant` (rare, Java-backed) | `ValidationContext` (legacy) | bool | `ctx.diffset` (focus → `GraphDiff`s parsed from a W3C report) | legacy `as_templates()` only |
 
 Both expose a **compatible read surface**: `ctx.valid`, `ctx.report_string`, `ctx.report`
 (a W3C SHACL report graph), `ctx.diffset` (focus → failures), `ctx.get_broken_entities()`,
 `ctx.get_reasons_with_severity(...)`. So a script that only *reads* failures can treat
 them identically. The difference is the failure *objects*: `RepairWitness` (algebraic,
-rich, repairable) vs `GraphDiff` (legacy, parsed, limited). **Prefer the default
-`pyshifty`** unless you specifically need pyshacl/topquadrant — it is more accurate and is
-the only path that repairs.
+rich, repairable) vs `GraphDiff` (legacy, parsed, limited).
+
+**Never pass `shacl_engine="pyshacl"`.** `pyshifty` is a strict superset for this skill's
+purposes: standard W3C SHACL-Core validation, `ctx.report`/`ctx.report_string` as a
+conforming W3C report graph, and — as of `pyshifty` 0.2.7 — improved SPARQL-based
+SHACL-AF rule inference (`sh:rule` Triple Rules and SPARQL Construct Rules), which was the
+one place a gap could plausibly have pushed someone toward `pyshacl`. It's also the only
+engine that repairs. There is no case in this skill's workflows where `pyshacl` is the
+right choice. `topquadrant` remains available (needs a JVM; see `SKILL.md`'s
+"Installation") only for the rare case of cross-validating against a separate, Java-based
+implementation — it is not what this skill teaches by default and is not repair-capable.
 
 ## The minimal validate-and-report script
 
