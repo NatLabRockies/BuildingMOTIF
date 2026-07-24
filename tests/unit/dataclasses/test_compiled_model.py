@@ -12,11 +12,11 @@ from buildingmotif.namespaces import SH, A
 
 def test_validate(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    brick = Library.load(
-        ontology_graph="tests/unit/fixtures/Brick.ttl"
+    brick = Library.from_ontology(
+        "tests/unit/fixtures/Brick.ttl"
     ).get_shape_collection()
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection, brick])
 
@@ -32,8 +32,8 @@ def test_validate(clean_building_motif_topquadrant):
 
 def test_compiled_model_compilation(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/s223_model.ttl")
-    s223 = Library.load(
-        ontology_graph="libraries/ashrae/223p/ontology/223p.ttl"
+    s223 = Library.from_ontology(
+        "libraries/ashrae/223p/ontology/223p.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([s223])
 
@@ -51,8 +51,8 @@ def test_compiled_model_compilation(clean_building_motif_topquadrant):
 
 def test_add_graph_updates_compiled_model_graph(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection])
 
@@ -71,8 +71,8 @@ def test_add_graph_updates_compiled_model_graph(clean_building_motif_topquadrant
 
 def test_defining_shape_collection(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection])
 
@@ -92,11 +92,11 @@ def test_defining_shape_collection(clean_building_motif_topquadrant):
 
 def test_shape_to_table(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    brick = Library.load(
-        ontology_graph="https://brickschema.org/schema/1.4/Brick.ttl"
+    brick = Library.from_ontology(
+        "https://brickschema.org/schema/1.4/Brick.ttl"
     ).get_shape_collection()
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection, brick])
 
@@ -129,7 +129,7 @@ def test_shape_to_table_empty_result_preserves_columns(clean_building_motif):
         """,
         format="turtle",
     )
-    shape_collection = Library.load(ontology_graph=shape_graph).get_shape_collection()
+    shape_collection = Library.from_ontology(shape_graph).get_shape_collection()
     model = Model.create("urn:model/")
     compiled_model = model.compile([shape_collection])
 
@@ -249,11 +249,11 @@ def test_repair_config_warns_for_non_pyshifty(clean_building_motif, monkeypatch)
 
 def test_shape_to_df(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    brick = Library.load(
-        ontology_graph="https://brickschema.org/schema/1.4/Brick.ttl"
+    brick = Library.from_ontology(
+        "https://brickschema.org/schema/1.4/Brick.ttl"
     ).get_shape_collection()
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection, brick])
 

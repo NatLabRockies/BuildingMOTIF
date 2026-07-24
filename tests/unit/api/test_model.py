@@ -256,15 +256,13 @@ def test_create_model_bad_name(client, building_motif):
 def test_validate_model(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
-    brick = Library.load(ontology_graph="tests/unit/fixtures/Brick.ttl")
+    brick = Library.from_ontology("tests/unit/fixtures/Brick.ttl")
     assert brick is not None
-    library_1 = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    library_1 = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library_1 is not None
-    library_2 = Library.load(directory="tests/unit/fixtures/templates")
+    library_2 = Library.from_directory("tests/unit/fixtures/templates")
     assert library_2 is not None
-    brick = Library.load(
-        ontology_graph="tests/unit/fixtures/Brick.ttl", overwrite=False
-    )
+    brick = Library.from_ontology("tests/unit/fixtures/Brick.ttl", overwrite=False)
     assert brick is not None
 
     BLDG = Namespace("urn:building/")
@@ -325,7 +323,7 @@ def test_validate_model(client, building_motif, shacl_engine):
 def test_validate_model_bad_model_id(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
-    library = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    library = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library is not None
 
     # Action
@@ -412,7 +410,7 @@ def test_validate_model_bad_library_ids(client, building_motif):
 
 def test_validate_model_bad_args(client, building_motif):
     # Set up
-    library = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    library = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library is not None
     BLDG = Namespace("urn:building/")
     model = Model.create(name=BLDG)
@@ -446,9 +444,9 @@ def test_validate_model_bad_args(client, building_motif):
 def test_validate_model_against_shapes(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Load libraries
-    Library.load(ontology_graph=str(PROJECT_DIR / "libraries/brick/Brick.ttl"))
-    ashrae_g36 = Library.load(
-        directory=str(PROJECT_DIR / "libraries/ashrae/guideline36/")
+    Library.from_ontology(str(PROJECT_DIR / "libraries/brick/Brick.ttl"))
+    ashrae_g36 = Library.from_directory(
+        str(PROJECT_DIR / "libraries/ashrae/guideline36/")
     )
 
     # build model

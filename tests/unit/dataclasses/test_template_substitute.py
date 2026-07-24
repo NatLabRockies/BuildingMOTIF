@@ -16,7 +16,7 @@ BLDG = Namespace("urn:building/")
 
 @pytest.fixture
 def lib(bm: BuildingMOTIF):
-    return Library.load(directory="tests/unit/fixtures/templates")
+    return Library.from_directory("tests/unit/fixtures/templates")
 
 
 @pytest.fixture

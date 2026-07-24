@@ -46,8 +46,8 @@ def _setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
     bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
-    brick = Library.load(
-        ontology_graph="libraries/brick/Brick.ttl", run_shacl_inference=False
+    brick = Library.from_ontology(
+        "libraries/brick/Brick.ttl", run_shacl_inference=False
     )
     dependency_graphs = [
         "libraries/brick/imports/ref-schema.ttl",
@@ -64,9 +64,7 @@ def _setup_building_motif_brick() -> Tuple[BuildingMOTIF, Library]:
         "libraries/brick/imports/brickpatches.ttl",
     ]
     for dep in dependency_graphs:
-        Library.load(
-            ontology_graph=dep, infer_templates=False, run_shacl_inference=False
-        )
+        Library.from_ontology(dep, infer_templates=False, run_shacl_inference=False)
     bm.session.commit()
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
     return bm, brick
@@ -79,7 +77,7 @@ def brick_setup() -> Tuple[BuildingMOTIF, Library, Dict[Tuple[str, str], Any]]:
     BuildingMOTIF.instance = bm
     template_map: Dict[Tuple[str, str], Any] = {}
     for lib_name in libraries:
-        lib = Library.load(directory=lib_name, run_shacl_inference=False)
+        lib = Library.from_directory(lib_name, run_shacl_inference=False)
         for t in lib.get_templates():
             template_map[(lib_name, t.name)] = t
     BuildingMOTIF.clean()
