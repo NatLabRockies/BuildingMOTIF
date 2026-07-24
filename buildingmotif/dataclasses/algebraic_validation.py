@@ -1347,12 +1347,16 @@ class AlgebraicValidationContext:
     def get_broken_entities(self) -> Set[Union[URIRef, str]]:
         return {focus or "Model" for focus in self.diffset}
 
-    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> List[RepairWitness]:
-        return list(self.diffset.get(entity, set()))
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> Set[RepairWitness]:
+        """The failures recorded against a single focus node. Returns a set, to
+        match
+        :meth:`buildingmotif.dataclasses.validation.ValidationContext.get_diffs_for_entity`
+        (:class:`RepairWitness` hashes by identity)."""
+        return self.diffset.get(entity, set())
 
     def get_reasons_with_severity(
         self, severity: Union[URIRef, str]
-    ) -> Dict[Optional[URIRef], List["object"]]:
+    ) -> Dict[Optional[URIRef], List[AlgebraicReason]]:
         """Group the algebra's findings by focus, keeping only the reasons at the
         given severity (``SH.Violation``/``"Violation"``, ``SH.Warning``, or
         ``SH.Info``). Mirrors
@@ -1367,7 +1371,7 @@ class AlgebraicValidationContext:
                 f"Invalid severity: {severity}. Must be one of "
                 "SH.Violation, SH.Warning, or SH.Info"
             )
-        out: Dict[Optional[URIRef], List["object"]] = defaultdict(list)
+        out: Dict[Optional[URIRef], List[AlgebraicReason]] = defaultdict(list)
         for v in self._algebra.violations:
             focus = _focus_to_node(v.focus_node)
             for reason in v.reasons:

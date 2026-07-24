@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pandas as pd
 import rdflib
@@ -10,6 +10,7 @@ from rdflib import URIRef
 from buildingmotif.dataclasses.model import Model
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
+from buildingmotif.dataclasses.validation_result import ValidationResult
 from buildingmotif.namespaces import SH, A
 from buildingmotif.shacl import (
     DEFAULT_SHACL_ENGINE,
@@ -19,10 +20,7 @@ from buildingmotif.shacl import (
 from buildingmotif.utils import copy_graph
 
 if TYPE_CHECKING:
-    from buildingmotif.dataclasses.algebraic_validation import (
-        AlgebraicValidationContext,
-        RepairConfig,
-    )
+    from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.library import Library
 
 
@@ -132,7 +130,7 @@ class CompiledModel:
         shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
         repair_config: Optional["RepairConfig"] = None,
-    ) -> Union["ValidationContext", "AlgebraicValidationContext"]:
+    ) -> ValidationResult:
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
         If a list of shape collections is provided, the manifest will *not* be automatically
@@ -159,9 +157,11 @@ class CompiledModel:
             the ``pyshifty`` engine); defaults to
             :class:`~buildingmotif.dataclasses.algebraic_validation.RepairConfig`
         :type repair_config: Optional[RepairConfig]
-        :return: An object containing useful properties/methods to deal with
-            the validation results
-        :rtype: ValidationContext
+        :return: An object containing useful properties/methods to deal with the
+            validation results. Both engines' return values satisfy
+            :class:`~buildingmotif.dataclasses.validation_result.ValidationResult`,
+            so code that only reads failures need not care which one it got.
+        :rtype: ValidationResult
         """
         import warnings
 

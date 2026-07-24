@@ -43,11 +43,31 @@ Model + ShapeCollections  ──compile()──▶  CompiledModel  ──validat
 | `pyshifty` (default) | `AlgebraicValidationContext` | bool | `ctx.witnesses` (one per failing focus+statement) | yes (`repair.md`) |
 | `topquadrant` (rare, Java-backed) | `ValidationContext` (legacy) | bool | `ctx.diffset` (focus → `GraphDiff`s parsed from a W3C report) | legacy `as_templates()` only |
 
-Both expose a **compatible read surface**: `ctx.valid`, `ctx.report_string`, `ctx.report`
-(a W3C SHACL report graph), `ctx.diffset` (focus → failures), `ctx.get_broken_entities()`,
-`ctx.get_reasons_with_severity(...)`. So a script that only *reads* failures can treat
-them identically. The difference is the failure *objects*: `RepairWitness` (algebraic,
-rich, repairable) vs `GraphDiff` (legacy, parsed, limited).
+Both expose a **compatible read surface**, and that compatibility is now an explicit
+contract: the `ValidationResult` protocol in
+`buildingmotif.dataclasses.validation_result`, which both context classes satisfy
+structurally. It covers `ctx.valid` / `ctx.conforms`, `ctx.report_string`, `ctx.report`
+(a W3C SHACL report graph), `ctx.model`, `ctx.shape_collections`, `ctx.shapes_graph`,
+`ctx.diffset` (focus → set of failures), `ctx.get_broken_entities()`,
+`ctx.get_diffs_for_entity(focus)`, `ctx.get_reasons_with_severity(...)`, and
+`ctx.as_templates()`. So a script that only *reads* failures can treat them identically,
+and `Model.validate(...)` is typed as returning `ValidationResult` — no `isinstance`
+branch needed:
+
+```python
+from buildingmotif.dataclasses import ValidationResult
+
+def report(ctx: ValidationResult) -> None:      # works for either engine
+    for focus, failures in ctx.diffset.items():
+        for f in failures:
+            print(focus, f.reason())
+```
+
+The individual failures satisfy a `Failure` protocol (`.focus` + `.reason()`), so the
+read loop above is engine-independent too. The difference is what those failure *objects*
+can additionally do: `RepairWitness` (algebraic, rich, repairable) vs `GraphDiff` (legacy,
+parsed, limited). Narrow to the concrete class — or just use `ctx.witnesses` — when you
+want the pyshifty-only repair surface.
 
 **Never pass `shacl_engine="pyshacl"`.** `pyshifty` is a strict superset for this skill's
 purposes: standard W3C SHACL-Core validation, `ctx.report`/`ctx.report_string` as a
@@ -65,7 +85,7 @@ implementation — it is not what this skill teaches by default and is not repai
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
 
-bm = BuildingMOTIF("sqlite://"); bm.setup_tables()
+bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # Load the ontology + shapes you need (see ontology_imports.md for owl:imports).
 brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
@@ -303,7 +323,7 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model
 from buildingmotif.namespaces import SH
 
-bm = BuildingMOTIF("sqlite://"); bm.setup_tables()
+bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # 1. Load ontologies + the application's shapes.
 brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)

@@ -491,6 +491,13 @@ class ValidationContext:
     report_string: str
     model: "Model"
 
+    @property
+    def conforms(self) -> bool:
+        """Alias of :py:attr:`valid`, matching SHACL's own vocabulary and
+        :py:class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`.
+        """
+        return self.valid
+
     @cached_property
     def diffset(self) -> Dict[Optional[URIRef], Set[GraphDiff]]:
         """The unordered set of GraphDiffs produced from interpreting the input
@@ -507,19 +514,23 @@ class ValidationContext:
         """
         return diffset_to_templates(self.diffset)
 
-    def get_broken_entities(self) -> Set[URIRef]:
+    def get_broken_entities(self) -> Set[Union[URIRef, str]]:
         """Get the set of entities that are broken in the model.
 
+        Model-level failures (those with no focus node) are reported as the
+        string ``"Model"``.
+
         :return: set of entities that are broken
-        :rtype: Set[URIRef]
+        :rtype: Set[Union[URIRef, str]]
         """
         return {diff or "Model" for diff in self.diffset}
 
-    def get_diffs_for_entity(self, entity: URIRef) -> Set[GraphDiff]:
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> Set[GraphDiff]:
         """Get the set of diffs for a specific entity.
 
-        :param entity: the entity to get diffs for
-        :type entity: URIRef
+        :param entity: the entity to get diffs for, or None for the model-level
+            failures (those with no focus node)
+        :type entity: Optional[URIRef]
         :return: set of diffs for the entity
         :rtype: Set[GraphDiff]
         """
