@@ -329,6 +329,10 @@ class RepairProposal:
     reused_nodes: Set[Node] = field(default_factory=set)
     # human-readable note (e.g. the BlockReason for a blocked proposal)
     note: str = ""
+    # the pyshifty RepairSession this proposal came out of, so apply()/advance()
+    # do not make the caller fetch it and hand it back. Excluded from equality
+    # and repr: it is provenance, not part of the proposal's identity.
+    _session: Optional[object] = field(default=None, repr=False, compare=False)
 
     @property
     def is_sound(self) -> bool:
@@ -420,13 +424,37 @@ class RepairProposal:
             delete=self.deletions if len(self.deletions) else None,
         )
 
-    def apply(self, session) -> Graph:
-        """Materialize ``G ⊕ ΔG`` as a fresh graph (does not mutate state)."""
-        return session.apply(self.to_delta())
+    def _resolve_session(self, session):
+        """The session to operate on: the caller's, else the one this proposal
+        came from."""
+        resolved = session if session is not None else self._session
+        if resolved is None:
+            raise ValueError(
+                "this RepairProposal has no repair session to apply against; "
+                "pass one explicitly (e.g. ctx.session)"
+            )
+        return resolved
 
-    def advance(self, session):
-        """Return a new pyshifty repair session over ``G ⊕ ΔG``."""
-        return session.advance(self.to_delta())
+    def apply(self, session=None) -> Graph:
+        """Materialize ``G ⊕ ΔG`` as a fresh graph (does not mutate state).
+
+        :param session: the pyshifty ``RepairSession`` to apply against.
+            Defaults to the session this proposal was generated from, so the
+            usual call is just ``proposal.apply()`` -- the caller no longer has
+            to fetch ``ctx.session`` and hand it back to the object that came
+            out of it.
+        :raises ValueError: if no session was supplied and this proposal has
+            none (only possible for one built by hand)
+        """
+        return self._resolve_session(session).apply(self.to_delta())
+
+    def advance(self, session=None):
+        """Return a new pyshifty repair session over ``G ⊕ ΔG``.
+
+        :param session: as for :py:meth:`apply`; defaults to the session this
+            proposal came from.
+        """
+        return self._resolve_session(session).advance(self.to_delta())
 
 
 @dataclass(eq=False)
@@ -1146,6 +1174,7 @@ class TemplateGuidedRepair:
             outcome=outcome,
             origin=origin,
             reused_nodes=reused,
+            _session=self.session,
         )
 
     def propose(self, witness: "RepairWitness", limit: int = 8) -> List[RepairProposal]:
@@ -1162,6 +1191,7 @@ class TemplateGuidedRepair:
                     origin="blocked",
                     note="No data repair is possible in scope "
                     "(opaque SPARQL / identity / coinductive).",
+                    _session=self.session,
                 )
             ]
 
@@ -1324,7 +1354,20 @@ class AlgebraicValidationContext:
 
     @cached_property
     def report(self) -> Graph:
-        """Legacy-compatible W3C SHACL report graph."""
+        """Legacy-compatible W3C SHACL report graph.
+
+        **This costs a second full validation pass.** The algebraic engine does
+        not produce a W3C report as a by-product, so reading this re-runs
+        ``shifty.validate()`` over the same data and shapes to synthesize one.
+        It is a ``cached_property``, so the cost is paid once per context -- but
+        contexts are meant to be re-created on every iteration of the
+        validate/repair loop, so "once per context" can still mean once per
+        iteration.
+
+        Prefer :py:attr:`report_string` (free -- it comes straight off the
+        algebra), :py:attr:`conforms`, or :py:attr:`witnesses` unless you
+        specifically need W3C report *triples*.
+        """
         import shifty  # type: ignore
 
         if len(self.shapes_graph) == 0:
