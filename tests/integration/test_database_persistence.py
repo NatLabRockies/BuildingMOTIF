@@ -22,7 +22,7 @@ def test_database_persistence(tmpdir):
     template.body.add(EXAMPLE_TRIPLE)
     shape = library.get_shape_collection()
     shape.graph.add(EXAMPLE_TRIPLE)
-    model = Model.create(name="https://example.com")
+    model = Model.create(uri="https://example.com")
     model.graph.add(EXAMPLE_TRIPLE)
 
     # snapshot graph contents before closing (store-backed views become

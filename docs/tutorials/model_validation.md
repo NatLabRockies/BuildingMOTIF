@@ -231,7 +231,7 @@ the most common use case, so this is treated specially in BuildingMOTIF.
 # load manifest into BuildingMOTIF as its own library!
 manifest = Library.from_ontology("tutorial1_manifest.ttl")
 # set it as the manifest for the model
-model.update_manifest(manifest.get_shape_collection())
+model.add_to_manifest(manifest.get_shape_collection())
 ```
 
 ### Validating the Model

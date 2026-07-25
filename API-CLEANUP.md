@@ -437,57 +437,74 @@ Worth noting for future edits in that file: `@overload` stubs must be *immediate
 by their implementation. Slotting the new method between them produced `no-overload-impl` /
 `no-redef`, which the newly-widened mypy scope caught.
 
+### 14. `shacl_engine` as a bare string — **rejected: the premise was wrong**
+
+This entry claimed "a typo is only caught at `get_shacl_backend` time, which may be deep
+into a compile". **That is false**, and checking it before implementing is the only reason it
+did not turn into needless API surface. `normalize_shacl_engine` already validates, and every
+entry point routes through it, so a typo raises immediately with the valid choices listed:
+
+```
+BuildingMOTIF("sqlite://", shacl_engine="pyshcal")
+  -> ValueError: Unsupported SHACL engine 'pyshcal'. Choose one of: pyshacl, pyshifty, topquadrant
+model.validate(shacl_engine="pyshcal")   -> same
+model.compile(shacl_engine="pyshcal")    -> same
+```
+
+All three verified. The only thing an enum would add is editor autocomplete -- and it would
+have to keep accepting plain strings anyway (every doc, test, and notebook passes them), so
+it would create *two* ways to say the same thing, which is the exact wart this whole review
+was about removing. Not worth it.
+
+### 15. `RepairProposal.apply(session)` leaked the pyshifty session — **done**
+
+`apply` and `advance` required the caller to reach into `ctx.session` and hand it back to the
+proposal that came out of that very session. The proposal now carries it, so the usual call
+is `proposal.apply()`. An explicit session still wins, for callers driving their own.
+
+The field is excluded from `repr` and equality -- it is provenance, not part of what the
+proposal *is* -- and a hand-built proposal with no session raises `ValueError` naming what to
+pass rather than `AttributeError` on None.
+
+### 16. `AlgebraicValidationContext.report` silently re-runs validation — **done (docs)**
+
+Behavior unchanged; the cost is now stated. Reading `.report` re-runs `shifty.validate()`
+because the algebraic engine does not produce a W3C report as a by-product. It is a
+`cached_property`, so it is paid once per context -- but contexts are meant to be re-created
+each iteration of the validate/repair loop, so "once per context" can still mean once per
+iteration. The docstring now says so and points at `report_string` (free, straight off the
+algebra), `conforms`, and `witnesses`.
+
+### 11. `Model.create(name=...)` where "name" is a URI — **done**
+
+The parameter was called `name`, validated as a URI, used as the model's `owl:Ontology`
+subject, and passed an `rdflib.Namespace` by every tutorial. It is `uri` now, with `name`
+kept as a deprecated keyword-only alias. Passing both raises `TypeError` (they are the same
+argument), as does passing neither.
+
+This is the naming confusion behind issue #339, which asks for "an alternative constructor
+for model which takes in a graph path" -- `Model.from_file` has existed the whole time. The
+ask is a discoverability failure, not a missing feature.
+
+33 keyword call sites migrated; positional `Model.create(BLDG)` -- the overwhelmingly common
+form -- is unaffected.
+
+### 17. `Model.update_manifest` merged rather than updated — **done**
+
+`update_manifest` did `self.get_manifest().graph += manifest.graph`, so the name promised a
+replacement and delivered a merge -- and there was **no way to actually replace a manifest
+through the public API**: it could grow but never shrink.
+
+Now `add_to_manifest` (same behavior, honest name) and `replace_manifest` (the wholesale swap
+the old name implied), the latter built on `ShapeCollection.replace_graph`, so it inherits
+copy-on-write -- a failure leaves the previous contents intact. `update_manifest` still works
+and warns. All 7 call sites migrated.
+
 ---
 
 ## Proposed, not yet done
 
 Roughly in priority order.
-
-### 11. `Model.create(name=...)` where "name" is a namespace URI
-
-`dataclasses/model.py:45`. The parameter is called `name`, is validated as a URI, becomes
-the model's `owl:Ontology` subject, and is what every tutorial passes an `rdflib.Namespace`
-to. Calling it `name` is why issue #339 asks for a constructor that already exists
-(`Model.from_file`) — the family is fine, the naming isn't.
-
-Proposal: rename to `uri` (keep `name` as a deprecated alias), and cross-reference
-`from_graph` / `from_file` in the `create` docstring. Non-breaking with the alias.
-
-### 14. `shacl_engine` is a bare string everywhere
-
-Valid values are `"pyshifty"`/`"shifty"`/`"pyshacl"`/`"topquadrant"`, normalized by
-`normalize_shacl_engine`. A typo is only caught at `get_shacl_backend` time, which may be
-deep into a compile.
-
-Proposal: a `ShaclEngine` str-enum in `buildingmotif/shacl.py` that keeps accepting plain
-strings. Non-breaking, gives editors autocomplete and validates at the constructor.
-
-### 15. `RepairProposal.apply(session)` leaks the pyshifty session
-
-`algebraic_validation.py:361-367`. `apply` and `advance` require the caller to reach into
-`ctx.session` (the raw pyshifty `RepairSession`) and hand it back to the proposal that came
-from that very context. The proposal already knows its witness, which knows its context.
-
-Fix: default `session=None` and resolve it from `self`'s provenance; keep the explicit
-parameter for callers driving their own session. Non-breaking.
-
-### 16. `AlgebraicValidationContext.report` silently re-runs validation
-
-`algebraic_validation.py:1265-1281`. Reading `.report` calls `shifty.validate()` a second
-time to synthesize a W3C-shaped report graph. It's `cached_property`, so only once — but
-a property that costs a full validation pass is surprising, especially in the loop where
-you validate repeatedly.
-
-Fix: leave the behavior, document the cost in the docstring, and mention `report_string`
-(free — it comes off the algebra) as the cheap alternative.
-
-### 17. `Model.update_manifest` doesn't update, it merges
-
-`dataclasses/model.py:301`. It does `self.get_manifest().graph += manifest.graph`. There is
-no way to *replace* a manifest through the public API.
-
-Fix: rename to `add_to_manifest` (deprecate the old name) and add `replace_manifest`
-built on `ShapeCollection.replace_graph`, which already exists.
 
 ### 19. `TemplateBuilderContext` is not first-class
 

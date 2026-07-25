@@ -83,7 +83,7 @@ def test_get_template_not_found(client):
 
 
 def test_evaluate_bindings(client, building_motif):
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
@@ -110,7 +110,7 @@ def test_evaluate_bindings(client, building_motif):
 
 
 def test_evaluate_bindings_bad_templated_id(client, building_motif):
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
 
     results = client.post(
         "/templates/-1/evaluate/bindings",
@@ -135,7 +135,7 @@ def test_evaluate_bindings_no_body(client, building_motif):
 
 
 def test_evaluate_bindings_bad_body(client, building_motif):
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
@@ -182,7 +182,7 @@ def test_evaluate_bindings_bad_model_id(client, building_motif):
 def test_evaluate_ingress(client, building_motif):
     # create a 'MODEL' namespace here to scope the entities we create
     MODEL = Namespace("urn:my_model/")
-    model = Model.create(name=MODEL)
+    model = Model.create(uri=MODEL)
     lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
@@ -215,7 +215,7 @@ def test_evaluate_ingress_no_body(client, building_motif):
 
 
 def test_evaluate_ingress_bad_body(client, building_motif):
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()

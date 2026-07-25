@@ -27,7 +27,7 @@ these), and the shape you write depends on which:
    the ontology correctly. `model.validate([brick.get_shape_collection()])`.
 2. **Manifest shapes** — your model's *standing* requirements: "this site has exactly 1
    AHU, 1 supply fan, …". A manifest is a shape collection you associate with the model
-   via `model.update_manifest(...)`. Written with the `constraint:` vocabulary (below).
+   via `model.add_to_manifest(...)`. Written with the `constraint:` vocabulary (below).
 3. **Application / use-case shapes** — "to run G36 §4.8, an AHU must have these points."
    These are the pointlist/equipment shapes that answer "is my model sufficient for X?"
    and are what most of this file is about. Libraries tag them as
@@ -214,7 +214,7 @@ associate it:
 
 ```python
 manifest = Library.from_ontology("my_manifest.ttl")
-model.update_manifest(manifest.get_shape_collection())
+model.add_to_manifest(manifest.get_shape_collection())
 ctx = model.validate()   # validates against the manifest by default
 ```
 
