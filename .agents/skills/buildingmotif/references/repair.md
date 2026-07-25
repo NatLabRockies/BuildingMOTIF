@@ -196,7 +196,7 @@ Each iteration:
    wrong model — `writing_shapes.md`).
 
 The pyshifty session API lets you re-validate the patched graph in place before
-committing it to the model — `p.advance(ctx.session)` returns a new session over
+committing it to the model — `p.advance()` returns a new session over
 `G ⊕ ΔG` whose `.witnesses()` is the next-iteration horizon (see "Applying a repair"
 below). Use it to confirm a fix worked and to preview the next failures without a full
 re-validate round trip.
