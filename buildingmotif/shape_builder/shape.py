@@ -148,7 +148,7 @@ class NodeShape(Shape):
         self.add((self, SH["targetNode"], BNode()))
         return self
 
-    def count(self, exactly: int = None):
+    def count(self, exactly: Optional[int] = None):
         """Add an exact count constraint.
 
         :param exactly: exact number of instances of class to match
@@ -224,9 +224,9 @@ class PropertyShape(Shape):
         self,
         target: Node,
         type: URIRef,
-        min: int = None,
-        max: int = None,
-        exactly: int = None,
+        min: Optional[int] = None,
+        max: Optional[int] = None,
+        exactly: Optional[int] = None,
         qualified: bool = False,
     ):
         """Add target matches constraint to property shape
@@ -274,9 +274,9 @@ class PropertyShape(Shape):
     def matches_class(
         self,
         class_: URIRef,
-        min: int = None,
-        max: int = None,
-        exactly: int = None,
+        min: Optional[int] = None,
+        max: Optional[int] = None,
+        exactly: Optional[int] = None,
         qualified=False,
     ):
         """Add target matches class constraint to property shape
@@ -297,9 +297,9 @@ class PropertyShape(Shape):
     def matches_shape(
         self,
         shape: Node,
-        min: int = None,
-        max: int = None,
-        exactly: int = None,
+        min: Optional[int] = None,
+        max: Optional[int] = None,
+        exactly: Optional[int] = None,
         qualified=False,
     ):
         """Add target matches shape constraint to property shape

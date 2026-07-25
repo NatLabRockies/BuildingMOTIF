@@ -10,6 +10,7 @@ from rdflib import Graph, Namespace
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model
+from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.dataclasses.validation import OrShape
 
 BLDG = Namespace("urn:bldg/")
@@ -103,6 +104,7 @@ def test_algebraic_engine_offers_the_branches_as_alternatives(bm: BuildingMOTIF)
     separate, individually gated proposals -- the thing the legacy API has no
     way to express."""
     ctx = _failing_model().validate(shacl_engine="pyshifty")
+    assert isinstance(ctx, AlgebraicValidationContext)
     assert not ctx.conforms
 
     predicates: set = set()
@@ -120,6 +122,7 @@ def test_each_branch_proposal_is_separately_sound(bm: BuildingMOTIF):
     """Crucially the branches are *alternatives*: each repairs the violation on
     its own, so none of them asserts both."""
     ctx = _failing_model().validate(shacl_engine="pyshifty")
+    assert isinstance(ctx, AlgebraicValidationContext)
     for witness in ctx.witnesses:
         for proposal in witness.proposals(limit=8):
             if not (proposal.is_sound and proposal.is_progress):

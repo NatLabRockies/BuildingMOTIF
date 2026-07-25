@@ -128,6 +128,7 @@ def test_recursive_synthesis_builds_deep_sh_node(bm: BuildingMOTIF):
     assert any(p == EX.q for (_, p, _) in best.additions)
     assert any(o == EX.Widget for (_, _, o) in best.additions)
     # applying it clears the violation with nothing new introduced
+    assert best.outcome is not None
     assert best.outcome.is_sound and best.outcome.is_progress
     assert len(best.advance(ctx.session).witnesses()) == 0
 
@@ -511,6 +512,7 @@ def test_sparql_constraint_fires_after_shape_collection_round_trips_through_stor
     model.add_triples((BLDG["x"], BRICK["value"], Literal(-40)))
 
     ctx = model.validate([shape_lib.get_shape_collection()])
+    assert isinstance(ctx, AlgebraicValidationContext)
     assert not ctx.valid
     witnesses = ctx.witnesses
     assert len(witnesses) == 1

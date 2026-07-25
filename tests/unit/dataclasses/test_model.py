@@ -247,7 +247,9 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
     assert isinstance(ctx, (ValidationContext, AlgebraicValidationContext))
     assert not ctx.valid
     assert len(ctx.diffset) == 1
-    diff = next(iter(ctx.diffset.values())).pop()
+    diffs = [d for diff_set in ctx.diffset.values() for d in diff_set]
+    assert len(diffs) == 1
+    diff = diffs[0]
     assert diff.failed_component == SH.MinCountConstraintComponent
 
     model.add_triples((bindings["name"], RDFS.label, Literal("hvac zone 1")))
