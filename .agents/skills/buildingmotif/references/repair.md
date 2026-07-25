@@ -240,10 +240,14 @@ Other entry points:
 **Direct application** (no naming step — use for deletions or when nothing is minted):
 
 ```python
-patched = p.apply(ctx.session)     # returns G ⊕ ΔG as a fresh graph; mutates nothing
-session2 = p.advance(ctx.session)  # a new session over G ⊕ ΔG
-len(session2.witnesses())          # confirm the violation is gone
+patched = p.apply()        # returns G ⊕ ΔG as a fresh graph; mutates nothing
+session2 = p.advance()     # a new session over G ⊕ ΔG
+len(session2.witnesses())  # confirm the violation is gone
 ```
+
+Both default to the session the proposal came out of, so you do not pass one. Only supply an
+explicit `p.apply(session)` if you are driving a session you built yourself — a proposal built
+by hand, with no originating session, raises `ValueError` telling you to pass one.
 
 `p.outcome.fixed` / `p.outcome.introduced` record exactly what the gate proved.
 
