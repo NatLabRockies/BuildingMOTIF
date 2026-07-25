@@ -398,6 +398,45 @@ Now `Optional[str] = None`, with None meaning inherit, and `Model.compile` forwa
 argument unchanged. `"default"` is still accepted so nothing breaks; there is a test for
 that.
 
+### 12. `validate_model_against_shapes` ignored the engine split — **done**
+
+It constructed a `ValidationContext` unconditionally, even under `pyshifty` where every
+other path returns an `AlgebraicValidationContext`. So a single `CompiledModel` handed back
+different context types from its two validation methods.
+
+It now branches on the engine exactly as `validate()` does, and is typed
+`Dict[URIRef, ValidationResult]` -- a return type only expressible because of the protocol
+from #3. The test asserts the concrete type per engine *and* that the shared
+`ValidationResult` surface works either way, so it pins the fix and the protocol together.
+
+### 18. `Template.add_dependency` hand-rolled overload dispatch — **done**
+
+Three bugs, not the one recorded. All three were reproduced before fixing:
+
+| call | was | now |
+|---|---|---|
+| `add_dependency(t)` | **silently did nothing** | `TypeError` |
+| `add_dependency(a, b, c, d)` | **silently did nothing** | `TypeError` |
+| `add_dependency(dependency=t, args={...})` -- the form its own `@overload` documents | `IndexError` | works |
+| `add_dependency(t, {...}, nonsense=1)` | ignored | `TypeError` |
+| `add_dependency(t, {...}, dependency=t)` | ignored | `TypeError` |
+
+The dispatch matched `len(args) + len(kwargs)` against exactly 2 or 3 with no `else`, so any
+other arity was a no-op and the dependency was simply never created -- discovered much later
+as a template mysteriously missing a dependency. The `IndexError` came from
+`kwargs.get("dependency", args[0])`: the default is evaluated eagerly, and `args` is empty in
+the keyword form. The same line then rebound `args` from the varargs tuple to the bindings
+dict, which is what made the whole thing hard to read.
+
+`add_dependency_by_name(library, template, args)` is a real method now. The three-positional
+form still works but warns and delegates to it -- safe to deprecate because it had **zero
+callers** anywhere: package, tests, and notebooks all use the two-argument
+`(Template, args)` form.
+
+Worth noting for future edits in that file: `@overload` stubs must be *immediately* followed
+by their implementation. Slotting the new method between them produced `no-overload-impl` /
+`no-redef`, which the newly-widened mypy scope caught.
+
 ---
 
 ## Proposed, not yet done
@@ -413,16 +452,6 @@ to. Calling it `name` is why issue #339 asks for a constructor that already exis
 
 Proposal: rename to `uri` (keep `name` as a deprecated alias), and cross-reference
 `from_graph` / `from_file` in the `create` docstring. Non-breaking with the alias.
-
-### 12. `CompiledModel.validate_model_against_shapes` ignores the engine split
-
-`dataclasses/compiled_model.py:71-125` constructs a `ValidationContext` unconditionally,
-even under `pyshifty` where every other path returns an `AlgebraicValidationContext`. So
-the same instance hands back different context types from two of its own methods.
-
-Fix: route it through the same branch `validate()` uses. Now that `ValidationResult` exists
-the return type can be `Dict[URIRef, ValidationResult]`. Breaking for anyone reaching for
-`GraphDiff`-specific behavior on the result.
 
 ### 14. `shacl_engine` is a bare string everywhere
 
@@ -459,16 +488,6 @@ no way to *replace* a manifest through the public API.
 
 Fix: rename to `add_to_manifest` (deprecate the old name) and add `replace_manifest`
 built on `ShapeCollection.replace_graph`, which already exists.
-
-### 18. `Template.add_dependency` hand-rolls overload dispatch
-
-`dataclasses/template.py:146-160`. Two `@overload` stubs, then a `*args/**kwargs`
-implementation that dispatches on `len(args) + len(kwargs)` and rebinds the name `args` to
-mean two different things. A 2-vs-3 argument count decides which signature you got; get it
-wrong and it silently does nothing (no `else`).
-
-Fix: at minimum add an `else: raise TypeError(...)`. Better: `add_dependency(template, args)`
-and `add_dependency_by_name(library, template, args)` as two real methods.
 
 ### 19. `TemplateBuilderContext` is not first-class
 
