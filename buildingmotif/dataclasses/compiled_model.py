@@ -39,13 +39,22 @@ class CompiledModel:
         model: Model,
         shape_collections: List[ShapeCollection],
         compiled_graph: rdflib.Graph,
-        shacl_engine: str = "default",
+        shacl_engine: Optional[str] = None,
     ):
+        """
+        :param shacl_engine: the engine this model was compiled with. None
+            (the default) inherits the active BuildingMOTIF's engine. The
+            string ``"default"`` is still accepted for that, but None is the
+            sentinel the rest of the codebase uses -- ``Model.compile`` and
+            ``Model.validate`` both already take ``Optional[str]``.
+        :type shacl_engine: Optional[str]
+        """
         self.model = model
         self.shape_collections = shape_collections
         self.shacl_engine = (
             self.model._bm.shacl_engine
-            if (shacl_engine == "default" or not shacl_engine)
+            # "default" is the legacy spelling of "inherit from the singleton"
+            if (shacl_engine is None or shacl_engine == "default")
             else normalize_shacl_engine(shacl_engine)
         )
         # inference is performed by the SHACL backend in Model.compile; the
@@ -142,12 +151,12 @@ class CompiledModel:
             ontologies are missing (i.e. they need to be loaded into BuildingMOTIF), defaults
             to True
         :type error_on_missing_imports: bool, optional
-        :param shacl_engine: the SHACL engine to validate with. ``"default"`` (or
-            None) uses the engine this model was compiled with; pass ``"pyshacl"``,
+        :param shacl_engine: the SHACL engine to validate with. None (the
+            default) uses the engine this model was compiled with; pass ``"pyshacl"``,
             ``"topquadrant"``, or ``"shifty"`` to override. The ``"shifty"`` engine
             returns an
             :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`
-            instead of the legacy ``ValidationContext``. Defaults to ``"default"``.
+            instead of the legacy ``ValidationContext``. Defaults to None.
         :type shacl_engine: Optional[str]
         :param repair_libraries: libraries whose templates seed template-guided,
             soundness-gated repair. Only the ``"shifty"`` engine uses these; other
