@@ -159,21 +159,105 @@ class Template:
         :type args: Dict[str, str]
         """
 
-    def add_dependency(self, *args, **kwargs):
-        total_args = len(args) + len(kwargs)
-        if total_args == 2:
-            dependency: "Template" = kwargs.get("dependency", args[0])
-            args: Dict[str, str] = kwargs.get("args", args[1])
-            self._bm.table_connection.add_template_dependency_preliminary(
-                self.id, dependency.defining_library.name, dependency.name, args
+    def add_dependency(self, *args, **kwargs) -> None:
+        """Add a dependency on another template.
+
+        ``add_dependency(dependency: Template, args: Dict[str, str])``
+
+        The three-argument form
+        ``add_dependency(dependency_library, dependency_template, args)`` still
+        works but is deprecated; use :py:meth:`add_dependency_by_name`.
+
+        This used to dispatch on ``len(args) + len(kwargs)`` being exactly 2 or
+        3, with no ``else``, so a call with any other number of arguments
+        **silently did nothing** and the dependency was simply never created.
+        The keyword form its own overloads documented -- ``add_dependency(
+        dependency=t, args={...})`` -- raised ``IndexError`` instead, because
+        the default in ``kwargs.get("dependency", args[0])`` is evaluated
+        eagerly and ``args`` is empty. Both now raise ``TypeError``, or work.
+
+        :raises TypeError: on an unknown keyword, a duplicate value, a missing
+            argument, or too many positional arguments
+        """
+        allowed = {"dependency", "dependency_library", "dependency_template", "args"}
+        unexpected = set(kwargs) - allowed
+        if unexpected:
+            raise TypeError(
+                "add_dependency() got an unexpected keyword argument "
+                f"{sorted(unexpected)}"
             )
-        elif total_args == 3:
-            dependency_library: str = kwargs.get("dependency_library", args[0])
-            dependency_template: str = kwargs.get("dependency_template", args[1])
-            args: Dict[str, str] = kwargs.get("args", args[2])
-            self._bm.table_connection.add_template_dependency_preliminary(
-                self.id, dependency_library, dependency_template, args
+
+        by_name = (
+            "dependency_library" in kwargs
+            or "dependency_template" in kwargs
+            or len(args) == 3
+        )
+        names = (
+            ("dependency_library", "dependency_template", "args")
+            if by_name
+            else ("dependency", "args")
+        )
+
+        if len(args) > len(names):
+            raise TypeError(
+                f"add_dependency() takes at most {len(names)} positional "
+                f"arguments but {len(args)} were given"
             )
+        bound: Dict[str, object] = {}
+        for index, name in enumerate(names):
+            if index < len(args):
+                if name in kwargs:
+                    raise TypeError(
+                        f"add_dependency() got multiple values for argument '{name}'"
+                    )
+                bound[name] = args[index]
+            elif name in kwargs:
+                bound[name] = kwargs[name]
+            else:
+                raise TypeError(f"add_dependency() missing required argument '{name}'")
+
+        dep_args: Dict[str, str] = bound["args"]  # type: ignore[assignment]
+        if by_name:
+            warnings.warn(
+                "add_dependency(dependency_library, dependency_template, args) "
+                "is deprecated; use add_dependency_by_name(...).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.add_dependency_by_name(
+                bound["dependency_library"],  # type: ignore[arg-type]
+                bound["dependency_template"],  # type: ignore[arg-type]
+                dep_args,
+            )
+            return
+
+        dependency: "Template" = bound["dependency"]  # type: ignore[assignment]
+        self.add_dependency_by_name(
+            dependency.defining_library.name, dependency.name, dep_args
+        )
+
+    def add_dependency_by_name(
+        self,
+        dependency_library: str,
+        dependency_template: str,
+        args: Dict[str, str],
+    ) -> None:
+        """Add a dependency on a template named in another library.
+
+        Use this when the dependency is not loaded (or not loadable) as a
+        :class:`Template` object; otherwise prefer
+        :py:meth:`add_dependency`, which reads the names off the template.
+
+        :param dependency_library: name of the library containing the dependency
+        :type dependency_library: str
+        :param dependency_template: name of the dependency template
+        :type dependency_template: str
+        :param args: maps the *dependency's* parameter names to this template's
+        :type args: Dict[str, str]
+        """
+        self._bm.table_connection.add_template_dependency_preliminary(
+            self.id, dependency_library, dependency_template, args
+        )
 
     def check_dependencies(self):
         """

@@ -65,13 +65,12 @@ def test_shape_with_two_object_types_raises_value_error(bm: BuildingMOTIF):
 def test_these_are_all_still_exceptions(bm: BuildingMOTIF):
     """Narrowing the types must not break existing `except Exception:`
     handlers -- ValueError and FileNotFoundError are both Exceptions."""
-    for call in (
-        Model.load,
-        Library.load,
-        lambda: Library.from_directory("no/such/directory"),
-    ):
-        with pytest.raises(Exception):
-            call()
+    with pytest.raises(Exception):
+        Model.load()
+    with pytest.raises(Exception):
+        Library.load()
+    with pytest.raises(Exception):
+        Library.from_directory("no/such/directory")
 
 
 # -- the "default" sentinel (API-CLEANUP #13) ----------------------------
@@ -106,3 +105,62 @@ def test_compiled_model_still_accepts_the_legacy_default_string(bm: BuildingMOTI
     model = _model_with_shapes(bm)
     compiled = CompiledModel(model, [], model.graph, shacl_engine="default")
     assert compiled.shacl_engine == bm.shacl_engine
+
+
+# -- add_dependency argument handling (API-CLEANUP #18) ------------------
+
+
+def _two_templates(bm: BuildingMOTIF):
+    lib = Library.from_directory("tests/unit/fixtures/templates")
+    return lib.get_template_by_name("zone"), lib.get_template_by_name("vav")
+
+
+def test_add_dependency_positional_form(bm: BuildingMOTIF):
+    a, b = _two_templates(bm)
+    a.add_dependency(b, {"name": "name"})
+    assert len(a.get_dependencies()) == 1
+
+
+def test_add_dependency_keyword_form(bm: BuildingMOTIF):
+    """The form the @overload signature documents. It used to raise IndexError,
+    because `kwargs.get("dependency", args[0])` evaluates its default eagerly
+    and `args` is empty in the keyword form."""
+    a, b = _two_templates(bm)
+    a.add_dependency(dependency=b, args={"name": "name"})
+    assert len(a.get_dependencies()) == 1
+
+
+@pytest.mark.parametrize("n_args", [1, 4, 5])
+def test_add_dependency_with_wrong_arity_raises(bm: BuildingMOTIF, n_args):
+    """The dispatch matched exactly 2 or 3 arguments with no else, so any other
+    count silently did nothing and the dependency was never created."""
+    a, b = _two_templates(bm)
+    call_args = [b, {"name": "name"}, {}, {}, {}][:n_args]
+    with pytest.raises(TypeError):
+        a.add_dependency(*call_args)
+    assert len(a.get_dependencies()) == 0
+
+
+def test_add_dependency_unknown_keyword_raises(bm: BuildingMOTIF):
+    a, b = _two_templates(bm)
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        a.add_dependency(b, {"name": "name"}, nonsense=1)
+
+
+def test_add_dependency_duplicate_value_raises(bm: BuildingMOTIF):
+    a, b = _two_templates(bm)
+    with pytest.raises(TypeError, match="multiple values"):
+        a.add_dependency(b, {"name": "name"}, dependency=b)
+
+
+def test_add_dependency_by_name(bm: BuildingMOTIF):
+    a, b = _two_templates(bm)
+    a.add_dependency_by_name(b.defining_library.name, b.name, {"name": "name"})
+    assert len(a.get_dependencies()) == 1
+
+
+def test_three_argument_form_is_deprecated_but_works(bm: BuildingMOTIF):
+    a, b = _two_templates(bm)
+    with pytest.warns(DeprecationWarning, match="add_dependency_by_name"):
+        a.add_dependency(b.defining_library.name, b.name, {"name": "name"})
+    assert len(a.get_dependencies()) == 1
