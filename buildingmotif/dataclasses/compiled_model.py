@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pandas as pd
 import rdflib
@@ -10,6 +10,7 @@ from rdflib import URIRef
 from buildingmotif.dataclasses.model import Model
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.validation import ValidationContext
+from buildingmotif.dataclasses.validation_result import ValidationResult
 from buildingmotif.namespaces import SH, A
 from buildingmotif.shacl import (
     DEFAULT_SHACL_ENGINE,
@@ -19,10 +20,7 @@ from buildingmotif.shacl import (
 from buildingmotif.utils import copy_graph
 
 if TYPE_CHECKING:
-    from buildingmotif.dataclasses.algebraic_validation import (
-        AlgebraicValidationContext,
-        RepairConfig,
-    )
+    from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.library import Library
 
 
@@ -41,13 +39,22 @@ class CompiledModel:
         model: Model,
         shape_collections: List[ShapeCollection],
         compiled_graph: rdflib.Graph,
-        shacl_engine: str = "default",
+        shacl_engine: Optional[str] = None,
     ):
+        """
+        :param shacl_engine: the engine this model was compiled with. None
+            (the default) inherits the active BuildingMOTIF's engine. The
+            string ``"default"`` is still accepted for that, but None is the
+            sentinel the rest of the codebase uses -- ``Model.compile`` and
+            ``Model.validate`` both already take ``Optional[str]``.
+        :type shacl_engine: Optional[str]
+        """
         self.model = model
         self.shape_collections = shape_collections
         self.shacl_engine = (
             self.model._bm.shacl_engine
-            if (shacl_engine == "default" or not shacl_engine)
+            # "default" is the legacy spelling of "inherit from the singleton"
+            if (shacl_engine is None or shacl_engine == "default")
             else normalize_shacl_engine(shacl_engine)
         )
         # inference is performed by the SHACL backend in Model.compile; the
@@ -74,21 +81,29 @@ class CompiledModel:
         self,
         shapes_to_test: List[rdflib.URIRef],
         target_class: rdflib.URIRef,
-    ) -> Dict[rdflib.URIRef, "ValidationContext"]:
+    ) -> Dict[rdflib.URIRef, ValidationResult]:
         """Validates the model against a list of shapes and generates a
         validation report for each.
+
+        Uses the same engine as :py:meth:`validate`, and therefore returns the
+        same kind of context: an
+        :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`
+        under ``pyshifty``, a
+        :class:`~buildingmotif.dataclasses.validation.ValidationContext`
+        otherwise. It used to build a ``ValidationContext`` unconditionally, so
+        one CompiledModel handed back different context types from its two
+        validation methods.
 
         :param shapes_to_test: list of shape URIs to validate the model against
         :type shapes_to_test: List[URIRef]
         :param target_class: the class upon which to run the selected shapes
         :type target_class: URIRef
-        :return: a dictionary that relates each shape to test URIRef to a
-                 ValidationContext
-        :rtype: Dict[URIRef, ValidationContext]
+        :return: a dictionary relating each tested shape to its validation result
+        :rtype: Dict[URIRef, ValidationResult]
         """
         model_graph = copy_graph(self._compiled_graph)
 
-        results = {}
+        results: Dict[rdflib.URIRef, ValidationResult] = {}
 
         targets = model_graph.query(
             f"""
@@ -111,10 +126,22 @@ class CompiledModel:
             for (s,) in targets:
                 temp_model_graph.add((URIRef(s), A, shape_uri))
 
+            if self.shacl_engine == DEFAULT_SHACL_ENGINE:
+                from buildingmotif.dataclasses.algebraic_validation import (
+                    AlgebraicValidationContext,
+                )
+
+                results[shape_uri] = AlgebraicValidationContext.from_compiled(
+                    self.shape_collections,
+                    ontology_graph,
+                    temp_model_graph,
+                    self.model,
+                )
+                continue
+
             valid, report_g, report_str = backend.validate(
                 temp_model_graph, ontology_graph
             )
-
             results[shape_uri] = ValidationContext(
                 self.shape_collections,
                 ontology_graph,
@@ -132,7 +159,7 @@ class CompiledModel:
         shacl_engine: Optional[str] = None,
         repair_libraries: Optional[List["Library"]] = None,
         repair_config: Optional["RepairConfig"] = None,
-    ) -> Union["ValidationContext", "AlgebraicValidationContext"]:
+    ) -> ValidationResult:
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
         If a list of shape collections is provided, the manifest will *not* be automatically
@@ -144,12 +171,12 @@ class CompiledModel:
             ontologies are missing (i.e. they need to be loaded into BuildingMOTIF), defaults
             to True
         :type error_on_missing_imports: bool, optional
-        :param shacl_engine: the SHACL engine to validate with. ``"default"`` (or
-            None) uses the engine this model was compiled with; pass ``"pyshacl"``,
+        :param shacl_engine: the SHACL engine to validate with. None (the
+            default) uses the engine this model was compiled with; pass ``"pyshacl"``,
             ``"topquadrant"``, or ``"shifty"`` to override. The ``"shifty"`` engine
             returns an
             :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`
-            instead of the legacy ``ValidationContext``. Defaults to ``"default"``.
+            instead of the legacy ``ValidationContext``. Defaults to None.
         :type shacl_engine: Optional[str]
         :param repair_libraries: libraries whose templates seed template-guided,
             soundness-gated repair. Only the ``"shifty"`` engine uses these; other
@@ -159,9 +186,11 @@ class CompiledModel:
             the ``pyshifty`` engine); defaults to
             :class:`~buildingmotif.dataclasses.algebraic_validation.RepairConfig`
         :type repair_config: Optional[RepairConfig]
-        :return: An object containing useful properties/methods to deal with
-            the validation results
-        :rtype: ValidationContext
+        :return: An object containing useful properties/methods to deal with the
+            validation results. Both engines' return values satisfy
+            :class:`~buildingmotif.dataclasses.validation_result.ValidationResult`,
+            so code that only reads failures need not care which one it got.
+        :rtype: ValidationResult
         """
         import warnings
 

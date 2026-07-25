@@ -45,15 +45,15 @@ BLDG = Namespace('urn:bldg/')
 model = Model.create(BLDG, description="This is a test model for a simple building")
 
 # load libraries included with the python package
-constraints = Library.load(ontology_graph="constraints/constraints.ttl")
+constraints = Library.from_ontology("constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
-g36 = Library.load(directory="../../libraries/ashrae/guideline36")
+brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
+g36 = Library.from_directory("../../libraries/ashrae/guideline36")
 
 # load tutorial 2 model and manifest
 model.graph.parse("tutorial2_model.ttl", format="ttl")
-manifest = Library.load(ontology_graph="tutorial2_manifest.ttl")
+manifest = Library.from_ontology("tutorial2_manifest.ttl")
 
 # assign the manifest to our model
 model.update_manifest(manifest.get_shape_collection())
@@ -143,11 +143,13 @@ for templ in generated_templates.get_templates():
     bindings = {
         param: BLDG[ahu_name + suffix],
     }
-    thing = templ.evaluate(bindings)
-    if isinstance(thing, Template):
+    thing = templ.substitute(bindings)
+    if thing.is_complete:
+        model.add_graph(thing.to_graph())
+    else:
         # there might be other parameters on a template. Invent names for them
-        _, thing = thing.fill(BLDG)
-    model.add_graph(thing)
+        _, graph = thing.fill(BLDG)
+        model.add_graph(graph)
 ```
 
 We use the same code as before to ask BuildingMOTIF if the model is now valid:
@@ -199,8 +201,8 @@ for templ in generated_templates_sf.get_templates():
     bindings = {
         param: BLDG[sf_name + suffix],
     }
-    thing = templ.evaluate(bindings)
-    model.add_graph(thing)
+    thing = templ.substitute(bindings)
+    model.add_graph(thing.to_graph())
 ```
 
 We can re-check the validation of the model now:

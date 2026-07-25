@@ -126,11 +126,9 @@ def evaluate_bindings(template_id: int) -> flask.Response:
     bindings = {k: model.name.rstrip("/") + "/" + v for k, v in bindings.items()}
 
     # parse bindings from input JSON
-    graph_or_template = template.evaluate(bindings=bindings)
-    if isinstance(graph_or_template, Template):
-        graph = graph_or_template.body
-    else:
-        graph = graph_or_template
+    filled = template.substitute(bindings)
+    # a partially-bound template serializes its body, param: URIs and all
+    graph = filled.to_graph() if filled.is_complete else filled.body
 
     return graph.serialize(format="ttl"), status.HTTP_200_OK
 

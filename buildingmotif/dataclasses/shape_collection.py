@@ -16,7 +16,13 @@ from rdflib.term import Node
 from buildingmotif import get_building_motif
 from buildingmotif.namespaces import BMOTIF, OWL, SH
 from buildingmotif.ontology_environment import OntologyImportsNotFound
-from buildingmotif.utils import Triple, copy_graph, get_template_parts_from_shape
+from buildingmotif.utils import (
+    Triple,
+    _guarantee_unique_template_name,
+    copy_graph,
+    get_shape_or_branches,
+    get_template_parts_from_shape,
+)
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
@@ -257,6 +263,59 @@ class ShapeCollection:
                 candidate, imports_closure, dependency_graphs
             )
             library.create_template(str(candidate), partial_body, dependencies=deps)
+            self._infer_or_alternatives(
+                candidate,
+                partial_body,
+                deps,
+                imports_closure,
+                dependency_graphs,
+                library,
+            )
+
+    @staticmethod
+    def _infer_or_alternatives(
+        candidate: rdflib.URIRef,
+        base_body: Graph,
+        base_deps: List[Dict],
+        imports_closure: Graph,
+        dependency_graphs: Dict[str, Graph],
+        library: "Library",
+    ) -> None:
+        """Decompile a node shape's ``sh:or`` into one template per branch.
+
+        A template generates a *fragment*; it cannot itself be disjunctive. So a
+        shape saying "an X has either A or B" becomes several templates -- one
+        per way of being an X -- rather than one template that somehow means
+        both. Each alternative is the shape's non-disjunctive requirements plus
+        exactly one branch, so filling any single one satisfies the shape.
+
+        Alternatives are named ``<shape>-alt1``, ``-alt2``, ... **in the order
+        the branches were declared**. ``sh:or`` takes an ``rdf:List``, which is
+        ordered, and that authoring order is the only ranking the shape carries;
+        callers presenting alternatives should keep it rather than invent one.
+
+        The base template (the shape's name, without any branch) is still
+        created, so dependencies that reference the shape by name keep resolving
+        and callers that only want the common part are unaffected.
+        """
+        branches = get_shape_or_branches(candidate, imports_closure)
+        if not branches:
+            return
+        for index, branch in enumerate(branches, start=1):
+            branch_body, branch_deps = get_template_parts_from_shape(
+                branch, imports_closure, dependency_graphs  # type: ignore[arg-type]
+            )
+            if not len(branch_body) and not branch_deps:
+                # a branch that constrains nothing we can decompile would just
+                # duplicate the base template
+                continue
+            body = copy_graph(base_body)
+            body += branch_body
+            # A shape literally named "<candidate>-alt1" would otherwise collide
+            # with the generated name and fail the whole library load on the
+            # (name, library_id) unique constraint. Rename instead.
+            name = _guarantee_unique_template_name(library, f"{candidate}-alt{index}")
+            library.create_template(name, body, dependencies=base_deps + branch_deps)
 
     def get_shapes_of_definition_type(
         self, definition_type: URIRef, include_labels=False

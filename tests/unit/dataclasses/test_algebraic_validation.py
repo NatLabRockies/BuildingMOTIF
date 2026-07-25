@@ -128,6 +128,7 @@ def test_recursive_synthesis_builds_deep_sh_node(bm: BuildingMOTIF):
     assert any(p == EX.q for (_, p, _) in best.additions)
     assert any(o == EX.Widget for (_, _, o) in best.additions)
     # applying it clears the violation with nothing new introduced
+    assert best.outcome is not None
     assert best.outcome.is_sound and best.outcome.is_progress
     assert len(best.advance(ctx.session).witnesses()) == 0
 
@@ -355,12 +356,9 @@ def test_as_templates_resolves_violation(bm: BuildingMOTIF):
     patched = Graph()
     patched += data
     for templ in templates:
-        result = templ.evaluate(
-            {p: rdflib.URIRef(f"urn:bldg/fill_{p}") for p in templ.parameters},
-            warn_unused=False,
-        )
-        assert isinstance(result, Graph)
-        patched += result
+        patched += templ.substitute(
+            {p: rdflib.URIRef(f"urn:bldg/fill_{p}") for p in templ.parameters}
+        ).to_graph()
     re_ctx = AlgebraicValidationContext.from_compiled([], shapes, patched, model)
     assert re_ctx.conforms
 
@@ -390,10 +388,9 @@ def test_any_sound_repair_can_be_lifted_to_template(bm: BuildingMOTIF):
         templ = proposal.as_template()  # lib defaults to a fresh resolve library
         assert templ is not None
         patched = Graph() + data
-        patched += templ.evaluate(
-            {p: rdflib.URIRef(f"urn:bldg/fill_{p}") for p in templ.parameters},
-            warn_unused=False,
-        )
+        patched += templ.substitute(
+            {p: rdflib.URIRef(f"urn:bldg/fill_{p}") for p in templ.parameters}
+        ).to_graph()
         assert AlgebraicValidationContext.from_compiled(
             [], shapes, patched, model
         ).conforms
@@ -444,7 +441,7 @@ def test_auto_route_pyshifty_engine_returns_algebraic_context(bm: BuildingMOTIF)
         """,
         format="turtle",
     )
-    shape_lib = Library.load(ontology_graph=shape_graph)
+    shape_lib = Library.from_ontology(shape_graph)
 
     model = Model.create(BLDG)
     model.add_triples((BLDG["z1"], A, BLDG["Zone"]))
@@ -508,13 +505,14 @@ def test_sparql_constraint_fires_after_shape_collection_round_trips_through_stor
     )
     # loaded through Library.load, so the shape collection is persisted via
     # BuildingMOTIF's normal storage path (not just an in-memory Graph)
-    shape_lib = Library.load(ontology_graph=shape_graph)
+    shape_lib = Library.from_ontology(shape_graph)
 
     model = Model.create(BLDG)
     model.add_triples((BLDG["x"], A, BRICK["Zone_Air_Temperature_Sensor"]))
     model.add_triples((BLDG["x"], BRICK["value"], Literal(-40)))
 
     ctx = model.validate([shape_lib.get_shape_collection()])
+    assert isinstance(ctx, AlgebraicValidationContext)
     assert not ctx.valid
     witnesses = ctx.witnesses
     assert len(witnesses) == 1

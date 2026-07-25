@@ -10,7 +10,7 @@ from buildingmotif.shape_builder import NodeShape, PropertyShape
 
 @pytest.fixture
 def constraints_library(bm: BuildingMOTIF):
-    return Library.load(ontology_graph="constraints/constraints.ttl")
+    return Library.from_ontology("constraints/constraints.ttl")
 
 
 # test #1

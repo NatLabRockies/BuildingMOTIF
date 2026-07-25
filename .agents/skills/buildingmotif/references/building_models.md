@@ -42,14 +42,14 @@ from buildingmotif.dataclasses import Library, Model
 from buildingmotif.model_builder import TemplateBuilderContext
 from buildingmotif.namespaces import BRICK
 
-bm = BuildingMOTIF("sqlite://"); bm.setup_tables()
+bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 BLDG = Namespace("urn:bldg/")
 
 # 1. Create (or load) a reusable template LIBRARY.
 #    Either write one (writing_templates.md), reuse a repo library (guideline36, 223p),
 #    or just load Brick — its class templates (brick:AHU, brick:VAV, ...) are decompiled
 #    from the ontology automatically.
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 
 # 2. Create the MODEL shell with Model.create (gives it a namespace + ontology decl).
 model = Model.create(BLDG, description="My building model")
@@ -72,7 +72,7 @@ Each piece below.
 
 A `Library` holds templates (YAML `.yml`) and shapes (Turtle `.ttl`); load it from a
 directory, an ontology graph, or build it inline. **Load it once; reuse it across models.**
-Brick's class templates are the universal base — `Library.load(ontology_graph="brick/Brick.ttl")`
+Brick's class templates are the universal base — `Library.from_ontology("brick/Brick.ttl")`
 gives you a template for every Brick class (`brick:AHU`, `brick:VAV`, `brick:Supply_Fan`, …),
 decompiled from the ontology. Application libraries (guideline36, 223p templates) build on
 top of those.

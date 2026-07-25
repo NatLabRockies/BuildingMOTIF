@@ -377,11 +377,7 @@ class TemplateMatcher:
         for building_node, param in mapping.items():
             if param is not None:
                 bindings[str(param)[len(PARAM) :]] = building_node
-        # this *should* be a template because we don't have bindings for all of
-        # the template's parameters
-        res = self.template.evaluate(bindings)
-        assert not isinstance(res, Graph)
-        return res
+        return self.template.substitute(bindings)
 
     def mappings_iter(self, size=None) -> Generator[Mapping, None, None]:
         """Returns an iterator over all of the mappings of the given size.

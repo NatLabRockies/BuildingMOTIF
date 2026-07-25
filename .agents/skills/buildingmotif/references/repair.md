@@ -222,7 +222,7 @@ their building, not our IRIs.
 templates = ctx.as_templates()          # best sound repair per failure, merged per focus
 for t in templates:
     print(t.parameters)                 # e.g. {'repaired1'}
-    model.add_graph(t.evaluate({"repaired1": BLDG["VAV1_ZN_T"]}))   # bind to REAL names
+    model.add_graph(t.substitute({"repaired1": BLDG["VAV1_ZN_T"]}).to_graph())  # REAL names
 ```
 
 This is the point of the template lift: `as_template()` keeps the focus and reused nodes

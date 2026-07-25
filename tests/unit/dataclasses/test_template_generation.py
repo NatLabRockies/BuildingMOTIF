@@ -58,7 +58,7 @@ def pytest_generate_tests(metafunc):
 def test_template_generation_inmemory(
     clean_building_motif, template_name, include_optional, inline_dependencies
 ):
-    fixture_lib = Library.load(directory="tests/unit/fixtures/templates")
+    fixture_lib = Library.from_directory("tests/unit/fixtures/templates")
     template = fixture_lib.get_template_by_name(template_name)
     template = fixture_lib.get_template_by_name(template_name)
     if inline_dependencies:
@@ -86,7 +86,7 @@ def test_template_generation_inmemory(
 def test_template_generation_file(
     clean_building_motif, template_name, include_optional, inline_dependencies
 ):
-    fixture_lib = Library.load(directory="tests/unit/fixtures/templates")
+    fixture_lib = Library.from_directory("tests/unit/fixtures/templates")
     template = fixture_lib.get_template_by_name(template_name)
     if inline_dependencies:
         template = template.inline_dependencies()
@@ -112,7 +112,7 @@ def test_template_generation_file(
 def test_csv_generation_inmemory(
     clean_building_motif, template_name, include_optional, inline_dependencies
 ):
-    fixture_lib = Library.load(directory="tests/unit/fixtures/templates")
+    fixture_lib = Library.from_directory("tests/unit/fixtures/templates")
     template = fixture_lib.get_template_by_name(template_name)
     if inline_dependencies:
         template = template.inline_dependencies()
@@ -139,7 +139,7 @@ def test_csv_generation_inmemory(
 def test_csv_generation_file(
     clean_building_motif, template_name, include_optional, inline_dependencies
 ):
-    fixture_lib = Library.load(directory="tests/unit/fixtures/templates")
+    fixture_lib = Library.from_directory("tests/unit/fixtures/templates")
     template = fixture_lib.get_template_by_name(template_name)
     if inline_dependencies:
         template = template.inline_dependencies()

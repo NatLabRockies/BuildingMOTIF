@@ -117,9 +117,18 @@ extend-exclude = "docs/conf.py"
 profile = "black"
 
 [tool.mypy]
-files = ["buildingmotif/*.py", "tests/*.py", "migrations/*.py"]
+# Recurse. These globs used to be one level deep, so `uv run mypy` checked 11
+# files and silently skipped dataclasses/, database/, ingresses/, api/, ... --
+# nearly the whole package. pre-commit passed filenames explicitly so it did
+# check them, which is why the gap went unnoticed.
+files = ["buildingmotif", "tests", "migrations"]
 plugins = "sqlalchemy.ext.mypy.plugin"
 follow_imports = "skip"
+# Match the pre-commit hook's flags, so `uv run mypy` (the command in CLAUDE.md)
+# enforces exactly what the hook and CI do. Without these, a bare run reported
+# 27 import-untyped errors the hook suppresses.
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
 
 [tool.pytest.ini_options]
 log_cli_level = "WARNING"

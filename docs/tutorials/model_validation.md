@@ -67,11 +67,11 @@ model = Model.create(BLDG, description="This is a test model for a simple buildi
 model.graph.parse("tutorial1_model.ttl", format="ttl")
 
 # load libraries included with the python package
-constraints = Library.load(ontology_graph="../../buildingmotif/libraries/constraints/constraints.ttl")
+constraints = Library.from_ontology("../../buildingmotif/libraries/constraints/constraints.ttl")
 
 # load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
-g36 = Library.load(directory="../../libraries/ashrae/guideline36")
+brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
+g36 = Library.from_directory("../../libraries/ashrae/guideline36")
 ```
 
 ## Model Validation - Ontology
@@ -229,7 +229,7 @@ the most common use case, so this is treated specially in BuildingMOTIF.
 
 ```{code-cell}
 # load manifest into BuildingMOTIF as its own library!
-manifest = Library.load(ontology_graph="tutorial1_manifest.ttl")
+manifest = Library.from_ontology("tutorial1_manifest.ttl")
 # set it as the manifest for the model
 model.update_manifest(manifest.get_shape_collection())
 ```
@@ -293,7 +293,7 @@ htg_coil_template = brick.get_template_by_name(BRICK.Heating_Coil)
 # add htg coil
 htg_coil_name = f"{ahu_name}-Htg_Coil"
 htg_coil_binding = {"name": BLDG[htg_coil_name]}
-htg_coil_graph = htg_coil_template.evaluate(htg_coil_binding)
+htg_coil_graph = htg_coil_template.substitute(htg_coil_binding).to_graph()
 model.add_graph(htg_coil_graph)
 
 # connect htg coil
@@ -356,7 +356,7 @@ model.get_manifest().graph.parse(data="""
 
 ```{code-cell}
 # load manifest into BuildingMOTIF as its own library!
-manifest = Library.load(ontology_graph="tutorial1_manifest.ttl")
+manifest = Library.from_ontology("tutorial1_manifest.ttl")
 
 # gather these into a list for ease of use
 shape_collections = [

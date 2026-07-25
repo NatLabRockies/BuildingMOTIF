@@ -126,7 +126,8 @@ class OntologyEnvironment:
     ) -> rdflib.Graph:
         """Ensure graph is registered in ontoenv, then return its import closure.
 
-        :raises Exception: if the closure cannot be resolved.
+        :raises Exception: whatever ontoenv raises if the closure cannot be
+            resolved -- this method does not raise on its own.
         """
         if graph_name not in self.ontology_names():
             self.add(graph, fetch_imports=fetch_imports, overwrite=True)

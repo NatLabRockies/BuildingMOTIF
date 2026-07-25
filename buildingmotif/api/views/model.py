@@ -118,9 +118,9 @@ def create_model() -> flask.Response:
 
     current_app.building_motif.session.commit()
 
-    model = current_app.building_motif.table_connection.get_db_model(model.id)
+    db_model = current_app.building_motif.table_connection.get_db_model(model.id)
 
-    return jsonify(serialize(model)), status.HTTP_201_CREATED
+    return jsonify(serialize(db_model)), status.HTTP_201_CREATED
 
 
 @blueprint.route("/<models_id>/graph", methods=(["PATCH", "PUT"]))

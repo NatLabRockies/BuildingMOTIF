@@ -127,10 +127,11 @@ descriptive.)
 
 ### `optional` vs required
 
-A parameter is **required** unless listed in `optional`. `evaluate()` returns a `Graph`
-only when every required parameter is bound; otherwise it returns a partially-bound
-`Template` you can bind further (`templates.md`). Unbound optional parameters are dropped
-from the body at evaluation unless `require_optional_args=True`.
+A parameter is **required** unless listed in `optional`. `substitute()` always returns a
+`Template`; its `is_complete` is True once every required parameter is bound, and
+`to_graph()` then produces the graph (`templates.md`). Unbound optional parameters do not
+block `to_graph()` — the triples mentioning them are dropped, unless you pass
+`require_optional_args=True`.
 
 Mark a parameter optional when the template *can* include it but the building often
 won't have it — `zat` (zone air temp) on an exhaust fan that may or may not report it. A
@@ -185,7 +186,31 @@ parameter. If the property shape has a **`sh:name`**, that string seeds the gene
 parameter name (e.g. `sh:name "ztemp"` → param `ztemp` — a recognizable name, instead of
 the invented `p1`, `p2`, …). The template's name is the IRI of the node shape.
 
-Disable with `Library.load(..., infer_templates=False)`. You can also decompile an
+### `sh:or` becomes alternative templates
+
+A template generates a *fragment*; it cannot itself be disjunctive. So a node shape carrying
+`sh:or` decompiles into **several** templates -- one per way of satisfying it -- rather than
+one template that somehow means both:
+
+| template | body |
+|---|---|
+| `<shape>` | the shape's non-disjunctive requirements only |
+| `<shape>-alt1` | those requirements **+ the first `sh:or` branch** |
+| `<shape>-alt2` | those requirements **+ the second branch** |
+
+Fill **one** alternative, not all of them. Each already includes the common part, so any
+single one satisfies the shape; filling two would assert both branches, which is exactly the
+false-metadata trap `sh:or` exists to avoid.
+
+**Order is meaningful.** `sh:or` takes an `rdf:List`, which is ordered, and that authoring
+order is the only ranking the shape carries -- authors conventionally put the common or
+preferred case first. `-alt1` is the first branch written. Present alternatives in that order
+rather than inventing a ranking.
+
+`sh:or` nested inside a *property* shape (constraining one value's type, rather than the
+whole entity) is still not decompiled.
+
+Disable with `infer_templates=False` on the loader. You can also decompile an
 existing `ShapeCollection` on demand:
 
 ```python
@@ -216,7 +241,7 @@ why `sh:name` on a property shape is worth setting even when you write the shape
 
 The repo's `libraries/` use **both** side by side: `.yml` files for equipment templates
 (exhaust fan, VAV) and `.ttl` files for the SHACL shapes (system specifications). A
-library directory can hold both; `Library.load(directory=...)` loads all `.yml` as
+library directory can hold both; `Library.from_directory(...)` loads all `.yml` as
 templates and all `.ttl` as shapes (decompiling the instantiable ones).
 
 ## Authoring checklist
@@ -245,12 +270,11 @@ others):
 from rdflib import Namespace
 from buildingmotif.dataclasses import Library
 BLDG = Namespace("urn:bldg/")
-lib = Library.load(directory="my_library")
+lib = Library.from_directory("my_library")
 t = lib.get_template_by_name("vav-cooling-only")
-g = t.evaluate({"name": BLDG["vav1"], "ztemp": BLDG["vav1_ZN_T"], "dmp": BLDG["vav1_dmp"],
+g = t.substitute({"name": BLDG["vav1"], "ztemp": BLDG["vav1_ZN_T"], "dmp": BLDG["vav1_dmp"],
                 "zone": BLDG["zone1"], "dat": BLDG["vav1_DAT"], "occ": BLDG["vav1_occ"],
-                "co2": BLDG["vav1_CO2"]})
-assert isinstance(g, rdflib.Graph)   # fully bound -> Graph, not Template
+                "co2": BLDG["vav1_CO2"]}).to_graph()   # raises if anything is unbound
 # spot-check the triples you care about
 assert (BLDG["vav1"], None, BLDG["vav1_ZN_T"]) in g
 ```

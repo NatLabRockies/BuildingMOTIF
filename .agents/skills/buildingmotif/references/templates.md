@@ -80,7 +80,31 @@ string seeds the generated parameter name (e.g. `sh:name "ztemp"` → param `zte
 recognizable name, instead of the invented `p1`, `p2`, …). The template's name is the
 IRI of the node shape.
 
-Disable with `Library.load(..., infer_templates=False)`. You can also decompile an
+### `sh:or` becomes alternative templates
+
+A template generates a *fragment*; it cannot itself be disjunctive. So a node shape carrying
+`sh:or` decompiles into **several** templates -- one per way of satisfying it -- rather than
+one template that somehow means both:
+
+| template | body |
+|---|---|
+| `<shape>` | the shape's non-disjunctive requirements only |
+| `<shape>-alt1` | those requirements **+ the first `sh:or` branch** |
+| `<shape>-alt2` | those requirements **+ the second branch** |
+
+Fill **one** alternative, not all of them. Each already includes the common part, so any
+single one satisfies the shape; filling two would assert both branches, which is exactly the
+false-metadata trap `sh:or` exists to avoid.
+
+**Order is meaningful.** `sh:or` takes an `rdf:List`, which is ordered, and that authoring
+order is the only ranking the shape carries -- authors conventionally put the common or
+preferred case first. `-alt1` is the first branch written. Present alternatives in that order
+rather than inventing a ranking.
+
+`sh:or` nested inside a *property* shape (constraining one value's type, rather than the
+whole entity) is still not decompiled.
+
+Disable with `infer_templates=False` on the loader. You can also decompile an
 existing `ShapeCollection` on demand:
 
 ```python
@@ -105,18 +129,18 @@ setting: it names the generated parameter instead of inventing one.
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library
 
-bm = BuildingMOTIF("sqlite://"); bm.setup_tables()
+bm = BuildingMOTIF("sqlite://")   # tables are created automatically
 
 # 1. Brick FIRST — builtin resource, auto-resolved from the installed package.
 #    run_shacl_inference=False is required: inference-on does NOT produce the class
 #    templates other libraries depend on. By default (ontology_fetch_imports=True)
 #    OntoEnv also resolves Brick's owl:imports (REC, QUDT pieces); pass
 #    fetch_imports=False to load just Brick faster if you only need class templates.
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 
 # 2. then libraries that depend on it. guideline36 is repo-only (not packaged) —
 #    load it from a clone, or git-load it (see "Getting repo-only libraries" below).
-g36 = Library.load(directory="/path/to/clone/libraries/ashrae/guideline36")  # 115 templates
+g36 = Library.from_directory("/path/to/clone/libraries/ashrae/guideline36")  # 115 templates
 ```
 
 Deviating from this recipe is the top cause of
@@ -127,11 +151,11 @@ way that didn't infer class templates). Fix the load order; don't edit the libra
 ### Getting repo-only libraries (guideline36, chiller-plant, pointlist-test, 223p, …)
 
 Only `brick/`, `constraints/`, and `bacnet/` ship in the package. For everything else,
-three options, all of which end in a directory or ontology graph that `Library.load`
-accepts:
+three options, all of which end in a directory or ontology graph that
+`Library.from_directory`/`Library.from_ontology` accepts:
 
 1. **Clone the repo** once and pass the directory path:
-   `Library.load(directory="/abs/path/to/libraries/ashrae/guideline36")`.
+   `Library.from_directory("/abs/path/to/libraries/ashrae/guideline36")`.
    Templates in a directory library are the `.yml` files; shapes are the `.ttl` files.
 2. **`libraries.yml` + git** — let BuildingMOTIF clone it at load time:
    ```yaml
@@ -146,10 +170,10 @@ accepts:
    `libraries.default.yml` in the cwd showing all three keys (`directory`, `ontology`,
    `git`).
 3. **Load a remote ontology URL** directly — e.g. the nightly Brick:
-   `Library.load(ontology_graph="https://github.com/BrickSchema/Brick/releases/download/nightly/Brick.ttl")`.
+   `Library.from_ontology("https://github.com/BrickSchema/Brick/releases/download/nightly/Brick.ttl")`.
    (The builtin `brick/Brick.ttl` already covers the Brick case without a download.)
 
-`Library.load(ontology_graph=<str>)` treats the string as a **path** (builtin resource
+`Library.from_ontology(<str>)` treats the string as a **path** (builtin resource
 lookup first, then the local filesystem) **or a URL**. To load **inline** Turtle from a
 Python string, parse it into an `rdflib.Graph` first and pass the graph — passing the
 raw string will be misread as a filename:
@@ -157,12 +181,12 @@ raw string will be misread as a filename:
 ```python
 import rdflib
 g = rdflib.Graph(); g.parse(data=turtle_string, format="turtle")
-lib = Library.load(ontology_graph=g)
+lib = Library.from_ontology(g)
 ```
 
 Brick load takes **seconds**, not minutes. Persist it if you want: use a file URI
 (`BuildingMOTIF("sqlite:///bm.db")`) once, then on later runs
-`Library.load(name="Brick")` (loads the previously-stored DB record by name).
+`Library.by_name("Brick")` (loads the previously-stored DB record by name).
 
 ## Finding the right template
 
@@ -278,18 +302,58 @@ Don't wait it out, and don't blame the library load — full Brick loads in ~6s.
 ```python
 t.parameters                       # required params
 t.optional_args                    # optional
-t.all_parameters                   # including dependencies' (property, no parens)
-t.parameter_counts                 # how often each is used (property, no parens)
+t.parameters_with_dependencies()   # + deps, named as after inlining
+t.parameter_counts                 # how often each is used (a property, no parens)
 
-# bind real identifiers -> Graph if fully bound, else a partially-bound Template
-g = t.evaluate({"name": BLDG["VAV-1"], "ztemp": BLDG["VAV1_ZN_T"]})
-if isinstance(g, Graph):
-    model.add_graph(g)
+# bind real identifiers -> always a Template
+filled = t.substitute({"name": BLDG["VAV-1"], "ztemp": BLDG["VAV1_ZN_T"]})
+if filled.is_complete:
+    model.add_graph(filled.to_graph())
+else:
+    print("still need:", filled.missing_parameters)
 ```
 
-`evaluate()` returns a **`Template` when parameters remain unbound** and a `Graph` only
-when it's complete — always check, or bind incrementally and evaluate again. Unbound
-optional args are dropped from the body unless `require_optional_args=True`.
+**`substitute()` always returns a `Template`; `to_graph()` always returns a `Graph`.** No
+`isinstance` check. Bind incrementally by calling `substitute()` again on the result —
+it composes:
+
+```python
+g = t.substitute({"name": BLDG["VAV-1"]}).substitute({"ztemp": BLDG["VAV1_ZN_T"]}).to_graph()
+```
+
+**Parameters come in one flavour plus one question.** `t.parameters` is the template's
+*own* parameters. Everything about dependencies goes through
+`t.parameters_with_dependencies(transitive=True, renamed=True, include_self=True)`:
+
+| what you want to know | call |
+|---|---|
+| what I must bind after `inline_dependencies()` | `t.parameters_with_dependencies()` (the defaults) |
+| direct dependencies' params under their own names | `t.parameters_with_dependencies(transitive=False, renamed=False)` |
+| only what dependencies contribute | add `include_self=False` |
+
+`renamed=True` reports the name each parameter will carry *after inlining* — a dependency's
+param appears under the name the parent's `args` bind it to, or prefixed with the
+dependency's `name` binding. `t.parameters_with_dependencies() == t.inline_dependencies().parameters`.
+
+```{note}
+`all_parameters`, `dependency_parameters`, and `transitive_parameters` are deprecated
+aliases for the three rows above — they had subtly different depth/renaming semantics that
+their names did not signal, and three of them declared an `error_on_missing_dependency`
+argument that, being properties, nobody could pass.
+```
+
+`is_complete` is True once every *required* parameter is bound; `missing_parameters` lists
+the ones still outstanding. Unbound **optional** parameters do not block `to_graph()` — it
+drops the triples that mention them (which cascades: a triple is dropped if it mentions an
+unbound optional *anywhere*, even when its other terms are bound). Pass
+`to_graph(require_optional_args=True)` to require them instead. `to_graph()` raises
+`IncompleteTemplateError` (a `ValueError`) rather than silently handing back a template.
+
+```{note}
+The older `t.evaluate(bindings)` returns a `Template` *or* a `Graph` depending on whether
+the bindings happened to cover every parameter, which is why old code is full of
+`isinstance` checks. It still works but is deprecated — use `substitute()`/`to_graph()`.
+```
 
 `t.fill(BLDG)` autogenerates bindings (`name_a1b2c3`). It's for smoke tests and demos.
 **Never use it to build a real model**: it names real equipment with random hex. Bind to

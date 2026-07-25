@@ -120,9 +120,74 @@ class OrShape(GraphDiff):
 
     shapes: Tuple[URIRef]
 
+    def _describe(self, shape: Node) -> str:
+        """A readable label for one branch of the ``sh:or``.
+
+        Branches are usually blank nodes -- an ``sh:or`` list is written inline
+        far more often than it references named shapes -- so printing the term
+        yields an opaque identifier. Fall back to describing what the branch
+        actually constrains.
+        """
+        if isinstance(shape, URIRef):
+            try:
+                return self.graph.qname(str(shape))
+            except Exception:
+                return str(shape)
+        constraints = []
+        for prop in self.graph.objects(shape, SH.property):
+            path = self.graph.value(prop, SH.path)
+            if path is not None:
+                try:
+                    constraints.append(self.graph.qname(str(path)))
+                except Exception:
+                    constraints.append(str(path))
+        for key in (SH["class"], SH.node, SH.datatype):
+            for value in self.graph.objects(shape, key):
+                try:
+                    constraints.append(self.graph.qname(str(value)))
+                except Exception:
+                    constraints.append(str(value))
+        if constraints:
+            return f"[{', '.join(sorted(constraints))}]"
+        return "an unnamed shape"
+
     def reason(self) -> str:
         """Human-readable explanation of this GraphDiff."""
-        return f"{self.focus} needs to match one of the following shapes: {', '.join(self.shapes)}"
+        described = ", ".join(self._describe(s) for s in self.shapes)
+        return f"{self.focus} needs to match one of the following shapes: {described}"
+
+    def resolve(self, lib: "Library") -> List["Template"]:
+        """No templates: a disjunction has no single repair.
+
+        This is deliberate, not an omission. The legacy repair contract is that
+        every template ``resolve()`` returns for a focus node gets **joined**
+        into one template by
+        :func:`merge_templates_for_focus` -- a conjunction. Emitting one
+        template per ``sh:or`` branch would therefore build a repair that
+        satisfies *every* alternative at once: for
+        ``sh:or ( ElectricMeterShape GasMeterShape )`` it would assert that the
+        meter is both, inventing metadata that is false of the building.
+        Picking one branch arbitrarily is no better -- nothing in the shape says
+        which one is true here.
+
+        Returning nothing keeps :meth:`ValidationContext.as_templates` working
+        for the *other* failures in the same report. Before this, an
+        unimplemented ``resolve()`` raised ``NotImplementedError`` and lost
+        every repair in the report, not just this one.
+
+        To actually repair a disjunction, use the ``pyshifty`` engine: it models
+        ``sh:or`` as an ``Any`` node in the repair tree and enumerates the
+        branches as *separate*, individually soundness-gated proposals -- the
+        menu of alternatives this API has no way to express. See
+        :meth:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext.all_repair_templates`
+        and :meth:`~buildingmotif.dataclasses.algebraic_validation.RepairWitness.proposals`.
+
+        :param lib: unused; kept for the :class:`GraphDiff` interface
+        :type lib: Library
+        :return: an empty list
+        :rtype: List[Template]
+        """
+        return []
 
     @classmethod
     def from_validation_report(cls, report: Graph) -> List["OrShape"]:
@@ -491,6 +556,13 @@ class ValidationContext:
     report_string: str
     model: "Model"
 
+    @property
+    def conforms(self) -> bool:
+        """Alias of :py:attr:`valid`, matching SHACL's own vocabulary and
+        :py:class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`.
+        """
+        return self.valid
+
     @cached_property
     def diffset(self) -> Dict[Optional[URIRef], Set[GraphDiff]]:
         """The unordered set of GraphDiffs produced from interpreting the input
@@ -507,19 +579,23 @@ class ValidationContext:
         """
         return diffset_to_templates(self.diffset)
 
-    def get_broken_entities(self) -> Set[URIRef]:
+    def get_broken_entities(self) -> Set[Union[URIRef, str]]:
         """Get the set of entities that are broken in the model.
 
+        Model-level failures (those with no focus node) are reported as the
+        string ``"Model"``.
+
         :return: set of entities that are broken
-        :rtype: Set[URIRef]
+        :rtype: Set[Union[URIRef, str]]
         """
         return {diff or "Model" for diff in self.diffset}
 
-    def get_diffs_for_entity(self, entity: URIRef) -> Set[GraphDiff]:
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> Set[GraphDiff]:
         """Get the set of diffs for a specific entity.
 
-        :param entity: the entity to get diffs for
-        :type entity: URIRef
+        :param entity: the entity to get diffs for, or None for the model-level
+            failures (those with no focus node)
+        :type entity: Optional[URIRef]
         :return: set of diffs for the entity
         :rtype: Set[GraphDiff]
         """

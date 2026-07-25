@@ -30,7 +30,7 @@ be resolved.
 
 ## What OntoEnv does at load time
 
-`Library.load(ontology_graph=..., fetch_imports=...)` (and `directory=`) registers the
+`Library.from_ontology(..., fetch_imports=...)` (and `directory=`) registers the
 graph with OntoEnv and, when `fetch_imports` is true, resolves its import closure:
 
 - `bm.ontology_environment.add(source, fetch_imports=...)` — registers the ontology,
@@ -57,7 +57,7 @@ bm = BuildingMOTIF(
     # Extra directories OntoEnv scans (recursively) when resolving imports, in addition
     # to the builtin libraries and any graph already in the store.
     ontology_search_directories=["/path/to/my/ontologies"],
-    # Default for *library loading*: should Library.load fetch owl:imports? Most users
+    # Default for *library loading*: should library loads fetch owl:imports? Most users
     # want True (the default). Set False to load just the file you named and nothing more.
     ontology_fetch_imports=True,
     # If True, OntoEnv never fetches remote imports — only local search resolves them.
@@ -79,19 +79,19 @@ Two of these are the ones you will actually reach for:
   the resolved graphs without re-fetching. With the default (no path), the env is
   in-memory and dies with the process.
 
-`ontology_fetch_imports` is the *default* for `Library.load`; `Library.load(...,
+`ontology_fetch_imports` is the *default* for library loading; `Library.from_ontology(...,
 fetch_imports=False)` overrides it per-load (e.g. load Brick fast for template work
 without pulling QUDT).
 
-## Per-load control: `Library.load(fetch_imports=...)`
+## Per-load control: `Library.from_ontology(fetch_imports=...)`
 
 ```python
 # Default: fetches imports (uses bm.ontology_fetch_imports, which is True by default).
-brick = Library.load(ontology_graph="brick/Brick.ttl", run_shacl_inference=False)
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 
 # Skip import fetching — load exactly this file. Faster, and fine when you only need the
 # class templates (template decompilation doesn't need the QUDT/REC closure).
-brick = Library.load(ontology_graph="brick/Brick.ttl",
+brick = Library.from_ontology("brick/Brick.ttl",
                      run_shacl_inference=False, fetch_imports=False)
 ```
 
@@ -170,7 +170,7 @@ two-store model.
 
 ## Direct OntoEnv access (rarely needed)
 
-Most users never touch `bm.ontology_environment` directly — `Library.load` and
+Most users never touch `bm.ontology_environment` directly — the library loaders and
 `resolve_imports` cover it. The methods are there if you need them:
 
 ```python

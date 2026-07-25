@@ -103,9 +103,9 @@ def load(args):
     bm = BuildingMOTIF(db_uri, graph_store_path=get_graph_store_path(args))
     bm.setup_tables()
     for directory in args.dir or []:
-        Library.load(directory=directory)
+        Library.from_directory(directory)
     for ont in args.ont or []:
-        Library.load(ontology_graph=ont)
+        Library.from_ontology(ont)
     for library_manifest_file in args.library_manifest_file or []:
         manifest_path = Path(library_manifest_file)
         log.info(f"Loading buildingmotif libraries listed in {manifest_path}")

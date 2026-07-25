@@ -62,7 +62,7 @@ def test_get_template(client, building_motif):
 
 def test_get_template_with_parameters(client, building_motif):
     # Setup
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
 
     # Act
@@ -84,7 +84,7 @@ def test_get_template_not_found(client):
 
 def test_evaluate_bindings(client, building_motif):
     model = Model.create(name="urn:my_model")
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -124,7 +124,7 @@ def test_evaluate_bindings_bad_templated_id(client, building_motif):
 
 
 def test_evaluate_bindings_no_body(client, building_motif):
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -136,7 +136,7 @@ def test_evaluate_bindings_no_body(client, building_motif):
 
 def test_evaluate_bindings_bad_body(client, building_motif):
     model = Model.create(name="urn:my_model")
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -163,7 +163,7 @@ def test_evaluate_bindings_bad_body(client, building_motif):
 
 
 def test_evaluate_bindings_bad_model_id(client, building_motif):
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -183,7 +183,7 @@ def test_evaluate_ingress(client, building_motif):
     # create a 'MODEL' namespace here to scope the entities we create
     MODEL = Namespace("urn:my_model/")
     model = Model.create(name=MODEL)
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -204,7 +204,7 @@ def test_evaluate_ingress(client, building_motif):
 
 
 def test_evaluate_ingress_no_body(client, building_motif):
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -216,7 +216,7 @@ def test_evaluate_ingress_no_body(client, building_motif):
 
 def test_evaluate_ingress_bad_body(client, building_motif):
     model = Model.create(name="urn:my_model")
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}
@@ -243,7 +243,7 @@ def test_evaluate_ingress_bad_body(client, building_motif):
 
 
 def test_evaluate_ingress_bad_model_id(client, building_motif):
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     zone.inline_dependencies()
     assert zone.parameters == {"name", "cav"}

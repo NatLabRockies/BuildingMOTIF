@@ -51,13 +51,13 @@ BuildingMOTIF currently uses the name of the SHACL shape as the name of the gene
 All other parameters (i.e., nodes corresponding to `sh:property`) are given invented names *unless*
  there is a `sh:name` attribute on the property shape.
 
-This feature can be disabled by setting `infer_templates=False` when calling `Library.load`
+This feature can be disabled by setting `infer_templates=False` when calling `Library.from_ontology`/`Library.from_directory`
 
 ### From Shape Collections
 
 It is also possible to convert the shapes defined in a Shape Collection to templates.
 This is done by calling the `infer_templates` method on the Shape Collection.
-If `infer_templates` is True when calling `Library.load`, then BuildingMOTIF will automatically call `infer_templates` on the Shape Collection
+If `infer_templates` is True when loading a library, then BuildingMOTIF will automatically call `infer_templates` on the Shape Collection
 within that Library.
 
 Being able to call `infer_templates` on a Shape Collection is useful when you have
@@ -200,8 +200,8 @@ from buildingmotif.dataclasses import Library
 bm = BuildingMOTIF("sqlite://")
 
 # load library
-brick = Library.load(ontology_graph="https://github.com/BrickSchema/Brick/releases/download/nightly/Brick.ttl")
-lib = Library.load(ontology_graph="myshapes.ttl")
+brick = Library.from_ontology("https://github.com/BrickSchema/Brick/releases/download/nightly/Brick.ttl")
+lib = Library.from_ontology("myshapes.ttl")
 ```
 
 Once the library has been loaded, all of the shapes have been turned into templates.

@@ -62,8 +62,8 @@ damper:
 ### SHACL Shapes
 
 BuildingMOTIF can also infer a template from certain SHACL shape definitions.
-This happens when a Library is loaded into BuildingMOTIF that contains an RDF graph; this can happen by loading the RDF graph directly (via `Library.load(ontology_graph="path to graph")`)
-or by loading in a directory that contains RDF graphs (via `Library.load(directory="directory with .ttl files")`).
+This happens when a Library is loaded into BuildingMOTIF that contains an RDF graph; this can happen by loading the RDF graph directly (via `Library.from_ontology("path to graph")`)
+or by loading in a directory that contains RDF graphs (via `Library.from_directory("directory with .ttl files")`).
 
 Given an RDF graph, BuildingMOTIF will create a template for each instance of `sh:NodeShape` *provided* that it is also an instance of `owl:Class`.
 In the following RDF graph, BuildingMOTIF would create a tempalte for `vav_shape` but not `sensor_shape`:

@@ -50,8 +50,8 @@ def _setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     BuildingMOTIF.clean()  # clean the singleton, but keep the instance
     bm = BuildingMOTIF("sqlite://", shacl_engine="pyshifty")
     bm.setup_tables()
-    s223 = Library.load(
-        ontology_graph="libraries/ashrae/223p/ontology/223p.ttl",
+    s223 = Library.from_ontology(
+        "libraries/ashrae/223p/ontology/223p.ttl",
         run_shacl_inference=False,
     )
     bm.session.commit()
@@ -94,8 +94,8 @@ def s223_setup() -> Tuple[BuildingMOTIF, Library, Dict[Tuple[str, str], Any]]:
     BuildingMOTIF.instance = bm
     template_map: Dict[Tuple[str, str], Any] = {}
     for lib_name in libraries:
-        lib = Library.load(
-            directory=lib_name,
+        lib = Library.from_directory(
+            lib_name,
             run_shacl_inference=False,
             infer_templates=False,
         )

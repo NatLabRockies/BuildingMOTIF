@@ -99,7 +99,7 @@ def test_from_graph(clean_building_motif):
 
 def test_update_model_manifest(clean_building_motif):
     m = Model.create(name="https://example.com", description="a very good model")
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert lib is not None
     # update manifest with library
     m.update_manifest(lib.get_shape_collection())
@@ -111,8 +111,8 @@ def test_validate_model_manifest(clean_building_motif, shacl_engine):
     m = Model.create(name="https://example.com", description="a very good model")
     m.graph.add((URIRef("https://example.com/vav1"), A, BRICK.VAV))
 
-    Library.load(ontology_graph="tests/unit/fixtures/Brick.ttl")
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert lib is not None
 
     m.update_manifest(lib.get_shape_collection())
@@ -150,10 +150,10 @@ def test_validate_model_manifest_with_imports(clean_building_motif, shacl_engine
     m.graph.add((URIRef("https://example.com/vav1"), A, BRICK.VAV))
 
     # import brick
-    Library.load(ontology_graph="tests/unit/fixtures/Brick.ttl")
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
 
     # shape2.ttl attaches an import statement to the manifest
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape2.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shapes/shape2.ttl")
     assert lib is not None
 
     m.update_manifest(lib.get_shape_collection())
@@ -187,8 +187,8 @@ def test_validate_model_manifest_with_imports(clean_building_motif, shacl_engine
 def test_validate_model_explicit_shapes(clean_building_motif, shacl_engine):
     clean_building_motif.shacl_engine = shacl_engine
     # load library
-    Library.load(ontology_graph="tests/unit/fixtures/Brick.ttl")
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert lib is not None
 
     BLDG = Namespace("urn:building/")
@@ -231,9 +231,9 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
     ] .
     """
     shape_graph = Graph().parse(data=shape_graph_data)
-    shape_lib = Library.load(ontology_graph=shape_graph)
+    shape_lib = Library.from_ontology(shape_graph)
 
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     assert zone.parameters == {"name", "cav"}
 
@@ -247,7 +247,9 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
     assert isinstance(ctx, (ValidationContext, AlgebraicValidationContext))
     assert not ctx.valid
     assert len(ctx.diffset) == 1
-    diff = next(iter(ctx.diffset.values())).pop()
+    diffs = [d for diff_set in ctx.diffset.values() for d in diff_set]
+    assert len(diffs) == 1
+    diff = diffs[0]
     assert diff.failed_component == SH.MinCountConstraintComponent
 
     model.add_triples((bindings["name"], RDFS.label, Literal("hvac zone 1")))
@@ -265,8 +267,8 @@ def test_model_compile(bm: BuildingMOTIF, shacl_engine):
         "tests/unit/fixtures/smallOffice_brick.ttl", format="ttl"
     )
 
-    brick = Library.load(
-        ontology_graph="libraries/brick/Brick-full.ttl", infer_templates=False
+    brick = Library.from_ontology(
+        "libraries/brick/Brick-full.ttl", infer_templates=False
     )
 
     compiled_model = small_office_model.compile([brick.get_shape_collection()])

@@ -101,9 +101,9 @@ def test_get_shapes_of_domain(clean_building_motif):
 
 
 def test_shape_collection_resolve_imports(clean_building_motif):
-    Library.load(ontology_graph="tests/unit/fixtures/Brick.ttl")
-    Library.load(ontology_graph="constraints/constraints.ttl")
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shapes/import_test.ttl")
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    Library.from_ontology("constraints/constraints.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shapes/import_test.ttl")
     sc = lib.get_shape_collection()
     new_sc = sc.resolve_imports()
     assert new_sc is not None
@@ -111,10 +111,8 @@ def test_shape_collection_resolve_imports(clean_building_motif):
 
 
 def test_get_shapes_for_class(clean_building_motif):
-    brick = Library.load(
-        ontology_graph="tests/unit/fixtures/Brick1.3rc1-equip-only.ttl"
-    )
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    brick = Library.from_ontology("tests/unit/fixtures/Brick1.3rc1-equip-only.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     sc = lib.get_shape_collection()
     shapes = sc.get_shapes_about_class(BRICK["VAV"], [brick.get_shape_collection()])
     assert len(shapes) == 2
@@ -177,7 +175,7 @@ def test_shape_to_query(clean_building_motif, shape_name, query_clauses):
 
     g = Graph()
 
-    lib = Library.load(ontology_graph="tests/unit/fixtures/shape_to_query/shapes.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/shape_to_query/shapes.ttl")
     sc = lib.get_shape_collection()
 
     query = sc.shape_to_query(URIRef(f"urn:shapes_to_query/{shape_name}"))

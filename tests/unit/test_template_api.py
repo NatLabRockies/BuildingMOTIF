@@ -1,10 +1,8 @@
-import warnings
-
 import pytest
 from rdflib import Graph, Namespace
 
 from buildingmotif import BuildingMOTIF
-from buildingmotif.dataclasses import Library, Model, Template
+from buildingmotif.dataclasses import IncompleteTemplateError, Library, Model, Template
 from buildingmotif.namespaces import BRICK, PARAM, A
 from buildingmotif.template_matcher import TemplateMatcher
 from buildingmotif.utils import graph_size
@@ -12,20 +10,20 @@ from buildingmotif.utils import graph_size
 BLDG = Namespace("urn:building/")
 
 
-def test_template_evaluate(bm: BuildingMOTIF):
+def test_template_substitute(bm: BuildingMOTIF):
     """
-    Test the Template.evaluate() method.
+    Test partial and complete binding via substitute()/to_graph().
     """
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     assert zone.parameters == {"name", "cav"}
 
-    with pytest.warns():
-        partial = zone.evaluate({"name": BLDG["zone1"]})
-        assert isinstance(partial, Template)
-        assert partial.parameters == {"cav"}
+    partial = zone.substitute({"name": BLDG["zone1"]})
+    assert isinstance(partial, Template)
+    assert not partial.is_complete
+    assert partial.parameters == {"cav"}
 
-    graph = partial.evaluate({"cav": BLDG["cav1"]})
+    graph = partial.substitute({"cav": BLDG["cav1"]}).to_graph()
     assert isinstance(graph, Graph)
     assert (BLDG["cav1"], A, BRICK.CAV) in graph
     assert (BLDG["zone1"], A, BRICK.HVAC_Zone) in graph
@@ -37,7 +35,7 @@ def test_template_fill(bm: BuildingMOTIF):
     """
     Test the Template.fill() method.
     """
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     assert zone.parameters == {"name", "cav"}
 
@@ -53,7 +51,7 @@ def test_template_copy(bm: BuildingMOTIF):
     """
     Test the Template.copy() method.
     """
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     assert zone.parameters == {"name", "cav"}
 
@@ -69,7 +67,7 @@ def test_template_to_inline(bm: BuildingMOTIF):
     """
     Test the Template.to_inline() method.
     """
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     zone = lib.get_template_by_name("zone")
     assert zone.parameters == {"name", "cav"}
 
@@ -91,11 +89,11 @@ def test_template_inline_dependencies(bm: BuildingMOTIF):
     """
     Test the Template.inline_dependencies() method.
     """
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     templ = lib.get_template_by_name("single-zone-vav-ahu")
     assert len(templ.get_dependencies()) == 2
     inlined = templ.inline_dependencies()
-    transitive_params = templ.transitive_parameters
+    transitive_params = templ.parameters_with_dependencies()
     assert len(inlined.get_dependencies()) == 0
     preserved_params = {
         "name",
@@ -121,13 +119,13 @@ def test_template_inline_dependencies(bm: BuildingMOTIF):
 
     # test optional 'name' param on dependency; this should
     # preserve optionality of all params in the dependency
-    lib = Library.load(directory="tests/unit/fixtures/inline-dep-test")
+    lib = Library.from_directory("tests/unit/fixtures/inline-dep-test")
     templ = lib.get_template_by_name("A")
     assert templ.parameters == {"name", "b", "c", "d"}
     assert set(templ.optional_args) == {"d"}
     assert len(templ.get_dependencies()) == 3
     inlined = templ.inline_dependencies()
-    transitive_params = templ.transitive_parameters
+    transitive_params = templ.parameters_with_dependencies()
     assert len(inlined.get_dependencies()) == 0
     assert inlined.parameters == {"name", "b", "c", "b-bp", "c-cp", "d", "d-dp"}
     assert transitive_params == inlined.parameters
@@ -140,7 +138,7 @@ def test_template_inline_dependencies(bm: BuildingMOTIF):
     assert set(templ.optional_args) == {"b-bp"}
     assert len(templ.get_dependencies()) == 1
     inlined = templ.inline_dependencies()
-    transitive_params = templ.transitive_parameters
+    transitive_params = templ.parameters_with_dependencies()
     assert len(inlined.get_dependencies()) == 0
     assert inlined.parameters == {"name", "b", "b-bp"}
     assert transitive_params == inlined.parameters
@@ -150,7 +148,7 @@ def test_template_inline_dependencies(bm: BuildingMOTIF):
     parent = lib.get_template_by_name("Parent")
     assert parent.parameters == {"name", "level1"}
     inlined = parent.inline_dependencies()
-    transitive_params = parent.transitive_parameters
+    transitive_params = parent.parameters_with_dependencies()
     assert inlined.parameters == {
         "name",
         "level1",
@@ -164,7 +162,7 @@ def test_template_inline_dependencies(bm: BuildingMOTIF):
     parent = lib.get_template_by_name("Parent-opt")
     assert parent.parameters == {"name", "level1"}
     inlined = parent.inline_dependencies()
-    transitive_params = parent.transitive_parameters
+    transitive_params = parent.parameters_with_dependencies()
     assert inlined.parameters == {
         "name",
         "level1",
@@ -181,7 +179,7 @@ def test_template_inline_dependencies(bm: BuildingMOTIF):
 
 def test_template_inline_dependencies_with_optional(bm: BuildingMOTIF):
     # fixes https://github.com/NREL/BuildingMOTIF/issues/237
-    lib = Library.load(directory="tests/unit/fixtures/optional-inline")
+    lib = Library.from_directory("tests/unit/fixtures/optional-inline")
     templ = lib.get_template_by_name("hot-water-coil")
     templ = templ.inline_dependencies()
     bindings, _ = templ.fill(BLDG, include_optional=False)
@@ -195,57 +193,45 @@ def test_template_inline_dependencies_with_optional(bm: BuildingMOTIF):
     assert "supply-water-temp-sensor" in bindings.keys()
 
 
-def test_template_evaluate_with_optional(bm: BuildingMOTIF):
+def test_template_optional_parameters(bm: BuildingMOTIF):
     """
-    Test that template evaluation works with optional parameters.
+    Test that binding works with optional parameters.
     """
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     templ = lib.get_template_by_name("opt-vav")
     assert templ.parameters == {"name", "occ", "zone"}
     assert templ.optional_args == ["occ", "zone"]
 
-    g = templ.evaluate({"name": BLDG["vav"]})
-    assert isinstance(g, Graph)
+    # unbound optionals do not block to_graph(); their triples are dropped
+    g = templ.substitute({"name": BLDG["vav"]}).to_graph()
     assert graph_size(g) == 1
 
-    g = templ.evaluate({"name": BLDG["vav"], "zone": BLDG["zone1"]})
-    assert isinstance(g, Graph)
+    # binding `zone` changes nothing here: its only triple also mentions the
+    # still-unbound `occ`, so it is dropped too
+    g = templ.substitute({"name": BLDG["vav"], "zone": BLDG["zone1"]}).to_graph()
     assert graph_size(g) == 1
 
-    t = templ.evaluate(
-        {"name": BLDG["vav"], "zone": BLDG["zone1"]}, require_optional_args=True
-    )
-    assert isinstance(t, Template)
-    assert t.parameters == {"occ"}
+    # require_optional_args=True makes the unbound optional fatal instead
+    filled = templ.substitute({"name": BLDG["vav"], "zone": BLDG["zone1"]})
+    assert filled.is_complete, "every *required* parameter is bound"
+    assert filled.parameters == {"occ"}
+    with pytest.raises(IncompleteTemplateError):
+        filled.to_graph(require_optional_args=True)
 
-    with pytest.warns():
-        t = templ.evaluate(
-            {"name": BLDG["vav"], "zone": BLDG["zone1"]}, require_optional_args=True
-        )
-    assert isinstance(t, Template)
-    assert t.parameters == {"occ"}
-
-    # assert no warning is raised when optional args are not required
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        t = templ.evaluate({"name": BLDG["vav"]})
-
-    with pytest.warns():
-        partial_templ = templ.evaluate(
-            {"name": BLDG["vav"]}, require_optional_args=True
-        )
-    assert isinstance(partial_templ, Template)
-    g = partial_templ.evaluate({"zone": BLDG["zone1"]})
+    # binding composes: finish the optionals on the partially-bound template
+    partial = templ.substitute({"name": BLDG["vav"]})
+    g = partial.substitute({"zone": BLDG["zone1"]}).to_graph()
     assert isinstance(g, Graph)
-    t = partial_templ.evaluate({"zone": BLDG["zone1"]}, require_optional_args=True)
-    assert isinstance(t, Template)
-    assert t.parameters == {"occ"}
+    everything = partial.substitute(
+        {"zone": BLDG["zone1"], "occ": BLDG["occ1"]}
+    ).to_graph(require_optional_args=True)
+    assert graph_size(everything) == 4
 
 
 def test_template_matching(bm: BuildingMOTIF):
     EX = Namespace("urn:ex/")
-    brick = Library.load(ontology_graph="tests/unit/fixtures/matching/brick.ttl")
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    brick = Library.from_ontology("tests/unit/fixtures/matching/brick.ttl")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     damper = lib.get_template_by_name("outside-air-damper")
 
     bldg = Model.create("https://example.com")
@@ -266,10 +252,8 @@ def test_template_matching(bm: BuildingMOTIF):
 
 def test_template_matcher_with_graph_target(bm: BuildingMOTIF):
     BLDG = Namespace("urn:template-match-test/")
-    brick = Library.load(
-        ontology_graph="tests/unit/fixtures/Brick1.3rc1-equip-only.ttl"
-    )
-    templ_lib = Library.load(directory="tests/unit/fixtures/templates")
+    brick = Library.from_ontology("tests/unit/fixtures/Brick1.3rc1-equip-only.ttl")
+    templ_lib = Library.from_directory("tests/unit/fixtures/templates")
     sf_templ = templ_lib.get_template_by_name("supply-fan")
 
     data = """

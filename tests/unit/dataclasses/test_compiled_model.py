@@ -5,6 +5,7 @@ import pytest
 from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import RDFS
 
+from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model, RepairConfig, ValidationContext
 from buildingmotif.dataclasses.compiled_model import CompiledModel
 from buildingmotif.namespaces import SH, A
@@ -12,11 +13,11 @@ from buildingmotif.namespaces import SH, A
 
 def test_validate(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    brick = Library.load(
-        ontology_graph="tests/unit/fixtures/Brick.ttl"
+    brick = Library.from_ontology(
+        "tests/unit/fixtures/Brick.ttl"
     ).get_shape_collection()
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection, brick])
 
@@ -32,8 +33,8 @@ def test_validate(clean_building_motif_topquadrant):
 
 def test_compiled_model_compilation(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/s223_model.ttl")
-    s223 = Library.load(
-        ontology_graph="libraries/ashrae/223p/ontology/223p.ttl"
+    s223 = Library.from_ontology(
+        "libraries/ashrae/223p/ontology/223p.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([s223])
 
@@ -51,8 +52,8 @@ def test_compiled_model_compilation(clean_building_motif_topquadrant):
 
 def test_add_graph_updates_compiled_model_graph(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection])
 
@@ -71,8 +72,8 @@ def test_add_graph_updates_compiled_model_graph(clean_building_motif_topquadrant
 
 def test_defining_shape_collection(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection])
 
@@ -92,11 +93,11 @@ def test_defining_shape_collection(clean_building_motif_topquadrant):
 
 def test_shape_to_table(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    brick = Library.load(
-        ontology_graph="https://brickschema.org/schema/1.4/Brick.ttl"
+    brick = Library.from_ontology(
+        "https://brickschema.org/schema/1.4/Brick.ttl"
     ).get_shape_collection()
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection, brick])
 
@@ -129,7 +130,7 @@ def test_shape_to_table_empty_result_preserves_columns(clean_building_motif):
         """,
         format="turtle",
     )
-    shape_collection = Library.load(ontology_graph=shape_graph).get_shape_collection()
+    shape_collection = Library.from_ontology(shape_graph).get_shape_collection()
     model = Model.create("urn:model/")
     compiled_model = model.compile([shape_collection])
 
@@ -249,11 +250,11 @@ def test_repair_config_warns_for_non_pyshifty(clean_building_motif, monkeypatch)
 
 def test_shape_to_df(clean_building_motif_topquadrant):
     model = Model.from_file("tests/unit/fixtures/compilation/brick_model.ttl")
-    brick = Library.load(
-        ontology_graph="https://brickschema.org/schema/1.4/Brick.ttl"
+    brick = Library.from_ontology(
+        "https://brickschema.org/schema/1.4/Brick.ttl"
     ).get_shape_collection()
-    shape_collection = Library.load(
-        ontology_graph="tests/unit/fixtures/compilation/shapes.ttl"
+    shape_collection = Library.from_ontology(
+        "tests/unit/fixtures/compilation/shapes.ttl"
     ).get_shape_collection()
     compiled_model = model.compile([shape_collection, brick])
 
@@ -274,3 +275,45 @@ def test_shape_to_df(clean_building_motif_topquadrant):
         df[df["target"] == "urn:model1/vav2"]["hasAirFlowSensor"].values[0]
         == "urn:model1/afs2"
     )
+
+
+def test_validate_model_against_shapes_matches_the_engine(bm: BuildingMOTIF):
+    """It used to build a ValidationContext unconditionally, so one
+    CompiledModel returned different context types from its two validation
+    methods (API-CLEANUP #12)."""
+    from buildingmotif.dataclasses.algebraic_validation import (
+        AlgebraicValidationContext,
+    )
+
+    shapes = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        ex:S a sh:NodeShape ;
+             sh:property [ sh:path ex:p ; sh:minCount 1 ] .
+        """,
+        format="turtle",
+    )
+    model = Model.create("urn:bldg/")
+    model.add_graph(
+        Graph().parse(
+            data="@prefix ex: <http://ex/> .\n<urn:bldg/x> a ex:Foo .", format="turtle"
+        )
+    )
+    model.get_manifest().add_graph(shapes)
+
+    for engine, expected in (
+        ("pyshifty", AlgebraicValidationContext),
+        ("pyshacl", ValidationContext),
+    ):
+        compiled = model.compile([model.get_manifest()], shacl_engine=engine)
+        results = compiled.validate_model_against_shapes(
+            [URIRef("http://ex/S")], URIRef("http://ex/Foo")
+        )
+        assert results, f"{engine} produced no results"
+        for result in results.values():
+            assert isinstance(
+                result, expected
+            ), f"{engine} returned {type(result).__name__}"
+            # whichever it is, the common read surface works
+            assert isinstance(result.conforms, bool)

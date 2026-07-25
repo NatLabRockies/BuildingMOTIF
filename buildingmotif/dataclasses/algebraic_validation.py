@@ -32,7 +32,19 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import product
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
 
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
@@ -70,6 +82,56 @@ class GateOutcome(Protocol):
 _mint_counter = 0
 
 
+@runtime_checkable
+class SparqlDiagnostic(Protocol):
+    """The part of pyshifty's ``SparqlDiagnostic`` this module reads.
+
+    Declared as a Protocol so the public surface types as something with
+    attributes rather than ``object`` (which types as having *none*, so every
+    consumer -- including our own tests -- had to fight the checker). Reads
+    remain defensive ``getattr`` calls at runtime, because the concrete shape
+    is pyshifty's to change across versions.
+    """
+
+    @property
+    def query(self) -> str:
+        """The SPARQL actually executed."""
+        ...
+
+    @property
+    def bindings(self) -> Sequence[Tuple[str, object]]:
+        """``$this`` and any prebound variables."""
+        ...
+
+    @property
+    def results(self) -> Sequence[object]:
+        """The solution rows the query produced."""
+        ...
+
+
+@runtime_checkable
+class FocusWitness(Protocol):
+    """The part of pyshifty's ``FocusWitness`` this module reads."""
+
+    @property
+    def focus(self) -> object:
+        """The failing node."""
+        ...
+
+    @property
+    def target(self) -> object:
+        """The statement that failed."""
+        ...
+
+    def summary(self) -> object:
+        """The failure's atoms."""
+        ...
+
+    def repair_tree(self) -> object:
+        """The tree of repair choices for this failure."""
+        ...
+
+
 def _mint_uri() -> URIRef:
     """Mint a fresh, concrete IRI for a repair-introduced individual."""
     global _mint_counter
@@ -101,7 +163,7 @@ def _triples_to_graph(triples) -> Graph:
     return g
 
 
-def _render_sparql_diagnostic(diag: "object") -> str:
+def _render_sparql_diagnostic(diag: "SparqlDiagnostic") -> str:
     """Render a pyshifty ``SparqlDiagnostic`` (``Reason.sparql_diagnostic``) as
     human-readable text: the query actually executed, its ``$this``/prebound
     variables, and the solution rows it produced.
@@ -382,7 +444,7 @@ class RepairWitness:
 
     focus: Optional[URIRef]
     # the raw pyshifty FocusWitness
-    witness: "object"
+    witness: "FocusWitness"
     # back-reference to the owning context (holds the session + repair engine)
     context: "AlgebraicValidationContext"
     # this witness's summary() atoms, best-effort aligned 1:1 with the pyshifty
@@ -444,7 +506,7 @@ class RepairWitness:
             return False
 
     @property
-    def sparql_diagnostics(self) -> List["object"]:
+    def sparql_diagnostics(self) -> List[SparqlDiagnostic]:
         """The pyshifty ``SparqlDiagnostic`` for every SPARQL-based leaf of this
         failure that could be aligned with :attr:`reasons` -- query text, its
         ``$this``/prebound variables, and the solution rows it produced.
@@ -453,7 +515,7 @@ class RepairWitness:
         :attr:`reasons` couldn't be aligned with :meth:`_get_summary` (a
         mismatched count means the two pyshifty calls diverged for this focus,
         so no enrichment is safer than a wrong pairing)."""
-        diagnostics = []
+        diagnostics: List[SparqlDiagnostic] = []
         for reason in self.reasons:
             diagnostic = getattr(reason, "sparql_diagnostic", None)
             if diagnostic is not None:
@@ -772,8 +834,6 @@ class TemplateGuidedRepair:
     def _ground_template(self, tmpl: "Template", root: URIRef) -> Optional[Graph]:
         """Concretely ground a template at ``root`` (binding remaining params to
         minted IRIs) and return its body graph, or None if it cannot ground."""
-        from buildingmotif.dataclasses import Template
-
         bindings: Dict[str, Node] = {}
         if "name" in tmpl.parameters:
             bindings["name"] = root
@@ -783,10 +843,10 @@ class TemplateGuidedRepair:
             if param == "name":
                 continue
             bindings[param] = _mint_uri()
-        result = tmpl.evaluate(bindings, warn_unused=False)
-        if isinstance(result, Template):
+        filled = tmpl.substitute(bindings)
+        if not filled.is_complete:
             return None
-        return result
+        return filled.to_graph()
 
     # -- recursive ConformsTo synthesis ----------------------------------
 
@@ -1347,12 +1407,16 @@ class AlgebraicValidationContext:
     def get_broken_entities(self) -> Set[Union[URIRef, str]]:
         return {focus or "Model" for focus in self.diffset}
 
-    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> List[RepairWitness]:
-        return list(self.diffset.get(entity, set()))
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> Set[RepairWitness]:
+        """The failures recorded against a single focus node. Returns a set, to
+        match
+        :meth:`buildingmotif.dataclasses.validation.ValidationContext.get_diffs_for_entity`
+        (:class:`RepairWitness` hashes by identity)."""
+        return self.diffset.get(entity, set())
 
     def get_reasons_with_severity(
         self, severity: Union[URIRef, str]
-    ) -> Dict[Optional[URIRef], List["object"]]:
+    ) -> Dict[Optional[URIRef], List[AlgebraicReason]]:
         """Group the algebra's findings by focus, keeping only the reasons at the
         given severity (``SH.Violation``/``"Violation"``, ``SH.Warning``, or
         ``SH.Info``). Mirrors
@@ -1367,7 +1431,7 @@ class AlgebraicValidationContext:
                 f"Invalid severity: {severity}. Must be one of "
                 "SH.Violation, SH.Warning, or SH.Info"
             )
-        out: Dict[Optional[URIRef], List["object"]] = defaultdict(list)
+        out: Dict[Optional[URIRef], List[AlgebraicReason]] = defaultdict(list)
         for v in self._algebra.violations:
             focus = _focus_to_node(v.focus_node)
             for reason in v.reasons:
