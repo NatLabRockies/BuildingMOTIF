@@ -105,3 +105,55 @@ def test_context_manager_rolls_back_on_exception(db_uri):
 
         with pytest.raises(ModelNotFound):
             Model.load(name="urn:bldg/")
+
+
+# -- logging: a library should not reconfigure its host --------------------
+
+
+def test_repeated_construction_does_not_stack_log_handlers(db_uri):
+    """Each construction used to add two handlers to the root logger,
+    unbounded, so a suite that builds and cleans the singleton hundreds of
+    times formatted every record hundreds of times."""
+    import logging
+
+    root = logging.getLogger()
+    before = len(root.handlers)
+    for _ in range(5):
+        bm = BuildingMOTIF(db_uri)
+        bm.close()
+        BuildingMOTIF.clean()
+    assert len(root.handlers) <= before + 1
+
+
+def test_no_log_file_is_written_by_default(db_uri, tmp_path, monkeypatch):
+    """`BuildingMOTIF.log` used to be created in the working directory on every
+    construction, in truncating mode."""
+    monkeypatch.chdir(tmp_path)
+    bm = BuildingMOTIF(db_uri)
+    try:
+        assert not (tmp_path / "BuildingMOTIF.log").exists()
+    finally:
+        bm.close()
+
+
+def test_log_file_is_opt_in(db_uri, tmp_path):
+    target = tmp_path / "bm.log"
+    bm = BuildingMOTIF(db_uri, log_file=target)
+    try:
+        assert target.exists()
+    finally:
+        bm.close()
+
+
+def test_root_logger_level_is_not_forced_to_debug(db_uri):
+    """Forcing the root logger to DEBUG hijacks the host application's
+    logging configuration."""
+    import logging
+
+    root = logging.getLogger()
+    root.setLevel(logging.WARNING)
+    bm = BuildingMOTIF(db_uri)
+    try:
+        assert root.level == logging.WARNING
+    finally:
+        bm.close()
