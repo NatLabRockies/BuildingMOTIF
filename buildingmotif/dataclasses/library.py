@@ -630,22 +630,21 @@ class Library:
         return lib
 
     @classmethod
-    def load_from_libraries_yml(cls, filename: str):
+    def load_from_libraries_yml(cls, filename: str) -> List["Library"]:
         """
         Loads *multiple* libraries from a properly-formatted 'libraries.yml'
-        file. Does not return a Library! You will need to load the libraries by
-        name in order to get the dataclasses.Library object. We recommend loading
-        libraries directly, one-by-one, in most cases. This method is here to support
-        the commandline tool.
+        file. Mostly here to support the commandline tool; for a single library
+        prefer :py:meth:`from_ontology` or :py:meth:`from_directory` directly.
 
         :param filename: the filename of the YAML file to load library names from
         :type filename: str
-        :rtype: None
+        :return: the loaded libraries, in the order the file lists them
+        :rtype: List[Library]
         """
-        libraries = yaml.load(open(filename, "r"), Loader=yaml.FullLoader)
+        with open(filename, "r") as f:
+            libraries = yaml.load(f, Loader=yaml.FullLoader)
         validate_libraries_yaml(libraries)  # raises exception
-        for description in libraries:
-            _resolve_library_definition(description)
+        return [_resolve_library_definition(desc) for desc in libraries]
 
     @staticmethod
     def _library_exists(library_name: str) -> bool:
@@ -800,22 +799,24 @@ class Library:
         return Template.load(dbt.id)
 
 
-def _resolve_library_definition(desc: Dict[str, Any]):
+def _resolve_library_definition(desc: Dict[str, Any]) -> "Library":
     """
     Loads a library from a description in libraries.yml
+
+    :return: the loaded library
+    :rtype: Library
     """
     if "directory" in desc:
         spath = pathlib.Path(desc["directory"]).absolute()
-        if spath.exists() and spath.is_dir():
-            logging.info(f"Load local library {spath} (directory)")
-            Library.from_directory(str(spath))
-        else:
-            raise Exception(f"{spath} is not an existing directory")
+        if not (spath.exists() and spath.is_dir()):
+            raise FileNotFoundError(f"{spath} is not an existing directory")
+        logging.info(f"Load local library {spath} (directory)")
+        return Library.from_directory(str(spath))
     elif "ontology" in desc:
         ont = desc["ontology"]
         g = rdflib.Graph().parse(ont, format=rdflib.util.guess_format(ont))
         logging.info(f"Load library {ont} as ontology graph")
-        Library.from_ontology(g)
+        return Library.from_ontology(g)
     elif "git" in desc:
         repo = desc["git"]["repo"]
         branch = desc["git"]["branch"]
@@ -827,6 +828,9 @@ def _resolve_library_definition(desc: Dict[str, Any]):
             )  # , depth=1)
             new_path = pathlib.Path(temp_loc) / pathlib.Path(path)
             if new_path.is_dir():
-                _resolve_library_definition({"directory": new_path})
-            else:
-                _resolve_library_definition({"ontology": new_path})
+                return _resolve_library_definition({"directory": new_path})
+            return _resolve_library_definition({"ontology": new_path})
+    raise ValueError(
+        "a libraries.yml entry needs one of 'directory', 'ontology', or 'git'; "
+        f"got {sorted(desc)}"
+    )
