@@ -218,6 +218,14 @@ model.add_to_manifest(manifest.get_shape_collection())
 ctx = model.validate()   # validates against the manifest by default
 ```
 
+`add_to_manifest` **merges** into whatever the model already has — call it twice and you get
+the union, so a manifest can grow but never shrink. To swap the requirements out wholesale,
+use `model.replace_manifest(sc)`, which discards the previous contents. Reach for `replace_`
+when re-running a script that would otherwise accumulate stale requirements across runs.
+
+(`update_manifest` is the old name for `add_to_manifest`. It still works and warns; the name
+was misleading, since it never replaced anything.)
+
 ### ⚠ `constraint:` components validate but block repair
 
 `constraint:exactCount`/`constraint:class` compile to SPARQL-based SHACL, which the

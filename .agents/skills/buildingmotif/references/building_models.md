@@ -91,7 +91,7 @@ templates, or `inline_dependencies()` raises `TemplateNotFound` naming a Brick c
 model = Model.create(BLDG, description="Small office building")
 ```
 
-`Model.create(name, description="")` takes a namespace (a `rdflib.Namespace` or URI string)
+`Model.create(uri, description="")` takes a namespace (a `rdflib.Namespace` or URI string)
 and creates a model with an `a owl:Ontology` declaration at that URI — that declaration is
 required (it's how BuildingMOTIF keys the model and how OntoEnv resolves its imports). The
 model's graph starts essentially empty; you fill it by adding evaluated templates.
