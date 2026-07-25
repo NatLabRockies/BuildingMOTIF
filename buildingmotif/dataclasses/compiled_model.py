@@ -81,21 +81,29 @@ class CompiledModel:
         self,
         shapes_to_test: List[rdflib.URIRef],
         target_class: rdflib.URIRef,
-    ) -> Dict[rdflib.URIRef, "ValidationContext"]:
+    ) -> Dict[rdflib.URIRef, ValidationResult]:
         """Validates the model against a list of shapes and generates a
         validation report for each.
+
+        Uses the same engine as :py:meth:`validate`, and therefore returns the
+        same kind of context: an
+        :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`
+        under ``pyshifty``, a
+        :class:`~buildingmotif.dataclasses.validation.ValidationContext`
+        otherwise. It used to build a ``ValidationContext`` unconditionally, so
+        one CompiledModel handed back different context types from its two
+        validation methods.
 
         :param shapes_to_test: list of shape URIs to validate the model against
         :type shapes_to_test: List[URIRef]
         :param target_class: the class upon which to run the selected shapes
         :type target_class: URIRef
-        :return: a dictionary that relates each shape to test URIRef to a
-                 ValidationContext
-        :rtype: Dict[URIRef, ValidationContext]
+        :return: a dictionary relating each tested shape to its validation result
+        :rtype: Dict[URIRef, ValidationResult]
         """
         model_graph = copy_graph(self._compiled_graph)
 
-        results = {}
+        results: Dict[rdflib.URIRef, ValidationResult] = {}
 
         targets = model_graph.query(
             f"""
@@ -118,10 +126,22 @@ class CompiledModel:
             for (s,) in targets:
                 temp_model_graph.add((URIRef(s), A, shape_uri))
 
+            if self.shacl_engine == DEFAULT_SHACL_ENGINE:
+                from buildingmotif.dataclasses.algebraic_validation import (
+                    AlgebraicValidationContext,
+                )
+
+                results[shape_uri] = AlgebraicValidationContext.from_compiled(
+                    self.shape_collections,
+                    ontology_graph,
+                    temp_model_graph,
+                    self.model,
+                )
+                continue
+
             valid, report_g, report_str = backend.validate(
                 temp_model_graph, ontology_graph
             )
-
             results[shape_uri] = ValidationContext(
                 self.shape_collections,
                 ontology_graph,

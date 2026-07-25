@@ -5,6 +5,7 @@ import pytest
 from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import RDFS
 
+from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model, RepairConfig, ValidationContext
 from buildingmotif.dataclasses.compiled_model import CompiledModel
 from buildingmotif.namespaces import SH, A
@@ -274,3 +275,45 @@ def test_shape_to_df(clean_building_motif_topquadrant):
         df[df["target"] == "urn:model1/vav2"]["hasAirFlowSensor"].values[0]
         == "urn:model1/afs2"
     )
+
+
+def test_validate_model_against_shapes_matches_the_engine(bm: BuildingMOTIF):
+    """It used to build a ValidationContext unconditionally, so one
+    CompiledModel returned different context types from its two validation
+    methods (API-CLEANUP #12)."""
+    from buildingmotif.dataclasses.algebraic_validation import (
+        AlgebraicValidationContext,
+    )
+
+    shapes = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        ex:S a sh:NodeShape ;
+             sh:property [ sh:path ex:p ; sh:minCount 1 ] .
+        """,
+        format="turtle",
+    )
+    model = Model.create("urn:bldg/")
+    model.add_graph(
+        Graph().parse(
+            data="@prefix ex: <http://ex/> .\n<urn:bldg/x> a ex:Foo .", format="turtle"
+        )
+    )
+    model.get_manifest().add_graph(shapes)
+
+    for engine, expected in (
+        ("pyshifty", AlgebraicValidationContext),
+        ("pyshacl", ValidationContext),
+    ):
+        compiled = model.compile([model.get_manifest()], shacl_engine=engine)
+        results = compiled.validate_model_against_shapes(
+            [URIRef("http://ex/S")], URIRef("http://ex/Foo")
+        )
+        assert results, f"{engine} produced no results"
+        for result in results.values():
+            assert isinstance(
+                result, expected
+            ), f"{engine} returned {type(result).__name__}"
+            # whichever it is, the common read surface works
+            assert isinstance(result.conforms, bool)
