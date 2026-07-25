@@ -1,8 +1,5 @@
 import logging
 import secrets
-from collections import defaultdict
-from copy import copy
-from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
@@ -17,7 +14,7 @@ from buildingmotif.database.errors import TemplateNotFound
 from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
 
 if TYPE_CHECKING:
-    from buildingmotif.dataclasses import Library, Template
+    from buildingmotif.dataclasses import Library
 
 Triple = Tuple[Node, Node, Node]
 _gensym_counter = 0
@@ -387,158 +384,6 @@ def get_shape_or_branches(shape_name: Node, shape_graph: Graph) -> List[Node]:
                 "could not read the sh:or list on %s", shape_name, exc_info=True
             )
     return branches
-
-
-@dataclass
-class _TemplateIndex:
-    template: "Template"
-    param_types: Dict[Node, List[Node]]
-    prop_types: Dict[Node, List[Node]]
-    prop_values: Dict[Node, List[Node]]
-    prop_shapes: Dict[Node, List[Node]]
-    target: URIRef
-
-    @property
-    def target_type(self):
-        return self.param_types[self.target][0]
-
-
-def _prep_shape_graph() -> Graph:
-    shape = Graph()
-    bind_prefixes(shape)
-    shape.bind("mark", PARAM)
-    return shape
-
-
-def _index_properties(
-    templ: "Template", error_on_missing_dependency: bool = True
-) -> _TemplateIndex:
-    templ_graph = templ.substitute({p: PARAM[p] for p in templ.parameters}).to_graph(
-        {"mark": PARAM}
-    )
-
-    # pick a random node to act as the 'target' of the shape
-    target = next(iter(templ_graph.subjects(RDF.type)))
-    print(f"Choosing {target} as the target of the shape")
-    assert isinstance(target, URIRef)
-
-    # store the classes for each parameter
-    param_types: Dict[Node, List[Node]] = defaultdict(list)
-    for (param, ptype) in templ_graph.subject_objects(RDF.type):
-        param_types[param].append(ptype)
-
-    # store the properties and their types for the target
-    prop_types: Dict[Node, List[Node]] = defaultdict(list)
-    prop_values: Dict[Node, List[Node]] = defaultdict(list)
-    prop_shapes: Dict[Node, List[Node]] = defaultdict(list)
-    # TODO: prop_shapes for all properties whose object corresponds to another shape
-    for p, o in templ_graph.predicate_objects(target):
-        if p == RDF.type:
-            continue
-        # maybe_param = str(o).removeprefix(PARAM) Python >=3.9
-        maybe_param = str(o)[len(PARAM) :]
-        if maybe_param in templ.parameters_with_dependencies(
-            transitive=False, renamed=False, include_self=False
-        ):
-            # dependency_for_parameter takes only the parameter name; it never
-            # accepted error_on_missing_dependency, so passing it was a
-            # TypeError waiting to happen (masked because template_to_shape,
-            # the only caller of this function, is dead code -- API-CLEANUP #20)
-            dep = templ.dependency_for_parameter(maybe_param)
-            if dep is not None:
-                prop_shapes[p].append(URIRef(dep._name))
-        elif o in param_types:
-            prop_types[p].append(param_types[o][0])
-        elif str(o) not in PARAM:
-            prop_values[p].append(o)
-        elif str(o) in PARAM and o not in param_types:
-            logging.warn(
-                f"{o} is does not have a type and does not seem to be a literal"
-            )
-    return _TemplateIndex(
-        templ,
-        dict(param_types),
-        dict(prop_types),
-        dict(prop_values),
-        dict(prop_shapes),
-        target,
-    )
-
-
-def _add_property_shape(
-    graph: Graph, name: Node, constraint: Node, path: Node, value: Node
-):
-    pshape = BNode()
-    graph.add((name, SH.property, pshape))
-    graph.add((pshape, SH.path, path))
-    graph.add((pshape, constraint, value))
-    graph.add((pshape, SH["minCount"], Literal(1)))
-    graph.add((pshape, SH["maxCount"], Literal(1)))
-
-
-def _add_qualified_property_shape(
-    graph: Graph, name: Node, constraint: Node, path: Node, value: Node
-):
-    pshape = BNode()
-    graph.add((name, SH.property, pshape))
-    graph.add((pshape, SH.path, path))
-    qvc = BNode()
-    graph.add((pshape, SH["qualifiedValueShape"], qvc))
-    graph.add((qvc, constraint, value))
-    graph.add((pshape, SH["qualifiedMinCount"], Literal(1)))
-    graph.add((pshape, SH["qualifiedMaxCount"], Literal(1)))
-
-
-def template_to_shape(template: "Template") -> Graph:
-    """Turn this template into a SHACL shape.
-
-    :param template: template to convert
-    :type template: template
-    :return: graph of template
-    :rtype: Graph
-    """
-    # TODO If 'use_all' is True, this will create a shape that incorporates all
-    # Templates by the same name in the same Library.
-    templ = copy(template)
-    shape = _prep_shape_graph()
-
-    idx = _index_properties(templ)
-
-    shape.add((PARAM[templ.name], SH.targetClass, idx.target_type))
-    # create the shape
-    shape.add((PARAM[templ.name], RDF.type, SH.NodeShape))
-    shape.add((PARAM[templ.name], SH["class"], idx.target_type))
-    for prop, ptypes in idx.prop_types.items():
-        if len(ptypes) == 1:
-            _add_property_shape(shape, PARAM[templ.name], SH["class"], prop, ptypes[0])
-        else:  # more than one ptype
-            for ptype in ptypes:
-                _add_qualified_property_shape(
-                    shape, PARAM[templ.name], SH["class"], prop, ptype
-                )
-    for prop, values in idx.prop_values.items():
-        if len(values) == 1:
-            _add_property_shape(shape, PARAM[templ.name], SH.hasValue, prop, values[0])
-        else:  # more than one ptype
-            for value in values:
-                _add_qualified_property_shape(
-                    shape, PARAM[templ.name], SH.hasValue, prop, value
-                )
-    for prop, shapes in idx.prop_shapes.items():
-        if len(shapes) == 1:
-            _add_property_shape(shape, PARAM[templ.name], SH["node"], prop, shapes[0])
-        else:  # more than one ptype
-            for shp in shapes:
-                _add_qualified_property_shape(
-                    # TODO: fix this?
-                    shape,
-                    PARAM[templ.name],
-                    SH.node,
-                    prop,
-                    PARAM[str(shp)],
-                )
-
-    return shape
 
 
 def new_temporary_graph(more_namespaces: Optional[dict] = None) -> Graph:
