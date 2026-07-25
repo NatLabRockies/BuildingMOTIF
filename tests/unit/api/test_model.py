@@ -33,8 +33,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[3]
 
 def test_get_all_models(client, building_motif):
     # Setup
-    Model.create(name="urn:my_model", description="the best model")
-    Model.create(name="https://example.com")
+    Model.create(uri="urn:my_model", description="the best model")
+    Model.create(uri="https://example.com")
 
     # Act
     results = client.get("/models")
@@ -56,7 +56,7 @@ def test_get_all_models(client, building_motif):
 
 def test_get_model(client, building_motif):
     # Setup
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
 
     # Act
     results = client.get(f"/models/{model.id}")
@@ -84,7 +84,7 @@ def test_get_model_not_found(client):
 
 def test_get_model_graph(client, building_motif):
     # Setup
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     model.add_graph(Graph().parse(data=graph_data, format="ttl"))
     excepted_graph = to_isomorphic(model.graph)
     building_motif.session.commit()
@@ -109,7 +109,7 @@ def test_get_model_graph_not_found(client):
 
 def test_update_model_graph_overwrite(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -130,7 +130,7 @@ def test_update_model_graph_overwrite(client, building_motif):
 
 def test_update_model_graph_append(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -165,7 +165,7 @@ def test_update_model_graph_not_found(client, building_motif):
 
 def test_update_model_graph_no_header(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -177,7 +177,7 @@ def test_update_model_graph_no_header(client, building_motif):
 
 def test_update_model_graph_bad_graph_value(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -266,7 +266,7 @@ def test_validate_model(client, building_motif, shacl_engine):
     assert brick is not None
 
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
     model.add_triples((BLDG["vav1"], A, BRICK.VAV))
 
     # Action
@@ -339,7 +339,7 @@ def test_validate_model_bad_model_id(client, building_motif, shacl_engine):
 
 def test_validate_model_bad_shacl_engine(client):
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     results = client.post(
         f"/models/{model.id}/validate?shacl_engine=bad-engine",
@@ -355,7 +355,7 @@ def test_validate_model_no_args(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action
     results = client.post(
@@ -375,7 +375,7 @@ def test_validate_model_no_library_ids(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action
     results = client.post(
@@ -395,7 +395,7 @@ def test_validate_model_no_library_ids(client, building_motif, shacl_engine):
 def test_validate_model_bad_library_ids(client, building_motif):
     # Set up
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action
     results = client.post(
@@ -413,7 +413,7 @@ def test_validate_model_bad_args(client, building_motif):
     library = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library is not None
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action 1
     results = client.post(

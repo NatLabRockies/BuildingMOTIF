@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, List, Optional
@@ -39,22 +40,54 @@ class Model:
     _manifest_id: int
 
     @classmethod
-    def create(cls, name: str, description: str = "") -> "Model":
+    def create(
+        cls,
+        uri: Optional[str] = None,
+        description: str = "",
+        *,
+        name: Optional[str] = None,
+    ) -> "Model":
         """Create a new model.
 
-        :param name: new model name
-        :type name: str
+        :param uri: the model's URI. This becomes the subject of the model's
+            ``owl:Ontology`` declaration and the namespace its entities live in,
+            so it must be a syntactically valid URI -- typically an
+            ``rdflib.Namespace`` such as ``Namespace("urn:bldg/")``.
+        :type uri: str
         :param description: new model description
         :type description: str
+        :param name: **deprecated** spelling of ``uri``. The parameter was
+            called ``name`` even though it is validated as a URI, becomes the
+            ontology's subject, and is what every tutorial passes a Namespace
+            to -- which is why issue #339 asks for a constructor that already
+            exists (:py:meth:`from_file`).
+        :type name: Optional[str]
+        :raises TypeError: if both ``uri`` and ``name`` are given, or neither
         :return: new model
         :rtype: Model
         """
-        _validate_uri(name)
+        if name is not None:
+            if uri is not None:
+                raise TypeError(
+                    "Model.create() got both uri and name; they are the same "
+                    "argument -- use uri"
+                )
+            warnings.warn(
+                "Model.create(name=...) is deprecated; the argument is the "
+                "model's URI, so it is called uri now.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            uri = name
+        if uri is None:
+            raise TypeError("Model.create() missing required argument 'uri'")
+
+        _validate_uri(uri)
         g = rdflib.Graph()
-        g.add((rdflib.URIRef(name), rdflib.RDF.type, rdflib.OWL.Ontology))
+        g.add((rdflib.URIRef(uri), rdflib.RDF.type, rdflib.OWL.Ontology))
         if description:
             g.add(
-                (rdflib.URIRef(name), rdflib.RDFS.comment, rdflib.Literal(description))
+                (rdflib.URIRef(uri), rdflib.RDFS.comment, rdflib.Literal(description))
             )
         return cls.from_graph(g)
 
@@ -299,11 +332,45 @@ class Model:
         """
         return ShapeCollection.load(self._manifest_id)
 
-    def update_manifest(self, manifest: ShapeCollection):
-        """Updates the manifest for this model by adding in the contents
-        of the shape graph inside the provided SHapeCollection
+    def add_to_manifest(self, manifest: ShapeCollection) -> None:
+        """Add the shapes in ``manifest`` to this model's manifest.
 
-        :param manifest: the ShapeCollection containing additional shapes against which to validate this model
+        This *merges*: existing shapes are kept. Use
+        :py:meth:`replace_manifest` to swap the manifest's contents wholesale.
+
+        :param manifest: a ShapeCollection whose shapes should also apply to
+            this model
         :type manifest: ShapeCollection
         """
         self.get_manifest().graph += manifest.graph
+
+    def replace_manifest(self, manifest: ShapeCollection) -> None:
+        """Replace this model's manifest with the contents of ``manifest``.
+
+        There was previously no way to do this through the public API --
+        ``update_manifest`` only ever merged, so a manifest could grow but never
+        shrink. Uses the ShapeCollection's copy-on-write replacement, so a
+        failure leaves the previous contents intact.
+
+        :param manifest: the ShapeCollection whose shapes become this model's
+            entire manifest
+        :type manifest: ShapeCollection
+        """
+        self.get_manifest().replace_graph(manifest.graph)
+
+    def update_manifest(self, manifest: ShapeCollection) -> None:
+        """Add the shapes in ``manifest`` to this model's manifest.
+
+        .. deprecated::
+            The name says "update" but the behavior is a merge, and there was no
+            counterpart that actually replaced. Use :py:meth:`add_to_manifest`,
+            or :py:meth:`replace_manifest` if you want the wholesale swap the
+            old name implied.
+        """
+        warnings.warn(
+            "Model.update_manifest() merges rather than updates; use "
+            "add_to_manifest() (same behavior) or replace_manifest().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add_to_manifest(manifest)

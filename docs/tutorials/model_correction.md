@@ -56,7 +56,7 @@ model.graph.parse("tutorial2_model.ttl", format="ttl")
 manifest = Library.from_ontology("tutorial2_manifest.ttl")
 
 # assign the manifest to our model
-model.update_manifest(manifest.get_shape_collection())
+model.add_to_manifest(manifest.get_shape_collection())
 ```
 
 ## Model Validation
