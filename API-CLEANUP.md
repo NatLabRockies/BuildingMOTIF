@@ -359,22 +359,50 @@ and it now handles `sh:or` too.
 `add_triples` wrappers. Both are noted in the original review as mild; neither is a defect,
 and changing them is churn without a user-visible win.
 
+### 10. Bare `Exception` in the dataclasses — **done**
+
+There are now **no `raise Exception(...)` left in the package**. Each site got the type that
+actually fits what went wrong, so a caller can catch the case they mean instead of
+`except Exception`, which also swallows real bugs:
+
+| where | was | now |
+|---|---|---|
+| `Model.load()` with neither id nor name | `Exception` | `ValueError` |
+| `Library.load()` with no source (fixed in #6) | `Exception` | `ValueError` |
+| `Library.from_directory()` on a missing directory (#6) | `Exception` | `FileNotFoundError` |
+| `get_template_parts_from_shape`: no `sh:path`, or >1 object type / min count | `Exception` | `ValueError` |
+| `TemplateIngress`: a record left parameters unbound | `Exception` | `ValueError` |
+| `label_parsing` sequence: a parser returned nothing | `Exception` | `RuntimeError` |
+| `generate_spreadsheet`: openpyxl gave no active sheet | `Exception` | `RuntimeError` |
+
+The split is deliberate: `ValueError` where the *caller* passed something wrong (bad
+arguments, a malformed shape, a record missing fields), `RuntimeError` where an invariant or
+a third-party library misbehaved and there is nothing the caller could have passed
+differently.
+
+Non-breaking -- every one of these is still an `Exception` subclass, so existing
+`except Exception` handlers are unaffected. There is a test asserting that.
+
+Stale `:raises Exception:` docstrings were corrected too, including one in
+`ontology_environment` that describes an error it *propagates* from ontoenv rather than
+raises itself.
+
+### 13. `"default"` as a sentinel string — **done**
+
+`CompiledModel.__init__` took `shacl_engine: str = "default"` and treated both `"default"`
+and any falsy value as "inherit from the singleton", while `Model.compile` and
+`Model.validate` next door already used `Optional[str] = None` for the same idea --
+so `Model.compile` had to translate, passing the literal `shacl_engine or "default"`.
+
+Now `Optional[str] = None`, with None meaning inherit, and `Model.compile` forwards its own
+argument unchanged. `"default"` is still accepted so nothing breaks; there is a test for
+that.
+
 ---
 
 ## Proposed, not yet done
 
 Roughly in priority order.
-
-### 10. Bare `Exception` in the dataclasses
-
-`library.py:196` (`Directory {src} does not exist`), `library.py:208`
-(`No library information provided`), `model.py:132` (`Neither id nor name provided`),
-`template.py:624` (`Could not open active sheet in Workbook`). `database/errors.py`
-already has proper classes. Callers can't catch these without `except Exception`.
-
-Fix: `ValueError` for bad arguments, `FileNotFoundError` for the missing directory, and the
-existing `*NotFound` classes where they apply. Mildly breaking for anyone catching
-`Exception` — which still works.
 
 ### 11. `Model.create(name=...)` where "name" is a namespace URI
 
@@ -395,15 +423,6 @@ the same instance hands back different context types from two of its own methods
 Fix: route it through the same branch `validate()` uses. Now that `ValidationResult` exists
 the return type can be `Dict[URIRef, ValidationResult]`. Breaking for anyone reaching for
 `GraphDiff`-specific behavior on the result.
-
-### 13. `"default"` as a sentinel string
-
-`compiled_model.py:42` takes `shacl_engine: str = "default"` and treats `"default"` and
-falsy as "inherit from the singleton". `None` is the obvious sentinel and the rest of the
-codebase already uses it (`Model.compile`, `Model.validate`). Also `Model.compile` passes
-the literal `"default"` through at `model.py:291`.
-
-Fix: `Optional[str] = None`. Keep accepting `"default"` for a release. Nearly non-breaking.
 
 ### 14. `shacl_engine` is a bare string everywhere
 
