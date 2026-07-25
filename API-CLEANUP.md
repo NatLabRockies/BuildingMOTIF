@@ -303,6 +303,62 @@ dependencies -- which reference templates *by name* -- fork combinatorially thro
 inlining, and conflates identity with alternation. An explicit `oneOf:` key listing named
 alternatives would be the better shape if this is ever wanted in YAML.
 
+### 20. `utils.template_to_shape` was dead *and* broken — **done**
+
+Deleted, along with the five helpers only it used (`_TemplateIndex`,
+`_prep_shape_graph`, `_index_properties`, `_add_property_shape`,
+`_add_qualified_property_shape`) -- 152 lines. Verified as a closed cluster first: nothing
+outside `utils.py` referenced any of the six.
+
+It had two runtime bugs, neither reachable. `_index_properties` bound every parameter to
+*itself* (`{p: PARAM[p] ...}`), an identity substitution, so the template was never complete
+and the following `assert isinstance(templ_graph, Graph)` failed; and it passed two
+arguments to `dependency_for_parameter`, which takes one. Both pre-existing, both invisible
+because the only caller was unreachable.
+
+`ShapeCollection.infer_templates` is the direction that is actually used (shape -> template),
+and it now handles `sh:or` too.
+
+### 21. Smaller things — **done**
+
+- **`[tool.mypy] files` only globbed one level** (`buildingmotif/*.py`), so `uv run mypy` --
+  the command in `CLAUDE.md` -- checked 11 files and silently skipped `dataclasses/`,
+  `database/`, `ingresses/`, `api/`, nearly the whole package. Widened to
+  `["buildingmotif", "tests", "migrations"]`, which surfaced **26 real errors in 8 files**;
+  all fixed (below). The config also disagreed with the pre-commit hook's flags, so a bare
+  run reported 27 spurious `import-untyped` errors the hook suppresses --
+  `ignore_missing_imports` and `disable_error_code = ["import-untyped"]` are now in the
+  config, and `uv run mypy` finally enforces exactly what the hook and CI do. Clean across
+  all 103 files.
+- **`shape_builder/shape.py` had 10 implicit-Optional arguments** (`exactly: int = None`).
+- **`DBTemplate.dependencies` was annotated `Mapped["DBTemplateDependency"]`** -- singular --
+  for a one-to-many relationship, so iterating it was a type error. Annotation-only; no
+  schema change, so no migration.
+- **`Singleton.clean` was attached with `setattr` inside `__new__`**, invisible to a type
+  checker, which is why call sites needed `# type: ignore[attr-defined]`. It is a real
+  metaclass method now, and `instance` is declared, so both typecheck.
+- **`sparql_diagnostics` and `RepairWitness.witness` were annotated `"object"`**, which types
+  as having *no* attributes -- consumers, including our own tests, had to fight the checker.
+  Now `SparqlDiagnostic` and `FocusWitness` Protocols describing the surface actually read.
+  Runtime reads stay defensive `getattr`, since the concrete shape is pyshifty's to change.
+- **`Library.load_from_libraries_yml` returned None** and its docstring apologized for it. It
+  returns `List[Library]` in file order. `_resolve_library_definition` now returns the
+  library it loaded, raises `FileNotFoundError` rather than bare `Exception` for a missing
+  directory, and raises `ValueError` for an entry with none of `directory`/`ontology`/`git`
+  (it used to fall off the end and return None). The file is also closed properly now.
+- **`BuildingMOTIF.setup_logging` reconfigured the host application.** Worse than recorded:
+  it added *two handlers to the root logger per construction, unbounded* -- measured 10 after
+  5 constructions -- so a suite that builds and cleans the singleton hundreds of times
+  formatted every record hundreds of times. It also forced the root logger to DEBUG and wrote
+  a truncating `BuildingMOTIF.log` into the working directory every time (the copy at the
+  repo root had reached 3.7 MB; it is gitignored, and nothing referenced it). Now: handlers
+  it installed are replaced rather than stacked, the root level is only ever *lowered* as far
+  as needed, and the log file is opt-in via `BuildingMOTIF(..., log_file=...)`.
+
+**Left alone deliberately:** `Model.graph`'s hand-invalidated `cached_property` and the
+`add_triples` wrappers. Both are noted in the original review as mild; neither is a defect,
+and changing them is churn without a user-visible win.
+
 ---
 
 ## Proposed, not yet done
@@ -402,55 +458,6 @@ building loop, but it isn't in any tutorial, isn't reachable from `Model`, and c
 a detached graph the caller must `add_graph` themselves.
 
 Deferred deliberately — noted here so it isn't rediscovered as new.
-
-### 20. `utils.template_to_shape` is dead *and* broken
-
-`utils.py:451`. No callers anywhere — package, tests, docs, or notebooks. It is also
-broken for any template with required parameters: `_index_properties` (`utils.py:376`)
-binds every parameter to *itself* (`{p: PARAM[p] ...}`), which is an identity
-substitution, so the template is still incomplete afterwards. The old code then hit
-`assert isinstance(templ_graph, Graph)` and raised `AssertionError`; after the item-5
-migration it raises the clearer `IncompleteTemplateError`. Either way it cannot work.
-
-Verified pre-existing: the original `evaluate()` returns a `Template` for that exact call,
-so the assertion failed before this branch too.
-
-The same function had a second latent bug on the line below:
-`templ.dependency_for_parameter(maybe_param, error_on_missing_dependency)` passed two
-arguments to a method that takes one — a `TypeError` on any template with dependency
-parameters. Fixed in passing (the method never accepted the flag). It surfaced only
-because the item-5 commit staged `utils.py` and `template.py` together, putting them in a
-single mypy invocation for the first time; pre-commit's mypy 1.10 catches it, the venv's
-1.9 does not. Two runtime bugs in one unreachable function is the argument for deleting
-it.
-
-Fix: either delete it, or make `_index_properties` operate on the parameterized body
-directly instead of round-tripping through a substitution that does nothing. Deleting is
-probably right — `ShapeCollection.infer_templates` is the direction that's actually used.
-
-### 21. Smaller things
-
-- `Model.graph` is a `cached_property` whose cache is invalidated by hand
-  (`model.py:206`, `dict.pop("graph", None)`). Same pattern in `CompiledModel.add_graph`.
-  Fragile; any new method that swaps the underlying graph must remember to do this.
-- `Model.add_triples(*triples)` / `ShapeCollection.add_triples(*triples)` are thin wrappers
-  over `graph.add` in a loop. Harmless, but they're a second way to do the same thing and
-  neither tutorial uses them.
-- `Library.load_from_libraries_yml` returns `None` and its docstring apologizes for it
-  ("Does not return a Library!"). Should return `List[Library]`.
-- `AlgebraicValidationContext.sparql_diagnostics` and `RepairWitness.witness` are annotated
-  `"object"`, which types as "no attributes". They're pyshifty types; a `Protocol` or
-  `TYPE_CHECKING` import would document them.
-- **`[tool.mypy] files` only globs `buildingmotif/*.py`** (`pyproject.toml:120`) — one level,
-  no recursion. So `uv run mypy` checks 11 files and silently skips `dataclasses/`,
-  `building_motif/`, `database/`, `ingresses/`, `label_parsing/` — nearly the whole package.
-  pre-commit passes staged filenames explicitly so it does check them, which is why this
-  hasn't bitten; but the documented command in `CLAUDE.md` gives false confidence. Should be
-  `["buildingmotif", "tests", "migrations"]`. Expect a backlog of findings when it's widened.
-- `BuildingMOTIF.setup_logging` calls `logging.getLogger()` on the **root** logger, sets it
-  to DEBUG, and unconditionally writes `BuildingMOTIF.log` into the current working
-  directory. That's a library reconfiguring the host application's logging and littering
-  the CWD. Should be opt-in.
 
 ---
 
