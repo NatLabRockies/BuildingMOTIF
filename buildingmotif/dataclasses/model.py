@@ -119,7 +119,7 @@ class Model:
         :type id: Optional[int], optional
         :param name: model name, defaults to None
         :type name: Optional[str], optional
-        :raises Exception: if neither id nor name provided
+        :raises ValueError: if neither id nor name provided
         :return: model
         :rtype: Model
         """
@@ -129,7 +129,7 @@ class Model:
         elif name is not None:
             db_model = bm.table_connection.get_db_model_by_name(name)
         else:
-            raise Exception("Neither id nor name provided to load Model")
+            raise ValueError("Model.load() needs either id or name")
         graph = bm.graph_connection.get_graph(db_model.graph_id)
 
         return cls(
@@ -288,7 +288,7 @@ class Model:
             self,
             shape_collections,
             compiled_graph,
-            shacl_engine=shacl_engine or "default",
+            shacl_engine=shacl_engine,
         )
 
     def get_manifest(self) -> ShapeCollection:

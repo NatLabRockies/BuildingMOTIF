@@ -244,8 +244,8 @@ def get_template_parts_from_shape(
     :type shape_graph: Graph
     :param depedency_graphs: colleciton of graphs and which depdency library they came from
     :type depedency_graphs: dict[str, Graph]
-    :raises Exception: if more than one object type detected on shape
-    :raises Exception: if more than one min count detected on shape
+    :raises ValueError: if a property shape has no sh:path, or declares more
+        than one object type or min count
     :return: template parts
     :rtype: Tuple[Graph, List[Dict]]
     """
@@ -262,7 +262,7 @@ def get_template_parts_from_shape(
     for pshape in pshapes:
         property_path = shape_graph.value(pshape, SH["path"])
         if property_path is None:
-            raise Exception(
+            raise ValueError(
                 f"no sh:path detected on {shape_name} property shape {pshape}"
             )
         # TODO: expand otypes to include sh:in, sh:or, or no datatype at all!
@@ -280,9 +280,9 @@ def get_template_parts_from_shape(
             )
         )
         if len(otypes) > 1:
-            raise Exception(f"more than one object type detected on {shape_name}")
+            raise ValueError(f"more than one object type detected on {shape_name}")
         if len(mincounts) > 1:
-            raise Exception(f"more than one min count detected on {shape_name}")
+            raise ValueError(f"more than one min count detected on {shape_name}")
         if len(mincounts) == 0 or len(otypes) == 0:
             # print(f"No useful information on {shape_name} - {pshape}")
             # print(shape_graph.cbd(pshape).serialize())

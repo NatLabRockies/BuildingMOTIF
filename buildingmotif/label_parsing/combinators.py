@@ -173,7 +173,10 @@ class sequence(Parser):
         for p in self.parsers:
             result = p(target)
             if not result:
-                raise Exception("Expected result")
+                raise RuntimeError(
+                    f"parser {p} returned no result for {target!r}; every "
+                    "parser in a sequence must return at least one TokenResult"
+                )
             results.extend(result)
             # if there are any errors, return the results
             if any(r.error for r in result):

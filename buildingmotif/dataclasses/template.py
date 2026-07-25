@@ -858,7 +858,7 @@ class Template:
         workbook = Workbook()
         sheet = workbook.active
         if sheet is None:
-            raise Exception("Could not open active sheet in Workbook")
+            raise RuntimeError("openpyxl returned a Workbook with no active sheet")
 
         row_data = list(mandatory_parameters) + list(self.optional_args)
         for column_index, cell_value in enumerate(row_data, 1):

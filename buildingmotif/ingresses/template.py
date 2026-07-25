@@ -97,7 +97,11 @@ class TemplateIngress(GraphIngressHandler):
                 _, graph = filled.fill(ns, include_optional=self.require_optional_args)
                 g += graph
                 continue
-            raise Exception(f"Paramaters {filled.parameters} are still unused!")
+            raise ValueError(
+                f"Record did not bind every parameter of "
+                f"{self.template.name}: {sorted(filled.parameters)} remain "
+                "unbound. Pass fill_unused=True to invent names for them."
+            )
         return g
 
 
