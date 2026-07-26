@@ -1,8 +1,9 @@
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 
 import rdflib
-from ontoenv import OntoEnv
+from ontoenv import CatalogRecoveryError, OntoEnv
 
 from buildingmotif.database.graph_connection import _is_uuid
 
@@ -57,7 +58,50 @@ class OntologyEnvironment:
                 # what init_from_store did at construction time
                 self.env.refresh_from_store(full=True)
         else:
-            self.env = OntoEnv.connect(str(path), graph_store=store, **options)
+            self.env = self._connect_recovering(str(path), store, options)
+
+    @staticmethod
+    def _connect_recovering(
+        path: str, store: Optional["BuildingMOTIFGraphStore"], options: Dict[str, Any]
+    ) -> OntoEnv:
+        """``OntoEnv.connect``, clearing a stale interrupted-mutation marker.
+
+        **This is a workaround for an ontoenv defect; delete it once ontoenv
+        stops leaving the marker for tolerable failures.**
+
+        ontoenv writes ``.ontoenv/catalog.pending`` when it begins a batched
+        mutation and removes it only when the batch finishes cleanly
+        (``BatchScope::run``). An *unresolvable* ``owl:imports`` makes the batch
+        end in error, so the marker survives -- and every later open of that
+        cache raises ``CatalogRecoveryError``.
+
+        That is routine here rather than exceptional: Brick declares eight
+        imports that do not resolve offline (several 404 even online), so a
+        single ``Library.from_ontology(Brick)`` permanently poisons a
+        persistent cache. An ontology with no imports leaves no marker, which
+        is how this was isolated. ontoenv exposes no recovery call, so the only
+        way through is to remove the file.
+
+        The cost of doing so: after a genuine crash mid-write the marker is a
+        real signal, and this clears it. That is the trade being made -- one
+        warned retry, and if the retry also fails the error propagates.
+        """
+        try:
+            return OntoEnv.connect(path, graph_store=store, **options)
+        except CatalogRecoveryError:
+            marker = Path(path) / ".ontoenv" / "catalog.pending"
+            if not marker.exists():
+                raise
+            logging.getLogger(__name__).warning(
+                "Clearing stale ontoenv recovery marker at %s. This is normally "
+                "left behind by an unresolvable owl:imports rather than by an "
+                "actual interrupted write; if this repeats, the ontology cache "
+                "at %s may genuinely be damaged and can be deleted.",
+                marker,
+                path,
+            )
+            marker.unlink()
+            return OntoEnv.connect(path, graph_store=store, **options)
 
     def close(self) -> None:
         self.env.close()
