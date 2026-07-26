@@ -68,12 +68,38 @@ class OntologyEnvironment:
     def closure_copy(
         self, ontology: str, recursion_depth: int = -1
     ) -> Tuple[rdflib.Graph, list[str]]:
+        """Materialize the imports closure into a mutable ``rdflib.Graph``.
+
+        Use this only when the caller will *mutate* the result. When the graph
+        is read but never written -- or, as in the two library-loading call
+        sites, discarded entirely in favour of the names -- prefer
+        :py:meth:`closure_view`, which copies nothing.
+        """
         graph, names = self.env.copy_closure(
             ontology,
             rewrite_sh_prefixes=False,
             recursion_depth=recursion_depth,
         )
         return graph, list(names)
+
+    def closure_names(self, ontology: str, recursion_depth: int = -1) -> list[str]:
+        """The names in an ontology's imports closure, without building a graph.
+
+        Callers that only need to know *what is in* the closure should use this
+        rather than discarding :py:meth:`closure_copy`'s first return value.
+        Measured on the Brick 1.4 closure (15 graphs, ~155k triples), repeated
+        three times:
+
+        - ``list_closure``  -- 0.000s, 0.000s, 0.000s
+        - ``copy_closure``  -- 4.271s, 3.879s, 5.322s  (materializes every time)
+        - ``get_closure``   -- 8.846s, 0.000s, 0.000s  (eager permutation
+          indexes on the first bind, free afterwards)
+
+        All three report the same 15 names. ``get_closure``'s read-only view is
+        the right choice for repeated *queries* against a closure, but for a
+        one-shot name lookup its index build is pure overhead.
+        """
+        return list(self.env.list_closure(ontology, recursion_depth=recursion_depth))
 
     def iter_closure_triples(
         self, ontology: str, recursion_depth: int = -1

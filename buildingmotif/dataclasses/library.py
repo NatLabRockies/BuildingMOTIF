@@ -199,7 +199,7 @@ class Library:
 
         closure_names = [ontology_name]
         if fetch_imports:
-            _, closure_names = bm.ontology_environment.closure_copy(ontology_name)
+            closure_names = bm.ontology_environment.closure_names(ontology_name)
 
         return cls._load_from_ontology(
             graph,  # type: ignore[arg-type]
