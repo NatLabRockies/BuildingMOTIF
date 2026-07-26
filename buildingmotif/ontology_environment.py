@@ -99,17 +99,21 @@ class OntologyEnvironment:
 
         Callers that only need to know *what is in* the closure should use this
         rather than discarding :py:meth:`closure_copy`'s first return value.
-        Measured on the Brick 1.4 closure (15 graphs, ~155k triples), repeated
-        three times:
+        Measured on the Brick 1.4 closure (15 graphs, ~155k triples), three
+        reps, on ontoenv 0.6.0a9:
 
         - ``list_closure``  -- 0.000s, 0.000s, 0.000s
-        - ``copy_closure``  -- 4.271s, 3.879s, 5.322s  (materializes every time)
-        - ``get_closure``   -- 8.846s, 0.000s, 0.000s  (eager permutation
-          indexes on the first bind, free afterwards)
+        - ``copy_closure``  -- 3.972s, 3.530s, 3.623s  (materializes every time)
+        - ``get_closure``   -- 2.053s, 2.077s, 2.059s  (read-only view)
 
-        All three report the same 15 names. ``get_closure``'s read-only view is
-        the right choice for repeated *queries* against a closure, but for a
-        one-shot name lookup its index build is pure overhead.
+        All three report the same 15 names, so for a name lookup this is free
+        where the alternatives cost seconds.
+
+        The ``get_closure`` shape changed between releases and the numbers are
+        worth keeping for that reason: on a8 it read 8.846s, 0.000s, 0.000s --
+        one expensive eager index build, then cached. On a9 it is a flat ~2.05s
+        per call. Cheaper on first use, but no longer free on repeat, so
+        "bind once and query many times" is not the win it was on a8.
         """
         return list(self.env.list_closure(ontology, recursion_depth=recursion_depth))
 
@@ -155,6 +159,18 @@ class OntologyEnvironment:
     def ontology_names(self) -> list[str]:
         return list(self.env.get_ontology_names())
 
+    def knows(self, ontology: str) -> bool:
+        """Whether ontoenv can resolve ``ontology``.
+
+        ontoenv >=0.6.0a8 implements the container protocol, so this is a
+        direct lookup rather than building the full name list to test one
+        membership. It is also *broader* than ``ontology in ontology_names()``:
+        ``in`` resolves aliases and source URLs as well as canonical names, so
+        an ontology known under a different spelling is correctly reported as
+        present instead of being needlessly re-added.
+        """
+        return ontology in self.env
+
     def ensure_and_get_closure(
         self,
         graph: rdflib.Graph,
@@ -164,10 +180,15 @@ class OntologyEnvironment:
     ) -> rdflib.Graph:
         """Ensure graph is registered in ontoenv, then return its import closure.
 
+        The returned graph is materialized and mutable. ontoenv's read-only
+        ``get_closure`` view would avoid the copy, but as of 0.6.0a9 a
+        ``ViewGraph`` deliberately **does not subclass rdflib.Graph**, so it
+        cannot be handed back through this signature.
+
         :raises Exception: whatever ontoenv raises if the closure cannot be
             resolved -- this method does not raise on its own.
         """
-        if graph_name not in self.ontology_names():
+        if not self.knows(graph_name):
             self.add(graph, fetch_imports=fetch_imports, overwrite=True)
         closure, _ = self.closure_copy(graph_name, recursion_depth=recursion_depth)
         return closure

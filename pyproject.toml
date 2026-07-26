@@ -44,7 +44,7 @@ dependencies = [
     "types-jsonschema>=4.21.0.20240311,<5",
     "matplotlib>=3.9.2,<4",
     "pandas>=2.2.3,<3",
-    "ontoenv==0.6.0a8",
+    "ontoenv==0.6.0a9",
 ]
 
 # NOTE: the ingress packages (BAC0, openpyxl, netifaces, pytz) are ALSO declared in the
