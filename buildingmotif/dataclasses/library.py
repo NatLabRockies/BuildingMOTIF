@@ -146,9 +146,7 @@ class Library:
                 ontology_graph = bm.ontology_environment.graph_copy(ontology_name)
                 closure_names = [ontology_name]
                 if fetch_imports:
-                    _, closure_names = bm.ontology_environment.closure_copy(
-                        ontology_name
-                    )
+                    closure_names = bm.ontology_environment.closure_names(ontology_name)
                 lib = cls._load_from_ontology(
                     ontology_graph,
                     overwrite=overwrite,
@@ -173,7 +171,7 @@ class Library:
                 return cls.load(name=ontology_name)
             closure_names = [ontology_name]
             if fetch_imports:
-                _, closure_names = bm.ontology_environment.closure_copy(ontology_name)
+                closure_names = bm.ontology_environment.closure_names(ontology_name)
             return cls._load_from_ontology(
                 ontology_graph,
                 overwrite=overwrite,
