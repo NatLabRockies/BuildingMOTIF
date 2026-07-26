@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 
 import rdflib
 from ontoenv import OntoEnv
@@ -31,21 +31,33 @@ class OntologyEnvironment:
         strict: bool = False,
         graph_connection: Optional["GraphConnection"] = None,
     ) -> None:
-        kwargs = {
+        options: Dict[str, Any] = {
             "offline": offline,
             "strict": strict,
             "search_directories": [str(path) for path in search_directories or []],
         }
-        if graph_connection is not None:
-            kwargs["graph_store"] = BuildingMOTIFGraphStore(graph_connection)
-            kwargs["init_from_store"] = True
-        if path is None:
-            kwargs["temporary"] = True
-        else:
-            kwargs["path"] = str(path)
-            kwargs["create_or_use_cached"] = True
+        store = (
+            BuildingMOTIFGraphStore(graph_connection)
+            if graph_connection is not None
+            else None
+        )
 
-        self.env = OntoEnv(**kwargs)
+        # ontoenv >=0.6.0a8 deprecated the `init_from_store` flag in favour of
+        # explicit lifecycle entry points. The two cases are not the same call:
+        #
+        # - persistent: `connect` *is* "create it or reuse the saved index",
+        #   which is what `create_or_use_cached` meant, and it also handles a
+        #   pre-populated store itself (sync="auto" reads graph contents only
+        #   on first encounter, or when the store reports a change).
+        # - temporary: there is no saved index to reuse, so the scan of an
+        #   already-populated store has to be asked for outright.
+        if path is None:
+            self.env = OntoEnv(graph_store=store, temporary=True, **options)
+            if store is not None:
+                # what init_from_store did at construction time
+                self.env.refresh_from_store(full=True)
+        else:
+            self.env = OntoEnv.connect(str(path), graph_store=store, **options)
 
     def close(self) -> None:
         self.env.close()
