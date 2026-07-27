@@ -15,7 +15,10 @@ from rdflib.term import Node
 
 from buildingmotif import get_building_motif
 from buildingmotif.namespaces import BMOTIF, OWL, SH
-from buildingmotif.ontology_environment import OntologyImportsNotFound
+from buildingmotif.ontology_environment import (
+    OntologyImportsNotFound,
+    UnresolvedImportError,
+)
 from buildingmotif.utils import Triple, copy_graph, get_template_parts_from_shape
 
 if TYPE_CHECKING:
@@ -239,8 +242,14 @@ class ShapeCollection:
                 dependency_graphs[str(dependency)] = bm.ontology_environment.graph_copy(
                     str(dependency)
                 )
-            except Exception as e:
-                logging.warning(
+            except UnresolvedImportError as e:
+                # Only an import ontoenv knows it could not resolve is expected
+                # here and skippable -- template inference simply proceeds
+                # without that dependency's shapes. Anything else (a storage
+                # error, a malformed IRI) is a real failure and propagates:
+                # ontoenv >=0.6 types this case precisely so that catching it
+                # no longer swallows those too.
+                logger.warning(
                     f"An ontology could not resolve a dependency on {dependency} ({e}). Check this is loaded into BuildingMOTIF"
                 )
                 continue

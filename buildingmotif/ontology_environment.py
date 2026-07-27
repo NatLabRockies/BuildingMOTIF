@@ -3,12 +3,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 
 import rdflib
-from ontoenv import CatalogRecoveryError, OntoEnv
+from ontoenv import CatalogRecoveryError, OntoEnv, UnresolvedImportError
 
 from buildingmotif.database.graph_connection import _is_uuid
 
 if TYPE_CHECKING:
     from buildingmotif.database.graph_connection import GraphConnection
+
+# ``UnresolvedImportError`` is re-exported so callers can catch an
+# unresolvable ``owl:imports`` without importing ontoenv themselves -- this
+# module is the one place BuildingMOTIF talks to it.
+__all__ = [
+    "BuildingMOTIFGraphStore",
+    "OntologyEnvironment",
+    "OntologyImportsNotFound",
+    "UnresolvedImportError",
+]
 
 
 class OntologyImportsNotFound(Exception):
@@ -43,7 +53,7 @@ class OntologyEnvironment:
             else None
         )
 
-        # ontoenv >=0.6.0a8 deprecated the `init_from_store` flag in favour of
+        # ontoenv >=0.6 deprecated the `init_from_store` flag in favour of
         # explicit lifecycle entry points. The two cases are not the same call:
         #
         # - persistent: `connect` *is* "create it or reuse the saved index",
@@ -64,44 +74,42 @@ class OntologyEnvironment:
     def _connect_recovering(
         path: str, store: Optional["BuildingMOTIFGraphStore"], options: Dict[str, Any]
     ) -> OntoEnv:
-        """``OntoEnv.connect``, clearing a stale interrupted-mutation marker.
-
-        **This is a workaround for an ontoenv defect; delete it once ontoenv
-        stops leaving the marker for tolerable failures.**
+        """``OntoEnv.connect``, rebuilding the catalog after an interrupted write.
 
         ontoenv writes ``.ontoenv/catalog.pending`` when it begins a batched
-        mutation and removes it only when the batch finishes cleanly
-        (``BatchScope::run``). An *unresolvable* ``owl:imports`` makes the batch
-        end in error, so the marker survives -- and every later open of that
-        cache raises ``CatalogRecoveryError``.
+        mutation and removes it when the batch commits; finding it at open time
+        means a process died mid-write, and ontoenv raises
+        ``CatalogRecoveryError`` rather than trust an index that may not
+        describe every stored graph.
 
-        That is routine here rather than exceptional: Brick declares eight
-        imports that do not resolve offline (several 404 even online), so a
-        single ``Library.from_ontology(Brick)`` permanently poisons a
-        persistent cache. An ontology with no imports leaves no marker, which
-        is how this was isolated. ontoenv exposes no recovery call, so the only
-        way through is to remove the file.
+        Under ontoenv <0.6 that was a routine condition rather than an
+        exceptional one -- a merely *unresolvable* ``owl:imports`` also left the
+        marker, so one ``Library.load(ontology_graph=Brick)`` permanently
+        poisoned a persistent cache -- and with no recovery call available the
+        only way through was to delete the marker by hand. 0.6 fixed both ends:
+        a tolerated missing import now commits cleanly and leaves no marker, and
+        ``OntoEnv.recover`` rebuilds the catalog properly.
 
-        The cost of doing so: after a genuine crash mid-write the marker is a
-        real signal, and this clears it. That is the trade being made -- one
-        warned retry, and if the retry also fails the error propagates.
+        So reaching this handler now means a genuinely interrupted write, and
+        recovery is the supported answer to one. It is taken automatically
+        because the alternative is a dead end: recovering a custom store
+        requires passing that store, and ours does not exist until a
+        ``BuildingMOTIF`` has been constructed -- which is what failed. It is
+        logged at warning level because it rescans every stored graph and is
+        therefore much slower than a normal open. ontoenv verifies the rebuild
+        and only clears the marker once the replacement index is published, so
+        a failed recovery leaves the marker in place and raises.
         """
         try:
             return OntoEnv.connect(path, graph_store=store, **options)
         except CatalogRecoveryError:
-            marker = Path(path) / ".ontoenv" / "catalog.pending"
-            if not marker.exists():
-                raise
             logging.getLogger(__name__).warning(
-                "Clearing stale ontoenv recovery marker at %s. This is normally "
-                "left behind by an unresolvable owl:imports rather than by an "
-                "actual interrupted write; if this repeats, the ontology cache "
-                "at %s may genuinely be damaged and can be deleted.",
-                marker,
+                "Rebuilding the ontology catalog at %s after an interrupted "
+                "write. This rescans every stored ontology and may take a "
+                "while.",
                 path,
             )
-            marker.unlink()
-            return OntoEnv.connect(path, graph_store=store, **options)
+            return OntoEnv.recover(path, graph_store=store, **options)
 
     def close(self) -> None:
         self.env.close()
@@ -144,20 +152,20 @@ class OntologyEnvironment:
         Callers that only need to know *what is in* the closure should use this
         rather than discarding :py:meth:`closure_copy`'s first return value.
         Measured on the Brick 1.4 closure (15 graphs, ~155k triples), three
-        reps, on ontoenv 0.6.0a9:
+        reps, on ontoenv 0.6.0:
 
         - ``list_closure``  -- 0.000s, 0.000s, 0.000s
-        - ``copy_closure``  -- 3.972s, 3.530s, 3.623s  (materializes every time)
-        - ``get_closure``   -- 2.053s, 2.077s, 2.059s  (read-only view)
+        - ``copy_closure``  -- 4.601s, 4.081s, 3.849s  (materializes every time)
+        - ``get_closure``   -- 2.435s, 2.418s, 2.479s  (read-only view)
 
         All three report the same 15 names, so for a name lookup this is free
         where the alternatives cost seconds.
 
-        The ``get_closure`` shape changed between releases and the numbers are
-        worth keeping for that reason: on a8 it read 8.846s, 0.000s, 0.000s --
-        one expensive eager index build, then cached. On a9 it is a flat ~2.05s
-        per call. Cheaper on first use, but no longer free on repeat, so
-        "bind once and query many times" is not the win it was on a8.
+        The ``get_closure`` shape changed across the 0.6 alphas and the numbers
+        are worth keeping for that reason: on 0.6.0a8 it read 8.846s, 0.000s,
+        0.000s -- one expensive eager index build, then cached. Since a9 it is
+        a flat ~2.4s per call. Cheaper on first use, but no longer free on
+        repeat, so "bind once and query many times" is not the win it was.
         """
         return list(self.env.list_closure(ontology, recursion_depth=recursion_depth))
 
@@ -206,7 +214,7 @@ class OntologyEnvironment:
     def knows(self, ontology: str) -> bool:
         """Whether ontoenv can resolve ``ontology``.
 
-        ontoenv >=0.6.0a8 implements the container protocol, so this is a
+        ontoenv >=0.6 implements the container protocol, so this is a
         direct lookup rather than building the full name list to test one
         membership. It is also *broader* than ``ontology in ontology_names()``:
         ``in`` resolves aliases and source URLs as well as canonical names, so
@@ -225,7 +233,7 @@ class OntologyEnvironment:
         """Ensure graph is registered in ontoenv, then return its import closure.
 
         The returned graph is materialized and mutable. ontoenv's read-only
-        ``get_closure`` view would avoid the copy, but as of 0.6.0a9 a
+        ``get_closure`` view would avoid the copy, but as of 0.6.0 a
         ``ViewGraph`` deliberately **does not subclass rdflib.Graph**, so it
         cannot be handed back through this signature.
 

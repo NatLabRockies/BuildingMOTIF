@@ -2689,19 +2689,19 @@ files = [
 
 [[package]]
 name = "ontoenv"
-version = "0.6.0a9"
+version = "0.6.0"
 description = "Python bindings for the OntoEnv Rust library. Manages ontology-based environments for building knowledge graphs."
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "ontoenv-0.6.0a9-cp311-abi3-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:ae31958c45e6e7f08c4fe4f8478a8f5cf497a85bc8c7ec79884cd6058f0c52f4"},
-    {file = "ontoenv-0.6.0a9-cp311-abi3-macosx_10_14_x86_64.whl", hash = "sha256:bf09f781538b167b4679ef9e43ea94283da8633fc6835cb11aef0e77bb660dc8"},
-    {file = "ontoenv-0.6.0a9-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:072187a0aa16e4753eabe80e5dd2c80f7992adfc386a1c2ee50bdf7c7e849a12"},
-    {file = "ontoenv-0.6.0a9-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:40f5db25b27c9b7029d1b76538c1beb6ab0020b3aff96dd10687d8300a7c47ba"},
-    {file = "ontoenv-0.6.0a9-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ffae0541ee2421d433af85e18585b8b8735e6a27112b40525a4f955ddb0b56e3"},
-    {file = "ontoenv-0.6.0a9-cp311-abi3-win_amd64.whl", hash = "sha256:237ba30bfeaee64afbb89018386df90b0f8e256c930ccc9db847c68a56a3220c"},
-    {file = "ontoenv-0.6.0a9.tar.gz", hash = "sha256:e370aa76ed0d00d4b168855aed9d06a75cc4ae3f859bc892fd5b21ae728f42c1"},
+    {file = "ontoenv-0.6.0-cp311-abi3-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:dc9bbd65c96bd3915221fa8d129bfdc54b1fa2827b8a9e16d66969fc49343ae3"},
+    {file = "ontoenv-0.6.0-cp311-abi3-macosx_10_14_x86_64.whl", hash = "sha256:01b14970cda48bf0b116bea5f2cae81a6fd67852995015e4e6168e6971f86aa0"},
+    {file = "ontoenv-0.6.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:8b724803b65cd4fbaef606228e6be889957a2b0f20bacfddad3e047ef4995fdc"},
+    {file = "ontoenv-0.6.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0b485f884d197f7801a7898917163ebefeedb07e1ddd60a90f9af238b5acc775"},
+    {file = "ontoenv-0.6.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e4db0050aec1f5a9fbd143c2c8023b90dcc72564d5c928ab44967bad9d30cadf"},
+    {file = "ontoenv-0.6.0-cp311-abi3-win_amd64.whl", hash = "sha256:93ef8f65e402366b4c9fe7bb0ef73152c4cf58db10aa5a85503e1b02c715fe0e"},
+    {file = "ontoenv-0.6.0.tar.gz", hash = "sha256:d55f751fd62fd03b8ce85bbcfcf8649eae9d692968cd61f2311aa692966cc65f"},
 ]
 
 [package.dependencies]
@@ -4971,4 +4971,4 @@ xlsx-ingress = []
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11, <3.13"
-content-hash = "6763ed0c824acce3a52939e16ffd123b8b28e0a613f250e889319fb0e5258c1b"
+content-hash = "15834e417af630957885e3807043f3a7579be2bf463bd053ed6788070bd98d6a"
