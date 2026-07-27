@@ -330,7 +330,7 @@ requires-dist = [
     { name = "netifaces", marker = "extra == 'all-ingresses'", specifier = ">=0.11.0,<0.12" },
     { name = "netifaces", marker = "extra == 'bacnet-ingress'", specifier = ">=0.11.0,<0.12" },
     { name = "networkx", specifier = ">=3.4.2,<4" },
-    { name = "ontoenv", specifier = "==0.6.0a9" },
+    { name = "ontoenv", specifier = ">=0.6.0,<0.7.0" },
     { name = "openpyxl", marker = "extra == 'all'", specifier = ">=3.0.10,<4" },
     { name = "openpyxl", marker = "extra == 'all-ingresses'", specifier = ">=3.0.10,<4" },
     { name = "openpyxl", marker = "extra == 'xlsx-ingress'", specifier = ">=3.0.10,<4" },
@@ -1824,20 +1824,20 @@ wheels = [
 
 [[package]]
 name = "ontoenv"
-version = "0.6.0a9"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oxrdflib" },
     { name = "rdflib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/c7/6e6bb97e63da769d9e2de8499efa07b294f716f2c55b639a2d36b7740e71/ontoenv-0.6.0a9.tar.gz", hash = "sha256:e370aa76ed0d00d4b168855aed9d06a75cc4ae3f859bc892fd5b21ae728f42c1", size = 1279401, upload-time = "2026-07-26T16:34:00.296Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/92/1aaf87a9caaa187540028f8bea0bfe89bf360174c887f471d5b9c46e9bdb/ontoenv-0.6.0.tar.gz", hash = "sha256:d55f751fd62fd03b8ce85bbcfcf8649eae9d692968cd61f2311aa692966cc65f", size = 1291235, upload-time = "2026-07-27T22:09:17.748Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/74/21d445cae185c760f73274cccd37fbc3cf493f94bbf716779d123f8957d7/ontoenv-0.6.0a9-cp311-abi3-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:ae31958c45e6e7f08c4fe4f8478a8f5cf497a85bc8c7ec79884cd6058f0c52f4", size = 14628493, upload-time = "2026-07-26T16:33:46.274Z" },
-    { url = "https://files.pythonhosted.org/packages/d6/ee/073abb9b4a122ab3cbbb2cae9a048cb10c755f8832d64563e939df96b4be/ontoenv-0.6.0a9-cp311-abi3-macosx_10_14_x86_64.whl", hash = "sha256:bf09f781538b167b4679ef9e43ea94283da8633fc6835cb11aef0e77bb660dc8", size = 7504580, upload-time = "2026-07-26T16:33:48.846Z" },
-    { url = "https://files.pythonhosted.org/packages/04/cb/1ba79901b933c221bcb63778e09510895d50ab65c2137162c0e31db0de90/ontoenv-0.6.0a9-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:072187a0aa16e4753eabe80e5dd2c80f7992adfc386a1c2ee50bdf7c7e849a12", size = 7184556, upload-time = "2026-07-26T16:33:50.241Z" },
-    { url = "https://files.pythonhosted.org/packages/cc/8b/7b30fde407f4192970989af791c6fb6dd3e0b514fd15737ee0591f408a2b/ontoenv-0.6.0a9-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:40f5db25b27c9b7029d1b76538c1beb6ab0020b3aff96dd10687d8300a7c47ba", size = 65403397, upload-time = "2026-07-26T16:33:52.255Z" },
-    { url = "https://files.pythonhosted.org/packages/56/70/3f1506c59c0e6977a997eb0409f3bbf2ee03526ce97a2e1a543a057b48f5/ontoenv-0.6.0a9-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ffae0541ee2421d433af85e18585b8b8735e6a27112b40525a4f955ddb0b56e3", size = 66422685, upload-time = "2026-07-26T16:33:55.509Z" },
-    { url = "https://files.pythonhosted.org/packages/2b/08/e7650fca80513e68d05b0e5eace4054199075ad32dc48a9929a6334aa4b1/ontoenv-0.6.0a9-cp311-abi3-win_amd64.whl", hash = "sha256:237ba30bfeaee64afbb89018386df90b0f8e256c930ccc9db847c68a56a3220c", size = 6485966, upload-time = "2026-07-26T16:33:58.019Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/ef/c0fc5ab0927e5aa99ce529782cd780a6f98603c48f1d12cf76978e44da5c/ontoenv-0.6.0-cp311-abi3-macosx_10_14_x86_64.macosx_11_0_arm64.macosx_10_14_universal2.whl", hash = "sha256:dc9bbd65c96bd3915221fa8d129bfdc54b1fa2827b8a9e16d66969fc49343ae3", size = 14156498, upload-time = "2026-07-27T22:09:06.363Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/e5/917271c7aac9d603c951710fa099b0ed367bd356d77cec38a0b0a3025d28/ontoenv-0.6.0-cp311-abi3-macosx_10_14_x86_64.whl", hash = "sha256:01b14970cda48bf0b116bea5f2cae81a6fd67852995015e4e6168e6971f86aa0", size = 7290047, upload-time = "2026-07-27T22:09:08.698Z" },
+    { url = "https://files.pythonhosted.org/packages/63/50/6a15d5f90fd9ac1b7c5f1bf98a4451e15f2ca224c900cf1675ccc4e8032c/ontoenv-0.6.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:8b724803b65cd4fbaef606228e6be889957a2b0f20bacfddad3e047ef4995fdc", size = 6925635, upload-time = "2026-07-27T22:09:10.328Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/e6/4f4a484b23da922d2b96fb36aaf9f6139703b07ae742348cc416322c9aab/ontoenv-0.6.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0b485f884d197f7801a7898917163ebefeedb07e1ddd60a90f9af238b5acc775", size = 6460910, upload-time = "2026-07-27T22:09:11.796Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/fa/1d075ba8969d7f3499674abdea8dbd890a5e3c03fa4e3643d1524e54e02e/ontoenv-0.6.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e4db0050aec1f5a9fbd143c2c8023b90dcc72564d5c928ab44967bad9d30cadf", size = 6928005, upload-time = "2026-07-27T22:09:13.394Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/b4/898ef419c286a9b370d58796f479ef0c4ab4b1cfd4c74744e10c6cce2594/ontoenv-0.6.0-cp311-abi3-win_amd64.whl", hash = "sha256:93ef8f65e402366b4c9fe7bb0ef73152c4cf58db10aa5a85503e1b02c715fe0e", size = 6505538, upload-time = "2026-07-27T22:09:14.658Z" },
 ]
 
 [[package]]
