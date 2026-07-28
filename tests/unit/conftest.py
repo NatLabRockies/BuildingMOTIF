@@ -70,6 +70,11 @@ def bm():
     """
     BuildingMotif instance for tests involving dataclasses and API calls
     """
+    # Constructing the singleton hands back the existing instance if there is
+    # one, so a test that leaked one would silently give this fixture a
+    # database with content already in it. `clean_building_motif` and the api
+    # `building_motif` fixture have always guarded their setup this way.
+    BuildingMOTIF.clean()
     bm = BuildingMOTIF("sqlite://")
     # add tables to db
     bm.setup_tables()
