@@ -1273,7 +1273,12 @@ class AlgebraicValidationContext:
     shapes_graph: Graph
     data_graph: Graph
     model: "Model"
-    # candidate libraries for template-guided repair (default: model's libraries)
+    # Candidate libraries for template-guided repair. Defaults to *empty*, not
+    # to the model's libraries: template guidance is opt-in via the
+    # `repair_libraries` argument of `Model.validate` / `CompiledModel.validate`.
+    # With no libraries the engine still proposes repairs, but only from
+    # recursive synthesis and pyshifty's own candidates -- the template reuse
+    # and mint sources contribute nothing.
     libraries: List["Library"] = field(default_factory=list)
     # search budgets for the repair engine (default: RepairConfig())
     repair_config: Optional[RepairConfig] = None
