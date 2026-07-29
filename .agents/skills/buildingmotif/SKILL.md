@@ -1,6 +1,6 @@
 ---
 name: buildingmotif
-description: Use BuildingMOTIF to validate, repair, and build building metadata models (Brick/223P/SHACL). Covers writing scripts to validate a model and expose failures in building terms, listing templates and inspecting shape libraries, algebraic (pyshifty) validation and soundness-gated graph repair, finding and filling templates, and writing/debugging shapes for pointlists and application requirements. Use when the user mentions BuildingMOTIF, Brick models, SHACL shapes/validation, repair proposals or witnesses, pointlists, templates, or asks whether a model is "sufficient" for an application.
+description: Use BuildingMOTIF to validate, repair, and build building and water-system metadata models (Brick/223P/WaTr/SHACL). Covers writing scripts to validate a model and expose failures in domain terms, listing templates and inspecting shape libraries, algebraic (pyshifty) validation and soundness-gated graph repair, finding and filling templates, and writing/debugging shapes for pointlists and application requirements. Use when the user mentions BuildingMOTIF, Brick, 223P, WaTr, SHACL shapes/validation, repair proposals or witnesses, pointlists, templates, or asks whether a model is "sufficient" for an application.
 ---
 
 # BuildingMOTIF
@@ -101,6 +101,7 @@ repairs interact, and you won't know which one broke or unblocked what.
 | **Build a model** — template library + `Model.create` + `TemplateBuilderContext`, bind to evidence, compile, validate | `references/building_models.md` |
 | Discover/verify Brick class names and inspect class shapes before asserting `a brick:X` | `references/brick_vocabulary.md` |
 | Model ASHRAE 223P (`s223:`) topology — equipment/connections/connection points, properties, roles/domains/media | `references/223p_vocabulary.md` |
+| Model a water treatment system with WaTr (`watr:`) — unit processes, treatment-process types, water media/constituents, and WaTr-on-223P patterns | `references/watr_vocabulary.md` |
 | Build from point lists, BMS labels, BACnet object names, or other source metadata; map suffixes/tokens to Brick classes | `references/point_labels.md` |
 | **Fix a model** — propose/apply repairs, drive the gap→evidence→user→apply loop | `references/repair.md` |
 | **Write shapes** (pointlists, app requirements, manifests, `bmotif:` tags, `constraint:` vocabulary) | `references/writing_shapes.md` |
@@ -241,7 +242,8 @@ Most real requests are one of these:
    `references/building_models.md` (+ `references/writing_templates.md` if you need to
    author templates, `references/evidence.md` for the identifiers,
    `references/brick_vocabulary.md` to verify class names — or
-   `references/223p_vocabulary.md` if the model is 223P topology, not Brick points).
+   `references/223p_vocabulary.md` if the model is 223P topology, not Brick points;
+   add `references/watr_vocabulary.md` when the domain is water treatment).
 4. *"Build a model from this point list / BMS labels / BACnet object names / schedule."*
    → first map source tokens to verified Brick classes, then synthesize graph fragments or
    template bindings and validate. → `references/point_labels.md` +
