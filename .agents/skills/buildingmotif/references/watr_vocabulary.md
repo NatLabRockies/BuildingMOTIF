@@ -64,8 +64,10 @@ Consequently, a WaTr model normally uses all of these prefixes:
 
 ## Loading WaTr with BuildingMOTIF
 
-WaTr is not packaged in `buildingmotif/libraries/`. Download `water.ttl` from the site
-and load that file:
+WaTr is not packaged in `buildingmotif/libraries/`. Download the current WaTr ontology
+from <https://watermetadata.org/water.ttl> and the 223P ontology it extends from
+<https://open223.info/223p.ttl>. Load 223P first, then WaTr, so the inherited 223P
+vocabulary and class templates are available:
 
 ```python
 from rdflib import Namespace
@@ -75,6 +77,10 @@ from buildingmotif.dataclasses import Library
 WATR = Namespace("urn:nawi-water-ontology#")
 
 bm = BuildingMOTIF("sqlite://")
+s223 = Library.from_ontology(
+    "path/to/223p.ttl",
+    run_shacl_inference=False,
+)
 watr = Library.from_ontology(
     "path/to/water.ttl",
     run_shacl_inference=False,
@@ -82,9 +88,11 @@ watr = Library.from_ontology(
 watr_graph = watr.get_shape_collection().graph
 ```
 
-With BuildingMOTIF's default `ontology_fetch_imports=True`, OntoEnv resolves WaTr's 223
-and QUDT imports. For an offline workflow, first populate an ontology cache or local search
-directory with WaTr and its import closure; see `ontology_imports.md`.
+Even with BuildingMOTIF's default `ontology_fetch_imports=True`, explicitly load 223P
+before WaTr as shown above when you need its class templates. OntoEnv resolves the
+remaining transitive imports, including QUDT. For an offline workflow, first populate an
+ontology cache or local search directory with WaTr and its import closure; see
+`ontology_imports.md`.
 
 Load WaTr **before** a template library whose templates depend on WaTr class templates.
 The water-ontology repository's `libraries/templates/` and

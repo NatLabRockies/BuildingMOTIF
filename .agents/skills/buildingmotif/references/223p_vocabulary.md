@@ -9,6 +9,8 @@ when the user's model or shapes target the `s223:` namespace (`http://data.ashra
 mention 223P/s223 by name, or need HVAC system topology (ducts, pipes, connection points)
 rather than a flat point list.
 
+Current compiled ontology: <https://open223.info/223p.ttl>
+
 Everything below is verified against the ontology's own `rdfs:comment` definitions and the
 worked templates in `libraries/ashrae/223p/nrel-templates/` on disk — quoted, not guessed.
 
@@ -16,8 +18,8 @@ worked templates in `libraries/ashrae/223p/nrel-templates/` on disk — quoted, 
 
 223P is **not a builtin library** — unlike `brick/Brick.ttl`, there is no packaged
 `223p/223p.ttl` resource inside `buildingmotif/libraries/`. As an installed-package user
-you need your own copy of the ontology; get it from `open223.info` (see `SKILL.md`'s "Other
-ontologies" table — `/223p.ttl` for the current version), then load it exactly like Brick:
+you need your own copy of the ontology; download the current version from
+<https://open223.info/223p.ttl>, then load it exactly like Brick:
 
 ```python
 from buildingmotif.dataclasses import Library
