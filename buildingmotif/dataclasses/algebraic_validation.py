@@ -50,7 +50,7 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.term import Node
 from rdflib.util import from_n3
 
-from buildingmotif.namespaces import BRICK, OWL, PARAM, RDF, RDFS, SH
+from buildingmotif.namespaces import BRICK, OWL, PARAM, RDF, RDFS
 from buildingmotif.shacl import _shifty_shapes_input, require_shifty
 from buildingmotif.utils import copy_graph, replace_nodes
 
@@ -123,12 +123,42 @@ class FocusWitness(Protocol):
         """The statement that failed."""
         ...
 
+    @property
+    def statement(self) -> int:
+        """pyshifty's identifier for the failed algebra statement."""
+        ...
+
+    @property
+    def selector(self) -> object:
+        """How the focus was selected for the failed statement."""
+        ...
+
     def summary(self) -> object:
         """The failure's atoms."""
         ...
 
     def repair_tree(self) -> object:
         """The tree of repair choices for this failure."""
+        ...
+
+
+@runtime_checkable
+class AlgebraicViolation(Protocol):
+    """The native pyshifty violation paired with a repair witness."""
+
+    @property
+    def focus_node(self) -> object:
+        """The node at which the algebra statement failed."""
+        ...
+
+    @property
+    def shape_name(self) -> object:
+        """The named shape/statement, when pyshifty has one."""
+        ...
+
+    @property
+    def reasons(self) -> Sequence[object]:
+        """Structured validation reasons for this violation."""
         ...
 
 
@@ -153,6 +183,23 @@ def _focus_to_node(focus: object) -> Optional[Node]:
     """Normalize pyshifty focus terms to legacy ValidationContext keys."""
     node = _nt_to_node(focus) if isinstance(focus, str) and focus else None
     return None if isinstance(node, Literal) else node
+
+
+def _engine_term_to_node(term: object) -> Optional[Node]:
+    """Normalize an RDF term exposed by pyshifty.
+
+    Focus/value/path fields use N-Triples terms, while ``Violation.shape_name``
+    is a bare IRI. Keep that wire-format distinction here instead of leaking it
+    into every public diagnostic property.
+    """
+    if isinstance(term, Node):
+        return term
+    if not isinstance(term, str) or not term:
+        return None
+    try:
+        return _nt_to_node(term)
+    except Exception:
+        return URIRef(term)
 
 
 def _triples_to_graph(triples) -> Graph:
@@ -268,20 +315,41 @@ class RepairConfig:
 
 @dataclass(frozen=True)
 class AlgebraicReason:
-    """Legacy-compatible wrapper for pyshifty validation reasons."""
+    """One structured reason from pyshifty's algebraic validation."""
 
     raw: "object"
+    focus: Optional[Node] = None
+    target_shape: Optional[Node] = None
 
     def __getattr__(self, name):
         return getattr(self.raw, name)
 
+    @property
+    def source_constraint(self) -> Optional[object]:
+        """Native algebraic source constraint, when pyshifty provides one.
+
+        pyshifty 0.2.7 does not expose this field. Returning ``None`` is
+        intentional: BuildingMOTIF does not reconstruct a source constraint
+        from the serialized shapes graph or from repair atoms.
+        """
+        return getattr(self.raw, "source_constraint", None)
+
     def reason(self) -> str:
-        # `author_message` (the shape's own `sh:message`, `{$this}`/`{?var}`
-        # already resolved) is what pyshifty itself recommends preferring over
-        # the engine-generated `message` when the shape author supplied one.
-        message = getattr(self.raw, "author_message", None) or getattr(
-            self.raw, "message", None
-        )
+        diagnostic = getattr(self.raw, "sparql_diagnostic", None)
+        # For ordinary core constraints the engine-generated message describes
+        # the precise failing operation ("must be an instance of ..."), while a
+        # property shape's author message may describe the property as a whole
+        # ("at most one Unit") and therefore misstate a nested class failure.
+        # Opaque SPARQL constraints are the inverse case: their author message
+        # is the meaningful explanation and the diagnostic supplies evidence.
+        if diagnostic is not None:
+            message = getattr(self.raw, "author_message", None) or getattr(
+                self.raw, "message", None
+            )
+        else:
+            message = getattr(self.raw, "message", None) or getattr(
+                self.raw, "author_message", None
+            )
         value = getattr(self.raw, "value", None)
         # a message built from a `{$this}`-style sh:message template already
         # names the focus -- prepending value would just repeat it
@@ -293,7 +361,6 @@ class AlgebraicReason:
             text = str(self.raw)
         # present only for a failed sh:sparql/custom SPARQL-based constraint;
         # surfaces the query/bindings/results instead of leaving it a dead end
-        diagnostic = getattr(self.raw, "sparql_diagnostic", None)
         if diagnostic is not None:
             text = f"{text} [{_render_sparql_diagnostic(diagnostic)}]"
         return text
@@ -475,44 +542,144 @@ class RepairWitness:
     witness: "FocusWitness"
     # back-reference to the owning context (holds the session + repair engine)
     context: "AlgebraicValidationContext"
-    # this witness's summary() atoms, best-effort aligned 1:1 with the pyshifty
-    # Reason objects from the context's validate_algebra() run for the same
-    # focus (see AlgebraicValidationContext._reasons_for) -- () when no
-    # alignment could be established. This is what lets a SPARQL-based leaf
-    # (always reported as opaque on the repair-tree side) be explained with
-    # the query/bindings/results pyshifty already computed on the algebra side.
-    reasons: Tuple = ()
+    # the matching violation from the context's separate validate_algebra()
+    # pass. It is the source of validation reasons; witness.summary() remains
+    # repair information and is deliberately kept separate.
+    violation: Optional["AlgebraicViolation"] = None
 
-    def _get_summary(self):
+    @cached_property
+    def repair_summary(self) -> Tuple:
+        """Structured atoms summarizing the available repair operations.
+
+        These are *not* validation findings. For example, a failed ``sh:class``
+        constraint may summarize both deleting an existing edge (``CountHigh``)
+        and adding a missing type (``CountLow``). Use :attr:`validation_reasons`
+        or :meth:`reason` to explain why the focus failed.
+        """
         try:
-            return self.witness.summary()
+            summary = self.witness.summary()
+            if isinstance(summary, (list, tuple)):
+                return tuple(summary)
+            return (summary,) if summary is not None else ()
         except Exception:
             logger.debug(
                 "witness.summary() raised for focus %s", self.focus, exc_info=True
             )
+            return ()
+
+    def _get_summary(self):
+        """Deprecated internal alias retained for repair-generation code."""
+        return self.repair_summary
+
+    @cached_property
+    def validation_reasons(self) -> Tuple[AlgebraicReason, ...]:
+        """Canonical validation findings for this focus/statement."""
+        if self.violation is None:
+            return ()
+        target_shape = _engine_term_to_node(getattr(self.violation, "shape_name", None))
+        return tuple(
+            AlgebraicReason(reason, self.focus, target_shape)
+            for reason in getattr(self.violation, "reasons", ())
+        )
+
+    @property
+    def reasons(self) -> Tuple:
+        """Raw pyshifty reasons, retained for compatibility.
+
+        Prefer :attr:`validation_reasons`, whose entries expose provenance and
+        implement ``reason()``.
+        """
+        return tuple(reason.raw for reason in self.validation_reasons)
+
+    @property
+    def target_shape(self) -> Optional[Node]:
+        """The named algebra statement/shape that failed, when available."""
+        if self.violation is None:
+            return None
+        return _engine_term_to_node(getattr(self.violation, "shape_name", None))
+
+    @property
+    def statement_id(self) -> Optional[int]:
+        """pyshifty's identifier for the failed algebra statement."""
+        statement = getattr(self.witness, "statement", None)
+        return statement if isinstance(statement, int) else None
+
+    @property
+    def selector(self) -> Optional[object]:
+        """The native algebra selector describing how the focus was chosen."""
+        return getattr(self.witness, "selector", None)
+
+    @property
+    def target(self) -> Optional[object]:
+        """The native rendered target of the failed algebra statement."""
+        try:
+            return self.witness.target
+        except Exception:
+            logger.debug(
+                "target: could not read witness.target for focus %s",
+                self.focus,
+                exc_info=True,
+            )
             return None
 
     @property
-    def failed_component(self) -> Optional[URIRef]:
-        """Best-effort SHACL constraint component for legacy compatibility.
+    def statement(self) -> Optional[object]:
+        """Alias for :attr:`target`, retained as the human-facing statement."""
+        return self.target
 
-        Derived from the *structured* witness leaves (``FocusWitness.summary()``
-        ``WitnessKind`` discriminants), which pyshifty keeps stable -- rather
-        than from any rendered/display string, whose format is not guaranteed.
-        """
-        summary = self._get_summary()
-        kinds = {
-            str(getattr(atom, "kind", "")).split(".")[-1] for atom in (summary or [])
+    @property
+    def graph(self) -> Graph:
+        """The complete compiled graph against which this witness exists."""
+        return self.context.data_graph
+
+    @property
+    def shapes_graph(self) -> Graph:
+        """The complete algebra/schema graph used to validate this witness."""
+        return self.context.shapes_graph
+
+    @property
+    def source_constraints(self) -> Tuple[object, ...]:
+        """Native algebraic source constraints exposed by pyshifty, if any."""
+        sources: List[object] = []
+        for reason in self.validation_reasons:
+            source = reason.source_constraint
+            if source is not None and not any(source == seen for seen in sources):
+                sources.append(source)
+        return tuple(sources)
+
+    @property
+    def failed_component(self) -> Optional[URIRef]:
+        """Legacy SHACL component metadata, only when pyshifty provides it."""
+        components = {
+            _engine_term_to_node(
+                getattr(reason.raw, "source_constraint_component", None)
+            )
+            for reason in self.validation_reasons
         }
-        if "CountLow" in kinds:
-            return SH.MinCountConstraintComponent
-        if "CountHigh" in kinds:
-            return SH.MaxCountConstraintComponent
-        if "Not" in kinds:
-            return SH.NotConstraintComponent
-        if "Closed" in kinds:
-            return SH.ClosedConstraintComponent
-        return None
+        components.discard(None)
+        component = next(iter(components)) if len(components) == 1 else None
+        return component if isinstance(component, URIRef) else None
+
+    @property
+    def violation_alignment(self) -> str:
+        """How the repair witness was correlated with its validation result.
+
+        pyshifty currently computes ``RepairSession.witnesses()`` and
+        ``validate_algebra().violations`` independently and exposes no shared
+        statement key. BuildingMOTIF correlates them by focus-local order only
+        when both APIs return the same number of failures for that focus.
+        """
+        return "focus-order" if self.violation is not None else "unavailable"
+
+    @property
+    def failed_shape(self) -> Optional[Node]:
+        """Legacy source-shape metadata, only when pyshifty provides it."""
+        shapes = {
+            _engine_term_to_node(getattr(reason.raw, "source_shape", None))
+            for reason in self.validation_reasons
+        }
+        shapes.discard(None)
+        return next(iter(shapes)) if len(shapes) == 1 else None
 
     @cached_property
     def repair_tree(self):
@@ -570,45 +737,15 @@ class RepairWitness:
         return text
 
     def reason(self) -> str:
-        """Human-readable explanation of this failure (mirrors
-        :meth:`buildingmotif.dataclasses.validation.GraphDiff.reason`).
+        """Human-readable validation reasons for this focus/statement.
 
-        A SPARQL-based leaf (``WitnessKind.Opaque``) is annotated with its
-        pyshifty ``SparqlDiagnostic`` when :attr:`reasons` aligns 1:1 with
-        :meth:`_get_summary` -- see
-        :meth:`AlgebraicValidationContext._reasons_for`."""
-        summary = self._get_summary()
-        if isinstance(summary, (list, tuple)) and summary:
-            aligned = self.reasons if len(self.reasons) == len(summary) else ()
-            parts = []
-            for i, atom in enumerate(summary):
-                kind = str(getattr(atom, "kind", "")).split(".")[-1]
-                path = getattr(atom, "path", None)
-                detail = getattr(atom, "detail", None)
-                seg = f"{self.focus} {kind}".strip()
-                if path:
-                    seg += f" on path {path}"
-                if detail:
-                    seg += f" ({detail})"
-                diagnostic = (
-                    getattr(aligned[i], "sparql_diagnostic", None) if aligned else None
-                )
-                if diagnostic is not None:
-                    seg += f" [{_render_sparql_diagnostic(diagnostic)}]"
-                parts.append(seg)
-            return "; ".join(parts)
-        if summary:
-            return str(summary)
-        try:
-            target = self.witness.target  # type: ignore
-        except Exception:
-            logger.debug(
-                "reason: witness.target raised for focus %s",
-                self.focus,
-                exc_info=True,
-            )
-            target = ""
-        return f"{self.focus} failed {target}".strip()
+        Repair alternatives live on :attr:`repair_summary`,
+        :attr:`repair_tree`, and :meth:`explain`; they are intentionally not
+        rendered as validation findings here.
+        """
+        if self.validation_reasons:
+            return "; ".join(reason.reason() for reason in self.validation_reasons)
+        return f"{self.focus} failed {self.target or ''}".strip()
 
     def proposals(self, limit: int = 8) -> List[RepairProposal]:
         """Ranked, soundness-gated repair proposals for this failure."""
@@ -1346,6 +1483,16 @@ class AlgebraicValidationContext:
         return self._session
 
     @property
+    def algebra(self) -> object:
+        """The complete native result returned by ``validate_algebra()``."""
+        return self._algebra
+
+    @property
+    def violations(self) -> Tuple[AlgebraicViolation, ...]:
+        """All native algebraic violations, independent of repair pairing."""
+        return tuple(self._algebra.violations)  # type: ignore[return-value]
+
+    @property
     def valid(self) -> bool:
         return bool(self._algebra.conforms)
 
@@ -1399,41 +1546,49 @@ class AlgebraicValidationContext:
             grouped[_focus_to_node(v.focus_node)].append(v)
         return dict(grouped)
 
-    def _reasons_for(self, focus: Optional[URIRef], index: int) -> Tuple:
-        """Best-effort pyshifty ``Reason`` objects for the ``index``-th
+    def _violation_for(
+        self, focus: Optional[URIRef], index: int
+    ) -> Optional[AlgebraicViolation]:
+        """Best-effort pyshifty ``Violation`` for the ``index``-th
         ``FocusWitness`` pyshifty returned for ``focus`` (in
-        ``RepairSession.witnesses()`` order), aligned with the corresponding
-        ``Violation.reasons`` from the *separate* ``validate_algebra()`` call
-        this context also runs.
+        ``RepairSession.witnesses()`` order).
 
         Neither pyshifty API documents an explicit key to join a
         ``FocusWitness`` to its ``Violation`` -- both are independent
         evaluations of the same compiled shapes over the same data, in the
-        engine's own constraint-declaration order, which is what makes the
-        positional pairing hold in practice (verified: a witness's
-        ``summary()`` atoms and its matched violation's ``reasons`` line up
-        1:1, including for multiple ``sh:sparql`` constraints on one shape).
-        A count mismatch just means "don't enrich this one" -- never a wrong
-        pairing.
+        engine's own constraint-declaration order. Their repair-summary atoms
+        and validation reasons are *not* expected to align 1:1.
         """
         violations = self._violations_by_focus.get(focus, [])
         if index >= len(violations):
-            return ()
-        return tuple(violations[index].reasons)
+            return None
+        return violations[index]  # type: ignore[no-any-return]
 
     @cached_property
     def witnesses(self) -> List[RepairWitness]:
         """The violation horizon: one :class:`RepairWitness` per failing
         ``(focus, statement)``. Empty iff the graph conforms."""
         out: List[RepairWitness] = []
+        raw_witnesses = self._session.witnesses()
+        witness_counts: Dict[Optional[URIRef], int] = defaultdict(int)
+        for witness in raw_witnesses:
+            witness_counts[_focus_to_node(witness.focus)] += 1
         seen_at_focus: Dict[Optional[URIRef], int] = defaultdict(int)
-        for w in self._session.witnesses():
+        for w in raw_witnesses:
             focus = _focus_to_node(w.focus)
             index = seen_at_focus[focus]
             seen_at_focus[focus] += 1
-            out.append(
-                RepairWitness(focus, w, self, self._reasons_for(focus, index))  # type: ignore
+            violations = self._violations_by_focus.get(focus, [])
+            # Positional correlation is only defensible when the two
+            # independently-computed APIs agree on the number of statements at
+            # this focus. If they disagree, preserve the repair witness but
+            # leave its validation provenance unknown.
+            violation = (
+                self._violation_for(focus, index)
+                if len(violations) == witness_counts[focus]
+                else None
             )
+            out.append(RepairWitness(focus, w, self, violation))  # type: ignore
         return out
 
     def witnesses_by_focus(self) -> Dict[Optional[URIRef], List[RepairWitness]]:
@@ -1482,9 +1637,10 @@ class AlgebraicValidationContext:
         out: Dict[Optional[URIRef], List[AlgebraicReason]] = defaultdict(list)
         for v in self._algebra.violations:
             focus = _focus_to_node(v.focus_node)
+            target_shape = _engine_term_to_node(getattr(v, "shape_name", None))
             for reason in v.reasons:
                 if str(reason.severity).split("#")[-1] == severity_name:
-                    out[focus].append(AlgebraicReason(reason))
+                    out[focus].append(AlgebraicReason(reason, focus, target_shape))
         return dict(out)
 
     def proposals(self, limit: int = 8) -> Dict[Optional[URIRef], List[RepairProposal]]:

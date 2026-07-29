@@ -146,9 +146,9 @@ for focus, failures in ctx.diffset.items():
     for f in failures:
         print("  -", f.reason())
 # urn:bldg/vav1
-#   - urn:bldg/vav1 CountLow on path brick:hasPoint (have 0, need 1)
+#   - urn:bldg/vav1 expected at least 1 value on path brick:hasPoint
 # urn:bldg/vav2
-#   - urn:bldg/vav2 CountLow on path brick:hasPoint (have 0, need 1)
+#   - urn:bldg/vav2 expected at least 1 value on path brick:hasPoint
 ```
 
 `ctx.report_string` is the engine's own textual report (the pyshifty algebra report for
@@ -172,15 +172,36 @@ about `Violation`; `Warning`/`Info` are informational.
 
 With the default engine each failure is a `RepairWitness`. Beyond `.reason()` it exposes
 `.explain()` — the indented AND/OR/Repeat tree of *typed holes* showing the space of edits
-that would fix this one failure. Read it when a `.reason()` looks odd or you need to know
-what the shape *actually* demands vs what you intended:
+that would fix this one failure. `.reason()` is validation information; `.explain()` and
+`.repair_summary` are repair information. Do not interpret a repair atom such as
+`CountHigh` as the source constraint that failed:
 
 ```python
 for w in ctx.witnesses:
     print(w.reason())
+    print(w.validation_reasons)  # structured value/path/severity findings
+    print(w.target_shape)        # named algebra shape/statement, when available
+    print(w.violation)           # full native algebraic violation
+    print(w.violation_alignment) # how it was paired with the repair witness
+    print(w.statement_id)        # native algebra statement identifier
+    print(w.selector)            # focus selector for that statement
+    print(w.target)              # rendered algebra target
+    print(w.graph)               # complete compiled data graph
+    print(w.source_constraints)  # native sources, when pyshifty exposes them
+    print(w.repair_summary)      # structured repair alternatives
     print(w.explain())
     print("blocked?", w.is_blocked)   # True = opaque constraint, no data repair possible
 ```
+
+Use `ctx.algebra` for the complete native `validate_algebra()` result and
+`ctx.violations` for its unmodified violation tuple. These remain authoritative
+even when `w.violation_alignment == "unavailable"` prevents BuildingMOTIF from
+safely joining an independently-computed repair witness to one violation.
+
+The algebraic witness is deliberately independent of the shapes graph's Turtle/blank-node
+encoding. `source_constraints`, `failed_shape`, and `failed_component` remain empty when
+pyshifty does not expose native provenance; BuildingMOTIF will not infer them from repair
+atoms. Use `ctx.report` only when you explicitly want the separate W3C report view.
 
 `w.is_blocked` matters even for read-only validation: a blocked witness (opaque SPARQL,
 identity, coinductive back-edge) means the failure is real but *no data edit can discharge

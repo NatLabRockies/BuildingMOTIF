@@ -267,6 +267,65 @@ def test_get_reasons_with_severity_wraps_pyshifty_reasons(bm: BuildingMOTIF):
     assert reason.message == "at least 1 value(s) required along <http://ex/p>, found 0"
 
 
+def test_class_failure_separates_validation_reason_from_repair_summary(
+    bm: BuildingMOTIF,
+):
+    """Repair atoms describe edit alternatives, not source constraints.
+
+    A wrong-typed value can be repaired either by removing the property value
+    (a CountHigh atom) or typing it correctly (a CountLow atom). The focus
+    interface must still report the actual sh:class failure rather than
+    mislabelling it as a count violation.
+    """
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="""
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        bldg:x a bldg:Foo ; ex:p bldg:wrong_type .
+        """,
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+    witness = ctx.witnesses[0]
+
+    assert witness.focus == BLDG["x"]
+    assert witness.target_shape == EX.S
+    assert "must be an instance of <http://ex/Thing>" in witness.reason()
+    assert "CountHigh" not in witness.reason()
+    assert "max 0" not in witness.reason()
+
+    kinds = {str(atom.kind).split(".")[-1] for atom in witness.repair_summary}
+    assert kinds == {"CountHigh", "CountLow"}
+
+    # The native algebraic API does not currently expose W3C component/source
+    # metadata. BuildingMOTIF leaves it unknown rather than reverse-engineering
+    # it from the shape serialization or the repair tree.
+    assert witness.failed_component is None
+    assert witness.failed_shape is None
+    assert witness.source_constraints == ()
+
+    reason = witness.validation_reasons[0]
+    assert reason.target_shape == EX.S
+    assert reason.source_constraint is None
+    assert reason.path == "<http://ex/p>"
+    assert reason.value == "<urn:bldg/wrong_type>"
+
+    assert witness.violation is not None
+    assert ctx.algebra is ctx._algebra
+    assert ctx.violations == (witness.violation,)
+    assert witness.violation_alignment == "focus-order"
+    assert witness.statement_id == 0
+    assert witness.selector is not None
+    assert witness.target == "node(<urn:bldg/x>)"
+    assert witness.statement == witness.target
+    assert witness.graph is ctx.data_graph
+    assert witness.shapes_graph is ctx.shapes_graph
+
+
 def _sparql_age_shape() -> Graph:
     return Graph().parse(
         data="""
@@ -327,12 +386,16 @@ def test_sparql_constraint_reason_includes_diagnostic(bm: BuildingMOTIF):
     # reason()/explain() no longer stop at "opaque SPARQL -- no algebraic witness"
     assert "query:" in rw.reason()
     assert "query:" in rw.explain()
+    assert rw.failed_component is None
+    assert rw.failed_shape is None
+    assert rw.target_shape == EX.S
 
     # the structured get_reasons_with_severity surface carries it too
     reasons = ctx.get_reasons_with_severity("Violation")
     reason = reasons[BLDG["x"]][0]
     assert reason.reason().startswith("<urn:bldg/x> must have a positive age. [query:")
     assert "ex/age" in reason.reason()
+    assert reason.source_constraint is None
 
 
 def test_as_templates_resolves_violation(bm: BuildingMOTIF):
@@ -425,8 +488,7 @@ def test_all_repair_templates_returns_alternatives(bm: BuildingMOTIF):
 
 
 def test_auto_route_pyshifty_engine_returns_algebraic_context(bm: BuildingMOTIF):
-    """Model.validate with the pyshifty engine returns the new context and keeps
-    the legacy ``diffset`` / ``failed_component`` surface working."""
+    """Model.validate with pyshifty returns the algebraic context and diffset."""
     bm.shacl_engine = "pyshifty"
     shape_graph = Graph().parse(
         data="""
@@ -452,7 +514,8 @@ def test_auto_route_pyshifty_engine_returns_algebraic_context(bm: BuildingMOTIF)
     # legacy-compatible diffset surface
     assert len(ctx.diffset) == 1
     witness = next(iter(ctx.diffset.values())).pop()
-    assert witness.failed_component == SH.MinCountConstraintComponent
+    assert witness.failed_component is None
+    assert witness.validation_reasons
     assert BLDG["z1"] in ctx.get_broken_entities()
 
     # repairing the label makes it conform

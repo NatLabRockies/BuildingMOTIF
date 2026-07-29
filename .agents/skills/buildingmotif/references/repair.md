@@ -73,11 +73,27 @@ and `w.is_blocked` (whether repair is even possible):
 
 ```python
 for w in ctx.witnesses:
-    w.focus            # the failing node (None = graph-level failure)
-    w.reason()         # "urn:bldg/vav1 CountLow on path brick:hasPoint (have 0, need 1)"
-    w.is_blocked       # True -> no data repair possible in scope; do not fight it
-    print(w.explain()) # the repair tree, indented
+    w.focus               # the failing node (None = graph-level failure)
+    w.reason()            # why validation failed, from validate_algebra()
+    w.validation_reasons  # structured reasons, including path/value/severity
+    w.target_shape        # named algebra statement/shape, when available
+    w.violation           # full native pyshifty algebraic violation
+    w.violation_alignment # "focus-order" or "unavailable"
+    w.statement_id        # native algebra statement identifier
+    w.selector            # how the focus was selected for that statement
+    w.target              # rendered algebra target
+    w.graph               # complete compiled graph for this violation
+    w.shapes_graph        # complete algebra/schema graph
+    w.source_constraints  # native sources, when pyshifty exposes them
+    w.repair_summary      # repair atoms -- edit choices, NOT validation findings
+    w.is_blocked          # True -> no data repair possible in scope; do not fight it
+    print(w.explain())    # the repair tree, indented
 ```
+
+At the context level, `ctx.algebra` is the complete native
+`validate_algebra()` result and `ctx.violations` is its violation tuple. Those
+surfaces do not depend on correlating a validation violation with a repair
+witness.
 
 `w.explain()` prints the AND/OR/Repeat tree of typed holes — the *space* of edits that
 would fix this failure. Read it when a proposal looks strange; it shows what the shape
@@ -89,6 +105,15 @@ Repeat [1..∞]:
     add <urn:bldg/vav1> <brick:hasPoint> ?0
     ?0 : instance of <brick:Temperature_Sensor>
 ```
+
+Keep the two halves distinct: `w.reason()` / `w.validation_reasons` say **what
+failed**, while `w.repair_summary` / `w.explain()` say **what edits could fix it**.
+A class failure may have both a `CountHigh` repair atom (delete the bad edge) and a
+`CountLow` atom (add the missing type); those atoms are alternatives, not count
+violations. `source_constraints`, `failed_shape`, and `failed_component` remain empty
+when pyshifty does not provide native provenance. BuildingMOTIF does not reconstruct
+them from the Turtle encoding or the repair tree; query `ctx.report` explicitly when
+you specifically need the W3C report view.
 
 To present the whole violation horizon grouped by focus node (the notebooks' way of
 reading a real model's report), iterate `ctx.diffset`:
