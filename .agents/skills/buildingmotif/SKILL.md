@@ -179,8 +179,8 @@ resolves, or a local copy for `ontology_search_directories` / offline loads:
 | Ontology | Where to get it | Notes |
 |---|---|---|
 | **Brick** (unreleased/newer than the builtin) | [Nightly Build release on GitHub](https://github.com/BrickSchema/Brick/releases/tag/nightly) — `Brick.ttl` asset, rebuilt continuously off `master` | The builtin `brick/Brick.ttl` (above) is pinned to a release; use the nightly asset when you need a fix that hasn't been tagged yet. `Brick-only.ttl` (no imports) and `Brick+imports.ttl` are also published there. |
-| **223P** | [open223.info](https://open223.info) — `/223p.ttl` for the current version | Community-maintained ASHRAE 223P tooling/ontology hub, not an official ASHRAE distribution. Modeling patterns and vocabulary: `references/223p_vocabulary.md`. |
-| **WATR** | [watermetadata.org](https://watermetadata.org) — ontology download link on the site (`water.ttl`); source at [github.com/DataDrivenCPS/water-ontology](https://github.com/DataDrivenCPS/water-ontology) | NAWI-funded water-systems metadata ontology; Brick's counterpart for water. |
+| **223P** | [open223.info/223p.ttl](https://open223.info/223p.ttl) | Community-maintained ASHRAE 223P tooling/ontology hub, not an official ASHRAE distribution. Modeling patterns and vocabulary: `references/223p_vocabulary.md`. |
+| **WATR** | [watermetadata.org/water.ttl](https://watermetadata.org/water.ttl); source at [github.com/DataDrivenCPS/water-ontology](https://github.com/DataDrivenCPS/water-ontology) | NAWI-funded water-systems metadata ontology; Brick's counterpart for water. |
 | **QUDT** | dereference its own namespace URIs (e.g. `http://qudt.org/schema/qudt/`, `http://qudt.org/vocab/unit/`) | Don't vendor a copy — QUDT's IRIs are the canonical, dereferenceable source; OntoEnv/rdflib resolve them directly when fetching is on. |
 
 Same load-order rule as Brick applies here: if a library's templates depend on 223P or WATR
