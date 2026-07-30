@@ -76,7 +76,9 @@ Three relations do the topology work, verified from their own `rdfs:comment`s:
 - **`s223:mapsTo`** — "associate a ConnectionPoint of a Connectable to a corresponding
   ConnectionPoint of the one containing it" (the equipment-*containment* pattern, via
   `s223:contains`): when equipment A contains sub-equipment B, and B's connection point is
-  what A exposes externally, A's own connection point `mapsTo` B's internal one.
+  what A exposes externally, A's own connection point `mapsTo` B's internal one. The
+  current shapes permit at most one `mapsTo` value and at most one inverse `mapsTo` value:
+  this relation is one-to-one, not a manifold for several parallel child ports.
 
 There's also a plain **`s223:connected`** (symmetric, no direction) and directional
 **`s223:connectedTo`**/`connectedFrom` for cases where you want topology without an
@@ -245,28 +247,25 @@ def qudt_check(term):  # term: a QUDTQK.X quantity kind or a unit IRI
 qudt_check(QUDTQK.SurgeImpedanceOfTheMedium)  # example: check before using
 ```
 
-(This assumes the QUDT terms are resolved into the same graph you're querying — true after
-loading `223p.ttl`, since it vendors the QUDT definitions it uses; for a unit/quantity kind
-that only exists in a separately-fetched QUDT ontology, resolve imports first per
-`ontology_imports.md`.)
+(This assumes the QUDT terms are present in the graph being queried. A library's direct
+shape graph does not necessarily include OntoEnv's resolved import closure. If the term is
+absent, query the resolved closure per `ontology_imports.md` before declaring it missing.)
 
 ## Gotchas
 
-- **Unconnected `ConnectionPoint`s fail validation.** A model where a `ConnectionPoint`
-  exists but has neither an outgoing `cnx` nor is the target of some equipment's
-  `hasConnectionPoint` will not conform — every connection point needs to terminate
-  *somewhere*. If a real connection point genuinely leaves the scope of what you're
-  modeling (e.g. a duct exiting the building), terminate it deliberately rather than
-  leaving it dangling:
-  ```python
-  from rdflib import URIRef
-  from buildingmotif.namespaces import RDF, S223
-  plug = URIRef("urn:plug/1")
-  g.add((loose_connection_point, S223.cnx, plug))
-  g.add((plug, RDF.type, S223.Connectable))
-  ```
+- **Do not invent a plug for an unconnected `ConnectionPoint`.** In the current 223
+  shapes, a port with no `connectsThrough` or `mapsTo` produces an `sh:Info` suggestion,
+  not a violation. Connect it when the physical connection is known. For an intentional
+  model boundary, a containing `s223:System` can identify a member equipment's port with
+  `s223:hasBoundaryConnectionPoint` (must be connected when integrated) or
+  `s223:hasOptionalConnectionPoint` (may remain unconnected). Otherwise leave the port
+  unconnected and report the information-level gap. Never silence it by minting an
+  abstract `s223:Connectable`.
 - **`ConnectionPoint`/`Connectable` are abstract** — see above. Validation failures naming
   these directly mean you asserted the abstract class instead of a concrete subclass.
+- **`mapsTo` is one-to-one in both directions.** Several contained filters or reactors
+  cannot all `mapsTo` one composite inlet or outlet; use evidence-backed junction/manifold
+  topology or leave their parallel ports unaggregated.
 - **Role/Domain/Medium are values, not types.** A shape requirement phrased as "must have a
   heating role" is `sh:hasValue s223:Role-Heating` on `s223:hasRole`, not a class check.
 - **`System` never gets `hasConnectionPoint`.** If validation wants a `ConnectionPoint` on
