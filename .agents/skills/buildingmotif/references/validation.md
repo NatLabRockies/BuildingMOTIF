@@ -184,24 +184,34 @@ for w in ctx.witnesses:
     print(w.violation)           # full native algebraic violation
     print(w.violation_alignment) # how it was paired with the repair witness
     print(w.statement_id)        # native algebra statement identifier
+    print(w.constraint_id)       # statement-level algebra id
+    print(w.constraint_kind)     # enumerated top-level algebra operator
+    print(w.constraint)          # complete top-level algebra constraint
     print(w.selector)            # focus selector for that statement
     print(w.target)              # rendered algebra target
     print(w.graph)               # complete compiled data graph
-    print(w.source_constraints)  # native sources, when pyshifty exposes them
+    print(w.source_constraints)  # native reason-level algebra constraints
     print(w.repair_summary)      # structured repair alternatives
     print(w.explain())
     print("blocked?", w.is_blocked)   # True = opaque constraint, no data repair possible
 ```
 
 Use `ctx.algebra` for the complete native `validate_algebra()` result and
-`ctx.violations` for its unmodified violation tuple. These remain authoritative
-even when `w.violation_alignment == "unavailable"` prevents BuildingMOTIF from
-safely joining an independently-computed repair witness to one violation.
+`ctx.violations` for its unmodified violation tuple. BuildingMOTIF joins the
+independently computed validation and repair results by pyshifty's stable
+`(focus, statement_id, constraint_id)` identity, reported as
+`w.violation_alignment == "stable-id"`. `unavailable` means no safe join could
+be made; BuildingMOTIF never falls back to positional correlation.
 
 The algebraic witness is deliberately independent of the shapes graph's Turtle/blank-node
-encoding. `source_constraints`, `failed_shape`, and `failed_component` remain empty when
-pyshifty does not expose native provenance; BuildingMOTIF will not infer them from repair
-atoms. Use `ctx.report` only when you explicitly want the separate W3C report view.
+encoding. `w.constraint` is the statement-level algebra used to synthesize repair.
+Each `w.validation_reasons` entry has its own `.constraint`, `.constraint_id`, and
+`.constraint_kind` identifying the specific, potentially nested algebra node that
+produced that cause. Repair atoms likewise carry leaf-level constraint provenance,
+but it describes the edit alternative and is not substituted for validation provenance.
+`failed_shape` and `failed_component` remain empty unless pyshifty explicitly preserves
+those W3C fields; BuildingMOTIF will not infer them from repair atoms. Use `ctx.report`
+only when you explicitly want the separate W3C report view.
 
 `w.is_blocked` matters even for read-only validation: a blocked witness (opaque SPARQL,
 identity, coinductive back-edge) means the failure is real but *no data edit can discharge

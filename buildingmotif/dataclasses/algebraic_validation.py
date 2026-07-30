@@ -34,7 +34,6 @@ from functools import cached_property
 from itertools import product
 from typing import (
     TYPE_CHECKING,
-    Any,
     Dict,
     List,
     Optional,
@@ -129,6 +128,26 @@ class FocusWitness(Protocol):
         ...
 
     @property
+    def statement_id(self) -> int:
+        """Stable statement id shared with algebraic violations."""
+        ...
+
+    @property
+    def constraint_id(self) -> int:
+        """Stable top-level constraint id shared with algebraic violations."""
+        ...
+
+    @property
+    def constraint_kind(self) -> object:
+        """The top-level algebraic constraint discriminant."""
+        ...
+
+    @property
+    def constraint(self) -> object:
+        """The complete top-level algebraic constraint."""
+        ...
+
+    @property
     def selector(self) -> object:
         """How the focus was selected for the failed statement."""
         ...
@@ -154,6 +173,16 @@ class AlgebraicViolation(Protocol):
     @property
     def shape_name(self) -> object:
         """The named shape/statement, when pyshifty has one."""
+        ...
+
+    @property
+    def statement_id(self) -> int:
+        """Stable statement id shared with the repair witness."""
+        ...
+
+    @property
+    def constraint_id(self) -> int:
+        """Stable top-level constraint id shared with the repair witness."""
         ...
 
     @property
@@ -326,13 +355,33 @@ class AlgebraicReason:
 
     @property
     def source_constraint(self) -> Optional[object]:
-        """Native algebraic source constraint, when pyshifty provides one.
+        """The native algebraic constraint that produced this reason.
 
-        pyshifty 0.2.7 does not expose this field. Returning ``None`` is
-        intentional: BuildingMOTIF does not reconstruct a source constraint
-        from the serialized shapes graph or from repair atoms.
+        This is algebraic provenance, not a W3C SHACL source component.
         """
-        return getattr(self.raw, "source_constraint", None)
+        return getattr(self.raw, "constraint", None)
+
+    @property
+    def constraint(self) -> Optional[object]:
+        """The complete native algebra node that produced this reason."""
+        return self.source_constraint
+
+    @property
+    def statement_id(self) -> Optional[int]:
+        """The enclosing top-level statement's stable id."""
+        value = getattr(self.raw, "statement_id", None)
+        return value if isinstance(value, int) else None
+
+    @property
+    def constraint_id(self) -> Optional[int]:
+        """The specific, potentially nested algebra node's stable id."""
+        value = getattr(self.raw, "constraint_id", None)
+        return value if isinstance(value, int) else None
+
+    @property
+    def constraint_kind(self) -> Optional[object]:
+        """The specific algebra node's enumerated semantic kind."""
+        return getattr(self.raw, "constraint_kind", None)
 
     def reason(self) -> str:
         diagnostic = getattr(self.raw, "sparql_diagnostic", None)
@@ -546,6 +595,8 @@ class RepairWitness:
     # pass. It is the source of validation reasons; witness.summary() remains
     # repair information and is deliberately kept separate.
     violation: Optional["AlgebraicViolation"] = None
+    # "stable-id" for the native (focus, statement_id, constraint_id) join.
+    alignment: str = "unavailable"
 
     @cached_property
     def repair_summary(self) -> Tuple:
@@ -600,9 +651,25 @@ class RepairWitness:
 
     @property
     def statement_id(self) -> Optional[int]:
-        """pyshifty's identifier for the failed algebra statement."""
-        statement = getattr(self.witness, "statement", None)
+        """The failed statement's stable native identifier."""
+        statement = getattr(self.witness, "statement_id", None)
         return statement if isinstance(statement, int) else None
+
+    @property
+    def constraint_id(self) -> Optional[int]:
+        """The top-level algebraic constraint id shared with the violation."""
+        value = getattr(self.witness, "constraint_id", None)
+        return value if isinstance(value, int) else None
+
+    @property
+    def constraint_kind(self) -> Optional[object]:
+        """The top-level algebraic constraint's enumerated semantic kind."""
+        return getattr(self.witness, "constraint_kind", None)
+
+    @property
+    def constraint(self) -> Optional[object]:
+        """The complete top-level algebraic constraint for this witness."""
+        return getattr(self.witness, "constraint", None)
 
     @property
     def selector(self) -> Optional[object]:
@@ -623,9 +690,10 @@ class RepairWitness:
             return None
 
     @property
-    def statement(self) -> Optional[object]:
-        """Alias for :attr:`target`, retained as the human-facing statement."""
-        return self.target
+    def statement(self) -> Optional[int]:
+        """The failed statement index, matching pyshifty's native surface."""
+        value = getattr(self.witness, "statement", self.statement_id)
+        return value if isinstance(value, int) else self.statement_id
 
     @property
     def graph(self) -> Graph:
@@ -664,12 +732,12 @@ class RepairWitness:
     def violation_alignment(self) -> str:
         """How the repair witness was correlated with its validation result.
 
-        pyshifty currently computes ``RepairSession.witnesses()`` and
-        ``validate_algebra().violations`` independently and exposes no shared
-        statement key. BuildingMOTIF correlates them by focus-local order only
-        when both APIs return the same number of failures for that focus.
+        pyshifty 0.2.8+ exposes a stable
+        ``(focus, statement_id, constraint_id)`` key on both independently
+        computed results. ``unavailable`` means that key was absent,
+        non-unique, or did not match.
         """
-        return "focus-order" if self.violation is not None else "unavailable"
+        return self.alignment
 
     @property
     def failed_shape(self) -> Optional[Node]:
@@ -1535,34 +1603,46 @@ class AlgebraicValidationContext:
             )
         return report_graph
 
+    @staticmethod
+    def _correlation_key(item: object, focus_attr: str) -> Optional[Tuple]:
+        """Return pyshifty's stable validation/repair join key, if available."""
+        focus = _focus_to_node(getattr(item, focus_attr, None))
+        statement_id = getattr(item, "statement_id", None)
+        constraint_id = getattr(item, "constraint_id", None)
+        if statement_id is None or constraint_id is None:
+            return None
+        try:
+            hash((focus, statement_id, constraint_id))
+        except TypeError:
+            return None
+        return (focus, statement_id, constraint_id)
+
     @cached_property
-    def _violations_by_focus(self) -> Dict[Optional[URIRef], List[Any]]:
-        """``self._algebra.violations``, grouped by focus and kept in the
-        engine's own per-focus order -- used by :meth:`_reasons_for` to align
-        with :meth:`_session.witnesses`, which pyshifty computes independently
-        (a second pass over the same shapes/data)."""
-        grouped: Dict[Optional[URIRef], List[Any]] = defaultdict(list)
-        for v in self._algebra.violations:
-            grouped[_focus_to_node(v.focus_node)].append(v)
+    def _violations_by_key(self) -> Dict[Tuple, List[AlgebraicViolation]]:
+        """Native violations indexed by their stable algebraic identity."""
+        grouped: Dict[Tuple, List[AlgebraicViolation]] = defaultdict(list)
+        for violation in self.violations:
+            key = self._correlation_key(violation, "focus_node")
+            if key is not None:
+                grouped[key].append(violation)
         return dict(grouped)
 
     def _violation_for(
-        self, focus: Optional[URIRef], index: int
-    ) -> Optional[AlgebraicViolation]:
-        """Best-effort pyshifty ``Violation`` for the ``index``-th
-        ``FocusWitness`` pyshifty returned for ``focus`` (in
-        ``RepairSession.witnesses()`` order).
+        self,
+        witness: FocusWitness,
+    ) -> Tuple[Optional[AlgebraicViolation], str]:
+        """Pair a repair witness with its validation violation.
 
-        Neither pyshifty API documents an explicit key to join a
-        ``FocusWitness`` to its ``Violation`` -- both are independent
-        evaluations of the same compiled shapes over the same data, in the
-        engine's own constraint-declaration order. Their repair-summary atoms
-        and validation reasons are *not* expected to align 1:1.
+        The independently computed APIs are joined only by their shared native
+        algebraic identity. A missing, unmatched, or non-unique key is never
+        silently downgraded to positional correlation.
         """
-        violations = self._violations_by_focus.get(focus, [])
-        if index >= len(violations):
-            return None
-        return violations[index]  # type: ignore[no-any-return]
+        key = self._correlation_key(witness, "focus")
+        if key is not None:
+            matches = self._violations_by_key.get(key, [])
+            if len(matches) == 1:
+                return matches[0], "stable-id"
+        return None, "unavailable"
 
     @cached_property
     def witnesses(self) -> List[RepairWitness]:
@@ -1570,25 +1650,12 @@ class AlgebraicValidationContext:
         ``(focus, statement)``. Empty iff the graph conforms."""
         out: List[RepairWitness] = []
         raw_witnesses = self._session.witnesses()
-        witness_counts: Dict[Optional[URIRef], int] = defaultdict(int)
-        for witness in raw_witnesses:
-            witness_counts[_focus_to_node(witness.focus)] += 1
-        seen_at_focus: Dict[Optional[URIRef], int] = defaultdict(int)
         for w in raw_witnesses:
             focus = _focus_to_node(w.focus)
-            index = seen_at_focus[focus]
-            seen_at_focus[focus] += 1
-            violations = self._violations_by_focus.get(focus, [])
-            # Positional correlation is only defensible when the two
-            # independently-computed APIs agree on the number of statements at
-            # this focus. If they disagree, preserve the repair witness but
-            # leave its validation provenance unknown.
-            violation = (
-                self._violation_for(focus, index)
-                if len(violations) == witness_counts[focus]
-                else None
+            violation, alignment = self._violation_for(w)
+            out.append(
+                RepairWitness(focus, w, self, violation, alignment)  # type: ignore
             )
-            out.append(RepairWitness(focus, w, self, violation))  # type: ignore
         return out
 
     def witnesses_by_focus(self) -> Dict[Optional[URIRef], List[RepairWitness]]:
