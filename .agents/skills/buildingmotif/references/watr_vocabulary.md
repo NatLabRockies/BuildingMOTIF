@@ -25,6 +25,7 @@ instead of copying a local name from an old model or guessing from prose.
 
 - [Namespaces and imports](#namespaces-and-imports)
 - [Loading WaTr with BuildingMOTIF](#loading-watr-with-buildingmotif)
+- [Fast path: build WaTr from SCADA or point tags](#fast-path-build-watr-from-scada-or-point-tags)
 - [The three layers of a WaTr model](#the-three-layers-of-a-watr-model)
 - [Topology and composition come from 223](#topology-and-composition-come-from-223)
 - [Water media, constituents, and chemicals](#water-media-constituents-and-chemicals)
@@ -98,6 +99,44 @@ Load WaTr **before** a template library whose templates depend on WaTr class tem
 The water-ontology repository's `libraries/templates/` and
 `libraries/nrel-223p-templates/` are useful examples, but they are external, repo-only
 sample libraries—not BuildingMOTIF builtins and not part of `water.ttl`.
+
+`watr_graph` above is the direct WaTr shape graph, not necessarily the full resolved QUDT
+import closure. Do not conclude that a QUDT term is missing merely because it is absent
+from `watr_graph`; query OntoEnv's resolved closure as described in
+`ontology_imports.md`. Load the libraries once per process and reuse them—restarting Python
+for every term check repeatedly reloads the same ontology closure.
+
+When exact QUDT inspection is necessary, build the closure once:
+
+```python
+qudt_closure, imported_names = bm.ontology_environment.closure_copy(
+    "urn:nawi-water-ontology"
+)
+
+def term_exists(term):
+    return (term, None, None) in qudt_closure
+```
+
+## Fast path: build WaTr from SCADA or point tags
+
+For a CSV containing compact tags such as `UF-Feed_Pressure_psi`, do not begin by
+enumerating the whole WaTr, 223P, or QUDT ontology:
+
+1. Parse the input and list distinct equipment prefixes, measurement/state/command
+   suffixes, and unit suffixes.
+2. Separate evidence from inference. Tags can support equipment identifiers and
+   measurement associations, but usually do not prove inter-unit piping, process order,
+   or an ambiguous abbreviation such as `DP` or `DFO`. Ask once about those material
+   choices.
+3. Verify only the terms required by the distinct mapping table.
+4. Build one representative unit with representative numeric, enumerated, observable,
+   and actuatable properties; validate it before expanding to every row.
+5. Scale the same visible mapping table across the input. Keep unresolved tags unresolved
+   and report them—"assigned to a node" is not the same as "semantically confirmed."
+
+Direct triples are normal for heterogeneous tag leaves. Use templates for repeated
+equipment assemblies when a suitable WaTr/223P template library is available; do not
+author a template merely to type each CSV row.
 
 ## The three layers of a WaTr model
 
@@ -277,6 +316,42 @@ Use QUDT's `qudt:hasQuantityKind` and `qudt:hasUnit`; do not use similarly named
 `s223:` properties. Check terms against the imported QUDT version and follow the
 deprecation check in `223p_vocabulary.md`.
 
+Before scaling a tag mapper, validate these load-bearing 223/WaTr requirements:
+
+- every observable property has a single-property `s223:Sensor` with `s223:observes` and
+  `s223:hasObservationLocation`;
+- every enumerable property has `s223:hasEnumerationKind`;
+- every actuatable property is linked from its equipment with
+  `s223:actuatedByProperty`;
+- every quantifiable property has a verified QUDT quantity kind and unit;
+- every specific WaTr unit process has its required `watr:hasProcess`;
+- concrete equipment and connection-point classes meet their inlet/outlet and medium
+  constraints;
+- `s223:mapsTo` is one-to-one in both directions—do not map several parallel columns to
+  one composite port.
+
+Do not substitute a dimensionally related but differently scaled unit merely to make
+validation pass. For example, `mW/cm²` cannot silently become `mW/m²`; convert the values
+or represent and document an exact project unit.
+
+These are useful starting mappings for common tag suffixes, not permission to skip the
+current-closure and deprecation checks:
+
+| Source suffix | Typical quantity kind | Typical QUDT unit |
+|---|---|---|
+| `mg/L` | `quantitykind:MassConcentration` | `unit:MilliGM-PER-L` |
+| `GPM` | `quantitykind:VolumeFlowRate` | `unit:GAL_US-PER-MIN` |
+| `mL/min` | `quantitykind:VolumeFlowRate` | `unit:MilliL-PER-MIN` |
+| `psi` | `quantitykind:Pressure` | `unit:PSI` |
+| `C` | `quantitykind:Temperature` | `unit:DEG_C` |
+| `NTU` | `quantitykind:Turbidity` | `unit:NTU` |
+| `%` | context-dependent, often `quantitykind:DimensionlessRatio` | `unit:PERCENT` |
+| `ppm` / `ppb` | context-dependent concentration or ratio | `unit:PPM` / `unit:PPB` |
+| `gal` | `quantitykind:Volume` | `unit:GAL_US` |
+| `s` / `min` / `hr` | `quantitykind:Time` | `unit:SEC` / `unit:MIN` / `unit:HR` |
+| `V` / `A` | `quantitykind:Voltage` / `quantitykind:ElectricCurrent` | `unit:V` / `unit:A` |
+| `count/mL` | `quantitykind:NumberDensity` | `unit:NUM-PER-MilliL` |
+
 ### Data quality and aggregation
 
 WaTr adds relations to contextualize `s223:QuantifiableProperty` nodes:
@@ -418,8 +493,9 @@ constraints are present:
 ctx = model.validate([watr.get_shape_collection()])
 
 print("valid:", ctx.valid)
-for witness in ctx.diffset:
-    print(witness.reason())
+for focus, failures in ctx.diffset.items():
+    for failure in failures:
+        print(focus, failure.reason())
 ```
 
 Translate failures into water-treatment language:
@@ -441,6 +517,10 @@ Keep the underlying SHACL result available, but do not report only `qualifiedMin
 - **Specific WaTr classes carry active SHACL constraints.** Typing something as
   `watr:Tank`, `SeparationTank`, `PlugFlowReactor`, or `SequencingBatchReactor` commits
   the model to required connection points and media.
+- **`s223:mapsTo` is one-to-one in both directions.** It cannot represent several
+  parallel child ports manifolded into one composite port; model a real junction/manifold
+  when evidence supports it, or leave the parallel internal ports unaggregated and report
+  that simplification.
 - **Processes and controlled media/constituent/role terms use class-like self-typing.**
   Use the named term as the relation value; do not assume every vocabulary item behaves
   like an ordinary `owl:Class`.

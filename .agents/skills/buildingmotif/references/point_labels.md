@@ -1,10 +1,10 @@
 # Point labels and class mapping
 
 Point-list builds are usually not blocked by graph mechanics; they are blocked by the
-mapping from source metadata to Brick classes. BMS point labels are a common source, but
-the same workflow applies to CSV columns, BACnet object names, schedules, and submittal
-tables: extract identifiers, map source vocabulary to verified Brick classes, build the
-graph, then validate.
+mapping from source metadata to the requested ontology. BMS point labels are a common
+Brick source, but the same workflow applies to WaTr SCADA tags, CSV columns, BACnet object
+names, schedules, and submittal tables: extract identifiers, map source vocabulary to
+verified target terms, build the graph, then validate.
 
 Do not assume the input is always a BMS naming convention. Start by identifying the source
 shape:
@@ -24,8 +24,10 @@ mapping loop.
 
 1. Identify the source pattern: equipment identifier, optional location/system pieces,
    point suffix, I/O type, units, and description columns.
-2. Build a small source-token to Brick-class table from the distinct suffixes or columns.
-3. Verify every Brick class with `brick_vocabulary.md`; do not trust guessed names.
+2. Identify the target vocabulary before mapping: Brick, 223P, or WaTr-on-223P.
+3. Build a small source-token mapping table from the distinct suffixes or columns. Verify
+   target terms with `brick_vocabulary.md`, or with `watr_vocabulary.md` and
+   `223p_vocabulary.md`; do not trust guessed names.
 4. Parse all rows and group failures by the unparsed suffix or unknown token.
 5. Build equipment with templates where they fit, and add typed point leaves directly
    when the point list only gives point identity/type/owner.
@@ -34,7 +36,7 @@ mapping loop.
 Keep the mapping table as a visible artifact in the script. It is evidence-bearing domain
 logic, not boilerplate.
 
-## Starter mapping patterns
+## Starter Brick mapping patterns
 
 Treat these as examples, not universal truth. Confirm with units, I/O type, and nearby
 columns before applying them.

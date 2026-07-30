@@ -2,12 +2,14 @@
 
 This is the script-first guide for **constructing** a building model — not validating an
 existing one (`validation.md`) or fixing one (`repair.md`), but authoring one from scratch.
-BuildingMOTIF has machinery for exactly this, and you should use it rather than handwriting
-Turtle: a reusable **template library**, `Model.create` for the model shell, and
-`TemplateBuilderContext` for wiring templates together and compiling them into one graph.
+BuildingMOTIF has machinery for exactly this: a reusable **template library**,
+`Model.create` for the model shell, and `TemplateBuilderContext` for wiring templates
+together and compiling them into one graph. Prefer that machinery when a suitable template
+library exists or the structure is reusable. Heterogeneous point/tag leaves may be added
+as direct triples, especially when the target ontology has no applicable template library.
 If the source is a point list, BMS naming convention, BACnet object list, or equipment
 schedule, read `point_labels.md` first: the first job is mapping source tokens to verified
-Brick classes (`brick_vocabulary.md`), not writing templates.
+terms in the requested vocabulary, not writing templates.
 
 Source of truth on disk: `buildingmotif/model_builder.py` (`TemplateBuilderContext`,
 `TemplateWrapper`), `buildingmotif/dataclasses/model.py` (`Model.create`/`from_graph`),
@@ -192,18 +194,20 @@ Point-list models are a special but common build case. A row may only tell you:
 
 - the real point identifier/label;
 - the owning equipment identifier;
-- a suffix or description that maps to a Brick point class;
+- a suffix or description that maps to a target property/point or sensor class;
 - optional units, I/O type, or BACnet reference.
 
-For those rows, direct triples for **point leaves** are the scalable representation:
-`point a verified Brick class`, `point rdfs:label "real label"`, and
-`equipment brick:hasPoint point`. Use templates for repeated equipment/part structures
-when you actually have enough evidence to bind their parameters. Do not create a custom
-template just to add hundreds of typed leaves from a CSV.
+For those rows, direct triples for **point leaves** are the scalable representation. In
+Brick that is typically `point a verified Brick class` plus `equipment brick:hasPoint
+point`; in 223P/WaTr it is a typed Property, its owning concept, and the required
+sensor/actuator relations. Use templates for repeated equipment/part structures when you
+actually have enough evidence to bind their parameters. Do not create a custom template
+just to add hundreds of heterogeneous typed leaves from a CSV.
 
 The hybrid pattern is:
 
-1. Use `brick_vocabulary.md` to verify every point/equipment class in the mapping table.
+1. Use the target vocabulary reference to verify every term in the mapping table
+   (`brick_vocabulary.md`, or `watr_vocabulary.md` + `223p_vocabulary.md`).
 2. Use `point_labels.md` to parse labels or structured rows into equipment IDs and point
    classes.
 3. Instantiate equipment templates when the source identifies a real equipment class.

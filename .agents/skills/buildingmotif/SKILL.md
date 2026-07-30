@@ -17,6 +17,31 @@ we add it?**
   checked against evidence before applying. Repair is the second half of the loop;
   validation is the first.
 
+## Start here: classify the task before inspecting the environment
+
+Do these four things first:
+
+1. Identify the operation: **validate**, **repair**, or **build**.
+2. Identify the target vocabulary: **Brick**, **223P**, or **WaTr-on-223P**.
+3. Identify the evidence format: existing RDF, structured table, encoded labels, or
+   documents.
+4. Read only the references selected by the workflow router below.
+
+For build requests, inspect the input before inspecting the package checkout. A CSV of
+WaTr SCADA tags, for example, routes to `point_labels.md` + `watr_vocabulary.md` +
+`223p_vocabulary.md`; it does not route to Brick merely because it is a point list.
+
+If execution is needed, check package provenance once:
+
+```bash
+python -c "import buildingmotif; print(buildingmotif.__file__)"
+```
+
+The working directory may itself be a BuildingMOTIF checkout. That is irrelevant when the
+import resolves to the intended installed package. Do not inspect the checkout's branch,
+`pyproject.toml`, or builtin files unless the import fails, the reported package lacks a
+required API, or the user is developing BuildingMOTIF itself.
+
 This skill assumes **BuildingMOTIF is used as an installed Python package**, not run from
 a checkout of the NatLabRockies/BuildingMOTIF repository. That's about the `buildingmotif`
 package your scripts `import` — not about these skill files themselves, which (until this
@@ -102,7 +127,7 @@ repairs interact, and you won't know which one broke or unblocked what.
 | Discover/verify Brick class names and inspect class shapes before asserting `a brick:X` | `references/brick_vocabulary.md` |
 | Model ASHRAE 223P (`s223:`) topology — equipment/connections/connection points, properties, roles/domains/media | `references/223p_vocabulary.md` |
 | Model a water treatment system with WaTr (`watr:`) — unit processes, treatment-process types, water media/constituents, and WaTr-on-223P patterns | `references/watr_vocabulary.md` |
-| Build from point lists, BMS labels, BACnet object names, or other source metadata; map suffixes/tokens to Brick classes | `references/point_labels.md` |
+| Build from point lists, SCADA/BMS labels, BACnet object names, or other source metadata; parse suffixes/tokens and map them to the **target vocabulary** | `references/point_labels.md` + the target vocabulary reference (`brick_vocabulary.md`, or `watr_vocabulary.md` + `223p_vocabulary.md`) |
 | **Fix a model** — propose/apply repairs, drive the gap→evidence→user→apply loop | `references/repair.md` |
 | **Write shapes** (pointlists, app requirements, manifests, `bmotif:` tags, `constraint:` vocabulary) | `references/writing_shapes.md` |
 | **Write templates** (YAML bodies, parameters, dependencies, decompiling shapes) | `references/writing_templates.md` |
@@ -244,10 +269,12 @@ Most real requests are one of these:
    `references/brick_vocabulary.md` to verify class names — or
    `references/223p_vocabulary.md` if the model is 223P topology, not Brick points;
    add `references/watr_vocabulary.md` when the domain is water treatment).
-4. *"Build a model from this point list / BMS labels / BACnet object names / schedule."*
-   → first map source tokens to verified Brick classes, then synthesize graph fragments or
-   template bindings and validate. → `references/point_labels.md` +
-   `references/brick_vocabulary.md` + `references/building_models.md`.
+4. *"Build a model from this point list / SCADA or BMS labels / BACnet object names /
+   schedule."* → first map source tokens to the requested target vocabulary, then
+   synthesize graph fragments or template bindings and validate. → always
+   `references/point_labels.md` + `references/building_models.md`; add
+   `references/brick_vocabulary.md` for Brick, or `references/watr_vocabulary.md` +
+   `references/223p_vocabulary.md` for WaTr.
 5. *"What's in this library?" / "list the templates" / "show me the shapes"* →
    `references/validation.md` (the library/template/shape-collection inspection scripts).
 
