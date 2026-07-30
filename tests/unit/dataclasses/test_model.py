@@ -250,7 +250,13 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
     diffs = [d for diff_set in ctx.diffset.values() for d in diff_set]
     assert len(diffs) == 1
     diff = diffs[0]
-    assert diff.failed_component == SH.MinCountConstraintComponent
+    if isinstance(ctx, AlgebraicValidationContext):
+        # pyshifty exposes the native algebraic cardinality constraint, not a
+        # reconstructed W3C SHACL source-component name.
+        assert diff.failed_component is None
+        assert diff.constraint is not None
+    else:
+        assert diff.failed_component == SH.MinCountConstraintComponent
 
     model.add_triples((bindings["name"], RDFS.label, Literal("hvac zone 1")))
     # validate the graph (should now be valid)

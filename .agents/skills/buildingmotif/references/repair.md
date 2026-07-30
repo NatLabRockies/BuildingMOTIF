@@ -78,13 +78,16 @@ for w in ctx.witnesses:
     w.validation_reasons  # structured reasons, including path/value/severity
     w.target_shape        # named algebra statement/shape, when available
     w.violation           # full native pyshifty algebraic violation
-    w.violation_alignment # "focus-order" or "unavailable"
+    w.violation_alignment # "stable-id" or "unavailable"
     w.statement_id        # native algebra statement identifier
+    w.constraint_id       # statement-level algebra id shared with the violation
+    w.constraint_kind     # enumerated statement-level algebra operator
+    w.constraint          # complete statement-level algebra constraint
     w.selector            # how the focus was selected for that statement
     w.target              # rendered algebra target
     w.graph               # complete compiled graph for this violation
     w.shapes_graph        # complete algebra/schema graph
-    w.source_constraints  # native sources, when pyshifty exposes them
+    w.source_constraints  # native reason-level algebra constraints
     w.repair_summary      # repair atoms -- edit choices, NOT validation findings
     w.is_blocked          # True -> no data repair possible in scope; do not fight it
     print(w.explain())    # the repair tree, indented
@@ -110,10 +113,22 @@ Keep the two halves distinct: `w.reason()` / `w.validation_reasons` say **what
 failed**, while `w.repair_summary` / `w.explain()` say **what edits could fix it**.
 A class failure may have both a `CountHigh` repair atom (delete the bad edge) and a
 `CountLow` atom (add the missing type); those atoms are alternatives, not count
-violations. `source_constraints`, `failed_shape`, and `failed_component` remain empty
-when pyshifty does not provide native provenance. BuildingMOTIF does not reconstruct
-them from the Turtle encoding or the repair tree; query `ctx.report` explicitly when
-you specifically need the W3C report view.
+violations.
+
+There are three deliberately separate levels of algebraic provenance:
+
+- `w.constraint_id` / `w.constraint` identify the top-level statement constraint
+  shared by the violation and repair witness.
+- Each validation reason has its own `constraint_id`, `constraint_kind`, and
+  `constraint`, identifying the specific nested algebra node that produced the cause.
+- Each repair-summary atom has leaf-level constraint metadata describing the edit
+  alternative that it witnesses.
+
+The validation/repair join uses `(focus, statement_id, constraint_id)`, not ordering.
+`failed_shape` and `failed_component` remain empty unless pyshifty explicitly provides
+those W3C source fields. BuildingMOTIF does not reconstruct them from the Turtle encoding
+or the repair tree; query `ctx.report` explicitly when you specifically need the W3C
+report view.
 
 To present the whole violation horizon grouped by focus node (the notebooks' way of
 reading a real model's report), iterate `ctx.diffset`:
