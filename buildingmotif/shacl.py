@@ -106,6 +106,30 @@ def _shifty_shapes_input(shape_graph: Graph) -> bytes:
     return prefixed.serialize(format="turtle", encoding="utf-8")
 
 
+def _resolved_shape_graph(
+    shape_collections: List["ShapeCollection"],
+    error_on_missing_imports: bool,
+    resolved_shapes: Optional[Graph],
+) -> Graph:
+    """The shapes graph, with ``owl:imports`` resolved.
+
+    ``resolved_shapes`` is the whole answer when it is given: validating
+    against a manifest computes one OntoEnv closure rooted at the manifest
+    (:py:meth:`Manifest.imports_closure`), which is transitive, deduplicated,
+    and one call rather than one per collection. The per-collection path
+    remains for an explicit list of shape collections, which has no manifest to
+    root a closure at.
+    """
+    if resolved_shapes is not None:
+        return resolved_shapes
+    graph = Graph()
+    for shape_collection in shape_collections:
+        graph += shape_collection.resolve_imports(
+            error_on_missing_imports=error_on_missing_imports
+        ).graph
+    return graph
+
+
 @dataclass
 class ValidationGraphs:
     data_graph: Graph
@@ -146,7 +170,14 @@ class ShaclBackend:
         compiled_graph: Graph,
         shape_collections: List["ShapeCollection"],
         error_on_missing_imports: bool = True,
+        resolved_shapes: Optional[Graph] = None,
     ) -> ValidationGraphs:
+        """
+        :param resolved_shapes: the shapes graph with its ``owl:imports``
+            already resolved -- see :func:`_resolved_shape_graph`. Defaults to
+            resolving each shape collection's imports separately.
+        :type resolved_shapes: Optional[Graph]
+        """
         from buildingmotif.utils import (
             copy_graph,
             rewrite_shape_graph,
@@ -154,10 +185,9 @@ class ShaclBackend:
         )
 
         graph = copy_graph(compiled_graph)
-        for shape_collection in shape_collections:
-            graph += shape_collection.resolve_imports(
-                error_on_missing_imports=error_on_missing_imports
-            ).graph
+        graph += _resolved_shape_graph(
+            shape_collections, error_on_missing_imports, resolved_shapes
+        )
 
         graph = rewrite_shape_graph(graph)
         graph.remove((None, OWL.imports, None))
@@ -170,9 +200,13 @@ class ShaclBackend:
         compiled_graph: Graph,
         shape_collections: List["ShapeCollection"],
         error_on_missing_imports: bool = True,
+        resolved_shapes: Optional[Graph] = None,
     ) -> Tuple[ValidationResult, Graph]:
         graphs = self.validation_graphs(
-            compiled_graph, shape_collections, error_on_missing_imports
+            compiled_graph,
+            shape_collections,
+            error_on_missing_imports,
+            resolved_shapes=resolved_shapes,
         )
         return (
             self.validate(graphs.data_graph, graphs.shape_graph),
@@ -303,17 +337,16 @@ class PyshiftyBackend(ShaclBackend):
         compiled_graph: Graph,
         shape_collections: List["ShapeCollection"],
         error_on_missing_imports: bool = True,
+        resolved_shapes: Optional[Graph] = None,
     ) -> ValidationGraphs:
         # As in compile_model_graph, the shapes and data are handed to shifty
         # un-skolemized and un-rewritten (no sh:node inlining): shifty consumes
         # the native SHACL algebra directly rather than a flattened shape graph.
         from buildingmotif.utils import copy_graph
 
-        shape_graph = Graph()
-        for shape_collection in shape_collections:
-            shape_graph += shape_collection.resolve_imports(
-                error_on_missing_imports=error_on_missing_imports
-            ).graph
+        shape_graph = _resolved_shape_graph(
+            shape_collections, error_on_missing_imports, resolved_shapes
+        )
 
         data_graph = copy_graph(compiled_graph)
         return ValidationGraphs(data_graph, shape_graph, shape_graph)

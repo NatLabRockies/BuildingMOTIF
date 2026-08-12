@@ -22,6 +22,7 @@ from buildingmotif.utils import copy_graph
 if TYPE_CHECKING:
     from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.library import Library
+    from buildingmotif.dataclasses.manifest import Manifest
 
 
 @dataclass
@@ -40,6 +41,7 @@ class CompiledModel:
         shape_collections: List[ShapeCollection],
         compiled_graph: rdflib.Graph,
         shacl_engine: Optional[str] = None,
+        manifest: Optional["Manifest"] = None,
     ):
         """
         :param shacl_engine: the engine this model was compiled with. None
@@ -48,9 +50,16 @@ class CompiledModel:
             sentinel the rest of the codebase uses -- ``Model.compile`` and
             ``Model.validate`` both already take ``Optional[str]``.
         :type shacl_engine: Optional[str]
+        :param manifest: the manifest ``shape_collections`` came from, when it
+            came from one. :py:meth:`validate` then resolves imports as a
+            single OntoEnv closure rooted at the manifest rather than once per
+            collection. It is held rather than resolved here because compiling
+            does not need the imports at all -- only validating does.
+        :type manifest: Optional[Manifest]
         """
         self.model = model
         self.shape_collections = shape_collections
+        self.manifest = manifest
         self.shacl_engine = (
             self.model._bm.shacl_engine
             # "default" is the legacy spelling of "inherit from the singleton"
@@ -205,6 +214,16 @@ class CompiledModel:
             )
         backend = get_shacl_backend(shacl_engine)
 
+        # One closure rooted at the manifest, rather than one resolve_imports
+        # per collection: the manifest names every collection as an
+        # owl:imports, so OntoEnv can do the whole transitive resolution in a
+        # single call and deduplicate it on the way.
+        resolved_shapes = (
+            self.manifest.imports_closure(error_on_missing=error_on_missing_imports)
+            if self.manifest is not None
+            else None
+        )
+
         # The pyshifty engine exposes a native algebraic + symbolic-repair API.
         # Auto-route it to the AlgebraicValidationContext, which computes repairs
         # by abduction over the algebra and gates every one for soundness, rather
@@ -219,6 +238,7 @@ class CompiledModel:
                 self._compiled_graph,
                 self.shape_collections,
                 error_on_missing_imports=error_on_missing_imports,
+                resolved_shapes=resolved_shapes,
             )
             return AlgebraicValidationContext.from_compiled(
                 self.shape_collections,
@@ -235,6 +255,7 @@ class CompiledModel:
             self._compiled_graph,
             self.shape_collections,
             error_on_missing_imports=error_on_missing_imports,
+            resolved_shapes=resolved_shapes,
         )
         return ValidationContext(
             self.shape_collections,
