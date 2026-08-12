@@ -90,7 +90,17 @@ class OntologyEnvironment:
         a tolerated missing import now commits cleanly and leaves no marker, and
         ``OntoEnv.recover`` rebuilds the catalog properly.
 
-        So reaching this handler now means a genuinely interrupted write, and
+        0.6.1 narrowed the condition twice more, which is what makes catching
+        it unconditionally safe: an operation that fails before writing
+        anything no longer leaves a marker at all, and a marker still held by a
+        *live* writer is reported as a retryable ``ValueError`` after a short
+        wait rather than as ``CatalogRecoveryError``. Recovering an environment
+        another process is actively writing would be the one genuinely
+        destructive thing this method could do, and 0.6.1 is what rules it out;
+        that error is left to propagate, since the answer to it is to retry,
+        not to rebuild.
+
+        So reaching this handler means a genuinely interrupted write, and
         recovery is the supported answer to one. It is taken automatically
         because the alternative is a dead end: recovering a custom store
         requires passing that store, and ours does not exist until a
