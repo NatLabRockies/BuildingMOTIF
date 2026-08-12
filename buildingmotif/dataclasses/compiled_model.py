@@ -51,10 +51,10 @@ class CompiledModel:
             ``Model.validate`` both already take ``Optional[str]``.
         :type shacl_engine: Optional[str]
         :param manifest: the manifest ``shape_collections`` came from, when it
-            came from one. :py:meth:`validate` then resolves imports as a
-            single OntoEnv closure rooted at the manifest rather than once per
-            collection. It is held rather than resolved here because compiling
-            does not need the imports at all -- only validating does.
+            came from one. :py:meth:`validate` then takes the shapes graph
+            straight from its members, since a manifest already lists
+            everything they import. It is held rather than resolved here
+            because the graph is only needed to validate, not to compile.
         :type manifest: Optional[Manifest]
         """
         self.model = model
@@ -214,12 +214,11 @@ class CompiledModel:
             )
         backend = get_shacl_backend(shacl_engine)
 
-        # One closure rooted at the manifest, rather than one resolve_imports
-        # per collection: the manifest names every collection as an
-        # owl:imports, so OntoEnv can do the whole transitive resolution in a
-        # single call and deduplicate it on the way.
+        # A manifest's members already include everything they import --
+        # add() followed the imports when they were added -- so the shapes
+        # graph is their union, with no import resolution at validation time.
         resolved_shapes = (
-            self.manifest.imports_closure(error_on_missing=error_on_missing_imports)
+            self.manifest.shapes_graph(error_on_missing=error_on_missing_imports)
             if self.manifest is not None
             else None
         )

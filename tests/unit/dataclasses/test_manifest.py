@@ -188,82 +188,108 @@ def test_a_name_ontoenv_knows_is_loaded_automatically(bm: BuildingMOTIF):
     """
     name = bm.ontology_environment.add(SHAPE1, fetch_imports=False)
     model = Model.create(uri=BLDG)
-    model.manifest.add(name)
+    model.manifest.add(name, import_depth=0)
     assert Library.by_name(name).name == name
     assert [len(sc.graph) > 0 for sc in model.manifest.shape_collections()] == [True]
 
 
 def test_shape_collections_come_from_the_libraries(bm: BuildingMOTIF):
     model = Model.create(uri=BLDG)
-    lib = Library.from_ontology(SHAPE1, infer_templates=False)
+    lib = _library("urn:a/")
     model.manifest.add(lib)
     assert model.manifest.shape_collections() == [lib.get_shape_collection()]
 
 
-# -- the imports closure -------------------------------------------------
+# -- expansion of imports ------------------------------------------------
 
 
-def test_the_manifest_is_an_ontology_ontoenv_can_resolve(bm: BuildingMOTIF):
-    """What makes a single closure possible: the manifest is itself an
-    ontology whose owl:imports name every member."""
+def test_add_pulls_in_what_a_library_imports(bm: BuildingMOTIF):
+    """shape1 imports Brick, so adding shape1 adds Brick -- explicitly, as a
+    member of its own, rather than resolving it again on every validation."""
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
     model = Model.create(uri=BLDG)
     model.manifest.add(Library.from_ontology(SHAPE1, infer_templates=False))
-    assert model.manifest.register() == str(model.manifest.uri)
-    assert bm.ontology_environment.knows(str(model.manifest.uri))
+    assert model.manifest.library_names == [
+        "https://brickschema.org/schema/1.4/Brick",
+        "urn:shape1/",
+    ]
 
 
-def test_closure_is_transitive_and_rooted_at_the_manifest(bm: BuildingMOTIF):
-    """shape1 imports Brick, which the manifest never names directly."""
-    brick = Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+def test_import_depth_controls_expansion(bm: BuildingMOTIF):
+    """OntoEnv's own meaning: 0 is the named library alone, -1 the closure."""
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    lib = Library.from_ontology(SHAPE1, infer_templates=False)
+
+    shallow = Model.create(uri="urn:shallow/")
+    shallow.manifest.add(lib, import_depth=0)
+    assert shallow.manifest.library_names == ["urn:shape1/"]
+
+    deep = Model.create(uri="urn:deep/")
+    deep.manifest.add(lib, import_depth=1)
+    assert "https://brickschema.org/schema/1.4/Brick" in deep.manifest
+
+
+def test_removal_does_not_cascade(bm: BuildingMOTIF):
+    """A manifest is a flat set, exactly as it reads: removing the library
+    that pulled Brick in leaves Brick a member until it is removed too."""
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    lib = Library.from_ontology(SHAPE1, infer_templates=False)
     model = Model.create(uri=BLDG)
-    model.manifest.add(Library.from_ontology(SHAPE1, infer_templates=False))
-
-    closure = model.manifest.imports_closure()
-    assert len(closure) > len(brick.get_shape_collection().graph)
-    assert (BRICK.VAV, RDF.type, OWL.Class) in closure, "Brick came along"
-    assert (URIRef("urn:shape1/vav_shape"), RDF.type, SH.NodeShape) in closure
+    model.manifest.add(lib)
+    model.manifest.remove(lib)
+    assert model.manifest.library_names == ["https://brickschema.org/schema/1.4/Brick"]
 
 
-def test_closure_covers_members_ontoenv_cannot_resolve(bm: BuildingMOTIF):
-    """A directory library is not an ontology OntoEnv knows, so the closure
-    cannot reach it and its shape collection is unioned in instead."""
+def test_expansion_follows_a_directory_library_too(bm: BuildingMOTIF):
+    """A directory library is not an ontology OntoEnv knows, so its imports
+    are read from its own shape collection instead."""
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
     g36 = Library.from_directory("libraries/ashrae/guideline36", infer_templates=False)
+    assert not bm.ontology_environment.knows(g36.name)
     model = Model.create(uri=BLDG)
     model.manifest.add(g36)
-    assert not bm.ontology_environment.knows(g36.name)
-
-    closure = model.manifest.imports_closure(error_on_missing=False)
-    shapes = g36.get_shape_collection().graph
-    assert len(closure) >= len(shapes)
-    a_shape = next(iter(shapes.subjects(RDF.type, SH.NodeShape)))
-    assert (a_shape, RDF.type, SH.NodeShape) in closure
+    assert model.manifest.library_names == [
+        "guideline36",
+        "https://brickschema.org/schema/1.4/Brick",
+    ]
 
 
-def test_closure_reports_what_it_could_not_resolve(bm: BuildingMOTIF):
+def test_shapes_graph_is_the_union_of_the_members(bm: BuildingMOTIF):
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
     model = Model.create(uri=BLDG)
-    model.manifest.add("urn:nope/", resolve=False)
-    with pytest.raises(OntologyImportsNotFound, match="urn:nope/"):
-        model.manifest.imports_closure()
-    # lenient: skip it, the same choice validate(error_on_missing_imports=False) makes
-    assert len(model.manifest.imports_closure(error_on_missing=False)) >= 0
+    model.manifest.add(Library.from_ontology(SHAPE1, infer_templates=False))
+
+    graph = model.manifest.shapes_graph()
+    for collection in model.manifest.shape_collections():
+        assert len(graph) >= len(collection.graph)
+        for triple in collection.graph:
+            assert triple in graph
+    assert (BRICK.VAV, RDF.type, OWL.Class) in graph, "Brick came along"
+    assert (URIRef("urn:shape1/vav_shape"), RDF.type, SH.NodeShape) in graph
 
 
-def test_closure_tracks_membership_changes(bm: BuildingMOTIF):
-    """register() overwrites, so a manifest edited after a validate() does not
-    validate against its previous membership."""
+def test_shapes_graph_reports_imports_no_member_covers(bm: BuildingMOTIF):
+    """The safety net for a library added with import_depth=0, or reloaded
+    with new imports after it was added."""
     model = Model.create(uri=BLDG)
     lib = Library.from_ontology(SHAPE1, infer_templates=False)
-    model.manifest.add(lib)
-    with_member = len(model.manifest.imports_closure(error_on_missing=False))
-    model.manifest.remove(lib)
-    without = len(model.manifest.imports_closure(error_on_missing=False))
-    assert without < with_member
+    model.manifest.add(lib, import_depth=0)  # Brick deliberately left out
+    with pytest.raises(OntologyImportsNotFound, match="Brick"):
+        model.manifest.shapes_graph()
+    assert len(model.manifest.shapes_graph(error_on_missing=False)) > 0
 
 
-def test_closure_and_per_collection_validation_agree(bm: BuildingMOTIF, shacl_engine):
-    """The closure is an optimization, not a behavior change: validating
-    against the manifest must report exactly what resolving each collection's
-    imports separately reports."""
+def test_shapes_graph_tracks_membership_changes(bm: BuildingMOTIF):
+    model = Model.create(uri=BLDG)
+    model.manifest.add(_library("urn:a/"))
+    before = len(model.manifest.shapes_graph())
+    model.manifest.clear()
+    assert len(model.manifest.shapes_graph()) == 0 < before
+
+
+def test_manifest_and_explicit_list_validation_agree(bm: BuildingMOTIF, shacl_engine):
+    """Taking the shapes graph from the members must report exactly what
+    resolving each collection's imports separately reports."""
     bm.shacl_engine = shacl_engine
     Library.from_ontology("tests/unit/fixtures/Brick.ttl")
     lib = Library.from_ontology(SHAPE1)
@@ -271,15 +297,15 @@ def test_closure_and_per_collection_validation_agree(bm: BuildingMOTIF, shacl_en
     model.graph.add((URIRef("https://example.com/vav1"), RDF.type, BRICK.VAV))
     model.manifest.add(lib)
 
-    # no arguments -> the manifest closure; an explicit list -> per collection
-    via_closure = model.validate()
+    # no arguments -> the members' union; an explicit list -> per collection
+    via_manifest = model.validate()
     via_collections = model.validate(model.manifest.shape_collections())
 
     # NB: not `is False` -- the topquadrant backend reports 0/1, not a bool
-    assert not via_closure.valid and not via_collections.valid
-    assert set(via_closure.diffset) == set(via_collections.diffset)
+    assert not via_manifest.valid and not via_collections.valid
+    assert set(via_manifest.diffset) == set(via_collections.diffset)
     assert {
-        (f, str(d.reason())) for f, s in via_closure.diffset.items() for d in s
+        (f, str(d.reason())) for f, s in via_manifest.diffset.items() for d in s
     } == {(f, str(d.reason())) for f, s in via_collections.diffset.items() for d in s}
 
 
@@ -335,5 +361,5 @@ def test_validate_uses_the_manifest(bm: BuildingMOTIF, shacl_engine):
     model.manifest.add(lib)
     assert not model.validate().valid, "the manifest's shapes are now in force"
 
-    model.manifest.remove(lib)
-    assert model.validate().valid, "and removing the library lifts them again"
+    model.manifest.clear()
+    assert model.validate().valid, "and emptying the manifest lifts them again"

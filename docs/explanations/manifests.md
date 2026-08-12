@@ -81,47 +81,51 @@ a typo would otherwise surface. To record an import deliberately before its libr
 exists, pass `resolve=False`; `model.validate(error_on_missing_imports=False)` then skips
 what it cannot resolve instead of raising.
 
+## Imports are followed when you add, not when you validate
+
+Adding a library adds what it imports, transitively, as members of their own:
+
+```python
+model.manifest.add(shapes_lib)       # shapes_lib owl:imports Brick
+model.manifest.library_names
+# ['https://brickschema.org/schema/1.4/Brick', 'urn:my/shapes']
+```
+
+So a manifest is an **explicit and complete list**: what `library_names` shows is exactly
+what the model is compiled and validated against, with no resolution step in between that
+could quietly add or drop a graph. `model.manifest.shapes_graph()` is simply the union of
+the members' shape collections — no OntoEnv call, no import resolution, nothing written on
+a read path.
+
+`import_depth` controls how far `add` follows, using OntoEnv's own meaning: `-1` (the
+default) for the full closure, `0` for the named library alone, `1` for it and what it
+imports directly. For a library OntoEnv knows, the names come from `list_closure`, which is
+a name lookup rather than a graph build; for one it does not know — a directory-loaded
+library, named after its directory — the same walk runs over the library's own shape
+collection, which is where its `owl:imports` live.
+
+Two consequences worth knowing:
+
+- **Removal does not cascade.** `remove(shapes_lib)` leaves Brick a member, because the
+  manifest is a flat set that reads as exactly what it is. Remove Brick too if you mean to.
+- **Validation sees each library's own stored graph**, including whatever SHACL inference
+  added when the library was loaded — not a separately stored copy of the same ontology.
+  That is the reason imports expand into membership rather than being resolved through the
+  ontology environment at validation time, where the graph served is OntoEnv's copy.
+
+`shapes_graph()` still asks OntoEnv one question — the same one
+`ShapeCollection.resolve_imports` has always asked: is anything imported here unaccounted
+for? Expansion normally makes the answer no; it catches a library reloaded with new imports
+since it was added, or one added with `import_depth=0`. It raises
+`OntologyImportsNotFound` unless `error_on_missing_imports=False`.
+
 ## What validation actually sees
 
 `model.manifest.shape_collections()` is the list `validate()` and `compile()` use: the
 shape collection of each member library, in name order. The manifest's own graph is *not*
-in that list — it holds imports, not shapes.
-
-Resolving those members' own `owl:imports` is **one OntoEnv closure rooted at the
-manifest**, not one resolution per member. This falls out of the storage format: a manifest
-is an ontology whose `owl:imports` name every member, so registering it with OntoEnv
-(`manifest.register()`, done automatically) makes "every graph this model is checked
-against" a single `closure` call — already transitive, already deduplicated.
-`manifest.imports_closure()` is that graph.
-
-Measured on a Brick fixture + `shape1.ttl` (4,832-triple closure, 5 reps, warm):
-
-| manifest | one closure | per-collection resolve | speedup |
-|---|---|---|---|
-| 1 member | 0.080s | 0.146s | 1.8x |
-| 2 members | 0.077s | 0.248s | 3.2x |
-| 4 members | 0.082s | 0.390s | 4.8x |
-
-The closure's cost is flat in the number of members; the per-collection path is linear,
-because each member re-resolves imports the others may share. Registering the manifest
-costs ~3.7ms and happens on each call, so a manifest edited between validations is never
-validated against its old membership.
-
-Two things are deliberate here:
-
-- **Each member is taken from exactly one source.** For a member OntoEnv knows, the closure
-  supplies it; for one it does not — a directory-loaded library, or anything built with
-  `Library.create` — the library's own shape collection is unioned in instead. Never both:
-  OntoEnv's copy and the library's shape collection hold the same triples but relabel blank
-  nodes, so unioning them would duplicate every SHACL property shape and report each
-  violation twice.
-- **Inference input is unchanged.** `compile()` still runs inference against the member
-  shape collections themselves, not the closure. What a model infers from should be the
-  shapes it was compiled against; pulling every transitively imported ontology into the
-  inference input would change what lands in every compiled model.
-
-An explicit list — `model.validate([sc1, sc2])` — has no manifest to root a closure at, so
-it resolves each collection's imports as before.
+in that list — it holds imports, not shapes. Since the membership is complete, `compile()`
+runs inference against everything the members import as well; there is deliberately no
+separate resolution step for it to skip.
 
 Passing shape collections explicitly still bypasses the manifest entirely:
 `model.validate([sc1, sc2])` checks against exactly those. To validate against the

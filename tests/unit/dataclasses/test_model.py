@@ -104,8 +104,11 @@ def test_update_model_manifest(clean_building_motif):
     assert lib is not None
     # update manifest with library
     m.manifest.add(lib)
-    assert m.manifest.library_names == [lib.name]
-    shapes = m.manifest.shape_collections()[0].graph
+    # the library is a member, and so is everything it imports -- shape1.ttl
+    # imports Brick, which imports the qudt vocabularies
+    assert lib.name in m.manifest
+    assert "https://brickschema.org/schema/1.4/Brick" in m.manifest
+    shapes = lib.get_shape_collection().graph
     assert len(list(shapes.subjects(RDF.type, SH.NodeShape))) == 2
 
 

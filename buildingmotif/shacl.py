@@ -114,11 +114,11 @@ def _resolved_shape_graph(
     """The shapes graph, with ``owl:imports`` resolved.
 
     ``resolved_shapes`` is the whole answer when it is given: validating
-    against a manifest computes one OntoEnv closure rooted at the manifest
-    (:py:meth:`Manifest.imports_closure`), which is transitive, deduplicated,
-    and one call rather than one per collection. The per-collection path
-    remains for an explicit list of shape collections, which has no manifest to
-    root a closure at.
+    against a manifest takes the shapes graph from
+    :py:meth:`Manifest.shapes_graph`, whose members already include everything
+    they import. The per-collection path remains for an explicit list of shape
+    collections, which carries no such guarantee and so still has to resolve
+    each collection's imports.
     """
     if resolved_shapes is not None:
         return resolved_shapes
@@ -173,9 +173,9 @@ class ShaclBackend:
         resolved_shapes: Optional[Graph] = None,
     ) -> ValidationGraphs:
         """
-        :param resolved_shapes: the shapes graph with its ``owl:imports``
-            already resolved -- see :func:`_resolved_shape_graph`. Defaults to
-            resolving each shape collection's imports separately.
+        :param resolved_shapes: a shapes graph that needs no import resolution
+            -- see :func:`_resolved_shape_graph`. Defaults to resolving each
+            shape collection's imports separately.
         :type resolved_shapes: Optional[Graph]
         """
         from buildingmotif.utils import (
