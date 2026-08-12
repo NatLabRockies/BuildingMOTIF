@@ -285,11 +285,15 @@ class Model:
             so code that only reads failures need not care which one it got.
         :rtype: ValidationResult
         """
+        manifest = None
         if not shape_collections:
-            shape_collections = self.manifest.shape_collections(
+            manifest = self.manifest
+            shape_collections = manifest.shape_collections(
                 error_on_missing=error_on_missing_imports
             )
-        compiled_model = self.compile(shape_collections, shacl_engine=shacl_engine)
+        compiled_model = self.compile(
+            shape_collections, shacl_engine=shacl_engine, manifest=manifest
+        )
         return compiled_model.validate(
             error_on_missing_imports,
             shacl_engine,
@@ -301,6 +305,7 @@ class Model:
         self,
         shape_collections: Optional[List["ShapeCollection"]] = None,
         shacl_engine: Optional[str] = None,
+        manifest: Optional["Manifest"] = None,
     ) -> "CompiledModel":
         """Compile the graph of a model against a set of ShapeCollections.
 
@@ -310,6 +315,11 @@ class Model:
         :param shacl_engine: the SHACL engine to use for validation, defaults to whatever
             is set in the BuildingMOTIF object
         :type shacl_engine: str, optional
+        :param manifest: the manifest ``shape_collections`` came from, if any.
+            Passed on to the :py:class:`CompiledModel` so that validating it
+            later resolves imports as one closure rooted at the manifest. It is
+            filled in automatically when ``shape_collections`` is omitted.
+        :type manifest: Optional[Manifest]
         :return: copy of model's graph that has been compiled against the
             ShapeCollections
         :rtype: Graph
@@ -317,14 +327,21 @@ class Model:
         from buildingmotif.dataclasses.compiled_model import CompiledModel
 
         if shape_collections is None:
-            shape_collections = self.manifest.shape_collections()
+            manifest = self.manifest
+            shape_collections = manifest.shape_collections()
         backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
+        # NB: inference compiles against the member shape collections
+        # themselves, *not* the manifest's imports closure -- what a model
+        # infers from should be the shapes it was compiled against, and pulling
+        # every transitively imported ontology into the inference input would
+        # change what lands in every compiled model.
         compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
         return CompiledModel(
             self,
             shape_collections,
             compiled_graph,
             shacl_engine=shacl_engine,
+            manifest=manifest,
         )
 
     @property

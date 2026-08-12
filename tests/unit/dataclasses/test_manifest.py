@@ -11,7 +11,8 @@ from buildingmotif.dataclasses.manifest import (
     library_iri,
     library_name,
 )
-from buildingmotif.namespaces import BRICK
+from buildingmotif.namespaces import BRICK, SH
+from buildingmotif.ontology_environment import OntologyImportsNotFound
 
 BLDG = Namespace("urn:bldg/")
 SHAPE1 = "tests/unit/fixtures/shapes/shape1.ttl"
@@ -197,6 +198,89 @@ def test_shape_collections_come_from_the_libraries(bm: BuildingMOTIF):
     lib = Library.from_ontology(SHAPE1, infer_templates=False)
     model.manifest.add(lib)
     assert model.manifest.shape_collections() == [lib.get_shape_collection()]
+
+
+# -- the imports closure -------------------------------------------------
+
+
+def test_the_manifest_is_an_ontology_ontoenv_can_resolve(bm: BuildingMOTIF):
+    """What makes a single closure possible: the manifest is itself an
+    ontology whose owl:imports name every member."""
+    model = Model.create(uri=BLDG)
+    model.manifest.add(Library.from_ontology(SHAPE1, infer_templates=False))
+    assert model.manifest.register() == str(model.manifest.uri)
+    assert bm.ontology_environment.knows(str(model.manifest.uri))
+
+
+def test_closure_is_transitive_and_rooted_at_the_manifest(bm: BuildingMOTIF):
+    """shape1 imports Brick, which the manifest never names directly."""
+    brick = Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    model = Model.create(uri=BLDG)
+    model.manifest.add(Library.from_ontology(SHAPE1, infer_templates=False))
+
+    closure = model.manifest.imports_closure()
+    assert len(closure) > len(brick.get_shape_collection().graph)
+    assert (BRICK.VAV, RDF.type, OWL.Class) in closure, "Brick came along"
+    assert (URIRef("urn:shape1/vav_shape"), RDF.type, SH.NodeShape) in closure
+
+
+def test_closure_covers_members_ontoenv_cannot_resolve(bm: BuildingMOTIF):
+    """A directory library is not an ontology OntoEnv knows, so the closure
+    cannot reach it and its shape collection is unioned in instead."""
+    g36 = Library.from_directory("libraries/ashrae/guideline36", infer_templates=False)
+    model = Model.create(uri=BLDG)
+    model.manifest.add(g36)
+    assert not bm.ontology_environment.knows(g36.name)
+
+    closure = model.manifest.imports_closure(error_on_missing=False)
+    shapes = g36.get_shape_collection().graph
+    assert len(closure) >= len(shapes)
+    a_shape = next(iter(shapes.subjects(RDF.type, SH.NodeShape)))
+    assert (a_shape, RDF.type, SH.NodeShape) in closure
+
+
+def test_closure_reports_what_it_could_not_resolve(bm: BuildingMOTIF):
+    model = Model.create(uri=BLDG)
+    model.manifest.add("urn:nope/", resolve=False)
+    with pytest.raises(OntologyImportsNotFound, match="urn:nope/"):
+        model.manifest.imports_closure()
+    # lenient: skip it, the same choice validate(error_on_missing_imports=False) makes
+    assert len(model.manifest.imports_closure(error_on_missing=False)) >= 0
+
+
+def test_closure_tracks_membership_changes(bm: BuildingMOTIF):
+    """register() overwrites, so a manifest edited after a validate() does not
+    validate against its previous membership."""
+    model = Model.create(uri=BLDG)
+    lib = Library.from_ontology(SHAPE1, infer_templates=False)
+    model.manifest.add(lib)
+    with_member = len(model.manifest.imports_closure(error_on_missing=False))
+    model.manifest.remove(lib)
+    without = len(model.manifest.imports_closure(error_on_missing=False))
+    assert without < with_member
+
+
+def test_closure_and_per_collection_validation_agree(bm: BuildingMOTIF, shacl_engine):
+    """The closure is an optimization, not a behavior change: validating
+    against the manifest must report exactly what resolving each collection's
+    imports separately reports."""
+    bm.shacl_engine = shacl_engine
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    lib = Library.from_ontology(SHAPE1)
+    model = Model.create(uri="https://example.com")
+    model.graph.add((URIRef("https://example.com/vav1"), RDF.type, BRICK.VAV))
+    model.manifest.add(lib)
+
+    # no arguments -> the manifest closure; an explicit list -> per collection
+    via_closure = model.validate()
+    via_collections = model.validate(model.manifest.shape_collections())
+
+    # NB: not `is False` -- the topquadrant backend reports 0/1, not a bool
+    assert not via_closure.valid and not via_collections.valid
+    assert set(via_closure.diffset) == set(via_collections.diffset)
+    assert {
+        (f, str(d.reason())) for f, s in via_closure.diffset.items() for d in s
+    } == {(f, str(d.reason())) for f, s in via_collections.diffset.items() for d in s}
 
 
 # -- what a manifest is not ----------------------------------------------

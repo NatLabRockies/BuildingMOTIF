@@ -85,8 +85,43 @@ what it cannot resolve instead of raising.
 
 `model.manifest.shape_collections()` is the list `validate()` and `compile()` use: the
 shape collection of each member library, in name order. The manifest's own graph is *not*
-in that list — it holds imports, not shapes. Each member's own `owl:imports` are resolved
-as they always were, through OntoEnv, at validation time.
+in that list — it holds imports, not shapes.
+
+Resolving those members' own `owl:imports` is **one OntoEnv closure rooted at the
+manifest**, not one resolution per member. This falls out of the storage format: a manifest
+is an ontology whose `owl:imports` name every member, so registering it with OntoEnv
+(`manifest.register()`, done automatically) makes "every graph this model is checked
+against" a single `closure` call — already transitive, already deduplicated.
+`manifest.imports_closure()` is that graph.
+
+Measured on a Brick fixture + `shape1.ttl` (4,832-triple closure, 5 reps, warm):
+
+| manifest | one closure | per-collection resolve | speedup |
+|---|---|---|---|
+| 1 member | 0.080s | 0.146s | 1.8x |
+| 2 members | 0.077s | 0.248s | 3.2x |
+| 4 members | 0.082s | 0.390s | 4.8x |
+
+The closure's cost is flat in the number of members; the per-collection path is linear,
+because each member re-resolves imports the others may share. Registering the manifest
+costs ~3.7ms and happens on each call, so a manifest edited between validations is never
+validated against its old membership.
+
+Two things are deliberate here:
+
+- **Each member is taken from exactly one source.** For a member OntoEnv knows, the closure
+  supplies it; for one it does not — a directory-loaded library, or anything built with
+  `Library.create` — the library's own shape collection is unioned in instead. Never both:
+  OntoEnv's copy and the library's shape collection hold the same triples but relabel blank
+  nodes, so unioning them would duplicate every SHACL property shape and report each
+  violation twice.
+- **Inference input is unchanged.** `compile()` still runs inference against the member
+  shape collections themselves, not the closure. What a model infers from should be the
+  shapes it was compiled against; pulling every transitively imported ontology into the
+  inference input would change what lands in every compiled model.
+
+An explicit list — `model.validate([sc1, sc2])` — has no manifest to root a closure at, so
+it resolves each collection's imports as before.
 
 Passing shape collections explicitly still bypasses the manifest entirely:
 `model.validate([sc1, sc2])` checks against exactly those. To validate against the

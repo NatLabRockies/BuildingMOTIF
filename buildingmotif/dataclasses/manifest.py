@@ -26,6 +26,7 @@ from rdflib import OWL, RDF, Graph, URIRef
 from buildingmotif.database.errors import LibraryNotFound
 from buildingmotif.dataclasses.library import Library
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
+from buildingmotif.ontology_environment import OntologyImportsNotFound
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses.model import Model
@@ -353,6 +354,90 @@ class Manifest:
             library.get_shape_collection()
             for library in self.resolve(error_on_missing=error_on_missing)
         ]
+
+    def register(self) -> str:
+        """Register this manifest's graph with the ontology environment.
+
+        The manifest *is* an ontology -- a declaration and a list of
+        ``owl:imports`` -- so OntoEnv can resolve it like any other, which is
+        what makes :py:meth:`imports_closure` a single call. Registering is
+        idempotent and overwrites, so it is cheap to redo rather than track
+        whether the manifest changed since last time (the graph is one triple
+        per member).
+
+        :return: the name OntoEnv registered it under, i.e. :py:attr:`uri`
+        :rtype: str
+        """
+        # OntoEnv names a graph by its owl:Ontology declaration, so a manifest
+        # that has never been added to has nothing to register *as*.
+        self._ensure_declared()
+        return self._model._bm.ontology_environment.add(
+            self.graph, fetch_imports=False, overwrite=True
+        )
+
+    def imports_closure(self, error_on_missing: bool = True) -> Graph:
+        """The merged shapes graph this model is validated against.
+
+        One OntoEnv closure rooted at this manifest, rather than resolving each
+        member's imports separately: the manifest declares every member as an
+        ``owl:imports``, so the closure is exactly "every graph this model is
+        checked against", already transitive and already deduplicated.
+
+        Members OntoEnv cannot resolve -- a directory-loaded library, whose
+        name is not an ontology URI, or one built with :py:meth:`Library.create`
+        -- come from their own shape collections instead. Each member is taken
+        from **one** source, never both: OntoEnv's copy of an ontology and the
+        library's shape collection hold the same triples but relabel blank
+        nodes, so unioning them would duplicate every SHACL property shape and
+        report each violation twice.
+
+        :param error_on_missing: if True (default), an import that resolves
+            neither through OntoEnv nor as a library raises, as
+            :py:meth:`ShapeCollection.resolve_imports` has always done. If
+            False they are logged and skipped.
+        :type error_on_missing: bool
+        :raises OntologyImportsNotFound: per ``error_on_missing``
+        :return: the shapes graph
+        :rtype: Graph
+        """
+        if not self.imports:
+            # An empty manifest asks nothing of the model. Short-circuit rather
+            # than round-tripping through OntoEnv, which would have no graph to
+            # root a closure at anyway.
+            return Graph()
+
+        env = self._model._bm.ontology_environment
+        self.register()
+
+        closure, _ = env.closure_copy(str(self.uri))
+
+        # Whatever the closure could not reach: manifest members OntoEnv does
+        # not know, plus anything transitively imported and missing (which
+        # resolve_imports has always treated as an error).
+        unresolved = []
+        for iri in env.missing_imports(str(self.uri)):
+            name = library_name(URIRef(iri))
+            try:
+                library = self._resolve_one(name)
+            except ManifestLibraryNotFound:
+                unresolved.append(iri)
+                continue
+            closure += (
+                library.get_shape_collection()
+                .resolve_imports(error_on_missing_imports=error_on_missing)
+                .graph
+            )
+
+        if unresolved:
+            if error_on_missing:
+                raise OntologyImportsNotFound(unresolved)
+            logger.warning(
+                "Manifest of %s could not resolve: %s. Validation will not see "
+                "any shapes those graphs define.",
+                self._model.name,
+                ", ".join(sorted(unresolved)),
+            )
+        return closure
 
     def _ensure_declared(self) -> None:
         """Give the manifest graph an ``owl:Ontology`` declaration if it has none."""
