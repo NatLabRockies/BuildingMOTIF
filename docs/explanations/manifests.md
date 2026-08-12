@@ -123,9 +123,13 @@ since it was added, or one added with `import_depth=0`. It raises
 
 `model.manifest.shape_collections()` is the list `validate()` and `compile()` use: the
 shape collection of each member library, in name order. The manifest's own graph is *not*
-in that list — it holds imports, not shapes. Since the membership is complete, `compile()`
-runs inference against everything the members import as well; there is deliberately no
-separate resolution step for it to skip.
+in that list — it holds imports, not shapes.
+
+Both work on **exactly** those members. Neither resolves imports: a dependency is validated
+and compiled against only if it is itself a member, which `add` arranges. Add a library
+with `import_depth=0` and its imports are genuinely absent from both — that is the
+difference between "the manifest lists it" and "something will find it later", and the
+manifest only ever means the first.
 
 Passing shape collections explicitly still bypasses the manifest entirely:
 `model.validate([sc1, sc2])` checks against exactly those. To validate against the

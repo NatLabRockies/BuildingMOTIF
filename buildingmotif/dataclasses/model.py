@@ -330,10 +330,11 @@ class Model:
             manifest = self.manifest
             shape_collections = manifest.shape_collections()
         backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
-        # Compiling against the members is compiling against everything they
-        # import, because a manifest expands imports when a library is added
-        # rather than resolving them here. There is deliberately no separate
-        # resolution step: the explicit membership is the whole story.
+        # Exactly the shape collections listed: no import resolution happens
+        # here, and none is wanted. A dependency is compiled against only if
+        # it is itself a member, which add() arranges by expanding imports at
+        # the time a library is added (add(..., import_depth=0) opts out, and
+        # then its imports are genuinely absent here).
         compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
         return CompiledModel(
             self,
