@@ -1,7 +1,7 @@
 import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
 import rdflib
 import rdflib.query
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.compiled_model import CompiledModel
     from buildingmotif.dataclasses.library import Library
+    from buildingmotif.dataclasses.manifest import LibraryRef, Manifest
 
 
 def _validate_uri(uri: str):
@@ -284,9 +285,11 @@ class Model:
             so code that only reads failures need not care which one it got.
         :rtype: ValidationResult
         """
-        compiled_model = self.compile(
-            shape_collections or [self.get_manifest()], shacl_engine=shacl_engine
-        )
+        if not shape_collections:
+            shape_collections = self.manifest.shape_collections(
+                error_on_missing=error_on_missing_imports
+            )
+        compiled_model = self.compile(shape_collections, shacl_engine=shacl_engine)
         return compiled_model.validate(
             error_on_missing_imports,
             shacl_engine,
@@ -314,7 +317,7 @@ class Model:
         from buildingmotif.dataclasses.compiled_model import CompiledModel
 
         if shape_collections is None:
-            shape_collections = [self.get_manifest()]
+            shape_collections = self.manifest.shape_collections()
         backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
         compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
         return CompiledModel(
@@ -324,53 +327,79 @@ class Model:
             shacl_engine=shacl_engine,
         )
 
-    def get_manifest(self) -> ShapeCollection:
-        """Get ShapeCollection from model.
+    @property
+    def manifest(self) -> "Manifest":
+        """The set of libraries this model is validated and compiled against.
 
-        :return: model's shape collection
-        :rtype: ShapeCollection
+        Behaves like a set of libraries -- see
+        :py:class:`~buildingmotif.dataclasses.manifest.Manifest`::
+
+            model.manifest.add(brick_library)
+            model.manifest.remove("urn:my/old-shapes")
+            model.manifest.library_names
+
+        :return: this model's manifest
+        :rtype: Manifest
         """
-        return ShapeCollection.load(self._manifest_id)
+        from buildingmotif.dataclasses.manifest import Manifest
 
-    def add_to_manifest(self, manifest: ShapeCollection) -> None:
-        """Add the shapes in ``manifest`` to this model's manifest.
+        return Manifest.for_model(self)
 
-        This *merges*: existing shapes are kept. Use
-        :py:meth:`replace_manifest` to swap the manifest's contents wholesale.
-
-        :param manifest: a ShapeCollection whose shapes should also apply to
-            this model
-        :type manifest: ShapeCollection
-        """
-        self.get_manifest().graph += manifest.graph
-
-    def replace_manifest(self, manifest: ShapeCollection) -> None:
-        """Replace this model's manifest with the contents of ``manifest``.
-
-        There was previously no way to do this through the public API --
-        ``update_manifest`` only ever merged, so a manifest could grow but never
-        shrink. Uses the ShapeCollection's copy-on-write replacement, so a
-        failure leaves the previous contents intact.
-
-        :param manifest: the ShapeCollection whose shapes become this model's
-            entire manifest
-        :type manifest: ShapeCollection
-        """
-        self.get_manifest().replace_graph(manifest.graph)
-
-    def update_manifest(self, manifest: ShapeCollection) -> None:
-        """Add the shapes in ``manifest`` to this model's manifest.
+    def get_manifest(self) -> "Manifest":
+        """The set of libraries this model is validated and compiled against.
 
         .. deprecated::
-            The name says "update" but the behavior is a merge, and there was no
-            counterpart that actually replaced. Use :py:meth:`add_to_manifest`,
-            or :py:meth:`replace_manifest` if you want the wholesale swap the
-            old name implied.
+            Use :py:attr:`manifest`. **The return type changed**: a manifest
+            now names libraries rather than holding a copy of their shapes, so
+            this returns a
+            :py:class:`~buildingmotif.dataclasses.manifest.Manifest` where it
+            used to return the
+            :py:class:`~buildingmotif.dataclasses.shape_collection.ShapeCollection`
+            the manifest is stored in. Code that appended to
+            ``get_manifest().graph`` must create a Library for those shapes and
+            add it; code that passed ``get_manifest()`` to ``validate()`` wants
+            ``model.manifest.shape_collections()``.
+
+        :return: this model's manifest
+        :rtype: Manifest
         """
         warnings.warn(
-            "Model.update_manifest() merges rather than updates; use "
-            "add_to_manifest() (same behavior) or replace_manifest().",
+            "Model.get_manifest() is deprecated; use Model.manifest. It now "
+            "returns a Manifest -- a set of libraries -- rather than the "
+            "ShapeCollection the manifest is stored in.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.add_to_manifest(manifest)
+        return self.manifest
+
+    def add_to_manifest(
+        self,
+        *libraries: Union["LibraryRef", Iterable["LibraryRef"]],
+        resolve: bool = True,
+    ) -> None:
+        """Add libraries to this model's manifest.
+
+        A convenience for :py:meth:`Manifest.add`; ``model.manifest.add(...)``
+        is the same call.
+
+        :param libraries: :py:class:`Library` objects, library names, or
+            iterables of either
+        :param resolve: if True (default), a name that is not already a loaded
+            library is resolved through the ontology environment and loaded
+        :type resolve: bool
+        :raises TypeError: if handed a ShapeCollection. This used to be the
+            argument type: the manifest absorbed a copy of the collection's
+            shapes. It names libraries now, so the shapes need one.
+        """
+        self.manifest.add(*libraries, resolve=resolve)
+
+    def remove_from_manifest(
+        self, *libraries: Union["LibraryRef", Iterable["LibraryRef"]]
+    ) -> None:
+        """Remove libraries from this model's manifest.
+
+        A convenience for :py:meth:`Manifest.discard`: a library that is not in
+        the manifest is ignored, since what the caller asked for -- that this
+        model no longer claim to satisfy it -- is already true.
+        """
+        self.manifest.discard(*libraries)

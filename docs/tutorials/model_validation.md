@@ -223,15 +223,17 @@ with open("tutorial1_manifest.ttl", "w") as f:
 ### Adding the Manifest to the Model
 
 We associate the manifest with our model so that BuildingMOTIF knows that we want validate the model against these specific shapes.
-We can always update this manifest, or validate our model against other shapes; however, validating a model against its manifest is
-the most common use case, so this is treated specially in BuildingMOTIF.
+A model's manifest is the *set of libraries* it claims to satisfy: we add libraries to it and remove them again, and validating a model
+against its manifest is the most common use case, so this is treated specially in BuildingMOTIF.
 
 
 ```{code-cell}
 # load manifest into BuildingMOTIF as its own library!
 manifest = Library.from_ontology("tutorial1_manifest.ttl")
-# set it as the manifest for the model
-model.add_to_manifest(manifest.get_shape_collection())
+# add that library to the model's manifest
+model.manifest.add(manifest)
+# it is a set of libraries, so we can always see what is in it
+print(model.manifest.library_names)
 ```
 
 ### Validating the Model
@@ -337,16 +339,26 @@ The model represents the Small Office Commercial Prototype Building model, which
 
 Let's update our manifest to include the requirement that AHUs must match the "single zone AHU" shape from G36:
 
+Shapes reach a manifest by being part of a library, so we write the new shape into a graph, load that graph as a
+library (its name is the URI of its `owl:Ontology` declaration), and add the library to the manifest:
+
 ```{code-cell}
-model.get_manifest().graph.parse(data="""
+import rdflib
+
+site_constraints = Library.from_ontology(rdflib.Graph().parse(data="""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix brick: <https://brickschema.org/schema/Brick#> .
 @prefix : <urn:my_site_constraints/> .
+: a owl:Ontology .
 :sz-vav-ahu-control-sequences a sh:NodeShape ;
     sh:message "AHUs must match the single-zone VAV AHU shape" ;
     sh:targetClass brick:AHU ;
     sh:node <urn:ashrae/g36/4.8/sz-vav-ahu/sz-vav-ahu> .
-""")
+"""))
+
+model.manifest.add(site_constraints)
+print(model.manifest.library_names)
 ```
 
 

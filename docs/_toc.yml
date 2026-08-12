@@ -26,6 +26,7 @@ parts:
 - caption: Explainations
   chapters:
   - file: explanations/storage-architecture.md
+  - file: explanations/manifests.md
   - file: explanations/ingresses.md
   - file: explanations/templates.md
   - file: explanations/shapes-and-templates.md

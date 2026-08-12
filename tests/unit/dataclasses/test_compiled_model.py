@@ -9,6 +9,7 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Library, Model, RepairConfig, ValidationContext
 from buildingmotif.dataclasses.compiled_model import CompiledModel
 from buildingmotif.namespaces import SH, A
+from tests.unit.helpers import shapes_as_library
 
 
 def test_validate(clean_building_motif_topquadrant):
@@ -300,13 +301,15 @@ def test_validate_model_against_shapes_matches_the_engine(bm: BuildingMOTIF):
             data="@prefix ex: <http://ex/> .\n<urn:bldg/x> a ex:Foo .", format="turtle"
         )
     )
-    model.get_manifest().add_graph(shapes)
+    model.manifest.add(shapes_as_library(shapes))
 
     for engine, expected in (
         ("pyshifty", AlgebraicValidationContext),
         ("pyshacl", ValidationContext),
     ):
-        compiled = model.compile([model.get_manifest()], shacl_engine=engine)
+        compiled = model.compile(
+            model.manifest.shape_collections(), shacl_engine=engine
+        )
         results = compiled.validate_model_against_shapes(
             [URIRef("http://ex/S")], URIRef("http://ex/Foo")
         )

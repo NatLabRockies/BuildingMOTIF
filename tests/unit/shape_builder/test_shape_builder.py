@@ -6,6 +6,7 @@ from buildingmotif.dataclasses import Model
 from buildingmotif.dataclasses.library import Library
 from buildingmotif.namespaces import BRICK, A
 from buildingmotif.shape_builder import NodeShape, PropertyShape
+from tests.unit.helpers import shapes_as_library
 
 
 @pytest.fixture
@@ -32,21 +33,19 @@ def test_node_shape(constraints_library: Library):
         .always_run()
     )
     ahu_shape.add_property(SH["targetNode"], BNode())
-    model.get_manifest().add_graph(ahu_shape)
+    model.manifest.add(
+        shapes_as_library(ahu_shape, "urn:test/ahu-shape"), constraints_library
+    )
 
     # Validate shape against model, expected to fail
-    validation_context = model.validate(
-        [model.get_manifest(), constraints_library.get_shape_collection()]
-    )
+    validation_context = model.validate()
     assert validation_context.valid == False  # noqa
 
     # Add AHU to graph
     model.add_triples((model_namespace["AHU_1"], A, BRICK["AHU"]))
 
     # Validate shape against model, expected to pass
-    validation_context = model.validate(
-        [model.get_manifest(), constraints_library.get_shape_collection()]
-    )
+    validation_context = model.validate()
     assert validation_context.valid == True  # noqa
 
 
@@ -85,13 +84,13 @@ def test_property_shape(constraints_library: Library):
     )
 
     # Add shapes to graph
-    model.get_manifest().add_graph(ahu_shape)
-    model.get_manifest().add_graph(application_shape)
+    model.manifest.add(
+        shapes_as_library(ahu_shape + application_shape, "urn:test/ahu-shapes"),
+        constraints_library,
+    )
 
     # Validate shape against model, expected to fail
-    validation_context = model.validate(
-        [model.get_manifest(), constraints_library.get_shape_collection()]
-    )
+    validation_context = model.validate()
     assert validation_context.valid == False  # noqa
 
     model.add_triples(
@@ -100,7 +99,5 @@ def test_property_shape(constraints_library: Library):
     )
 
     # Validate shape against model, expected to pass
-    validation_context = model.validate(
-        [model.get_manifest(), constraints_library.get_shape_collection()]
-    )
+    validation_context = model.validate()
     assert validation_context.valid == True  # noqa

@@ -1,9 +1,9 @@
-"""Model.create()'s argument is a URI, and the manifest methods say what they do."""
+"""Model.create()'s argument is a URI, and a manifest holds libraries."""
 
 import warnings
 
 import pytest
-from rdflib import Graph, Namespace
+from rdflib import Namespace
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model, ShapeCollection
@@ -54,56 +54,22 @@ def test_uri_keyword_does_not_warn(bm: BuildingMOTIF):
         Model.create(uri="urn:bldg/")
 
 
-# -- manifest methods (API-CLEANUP #17) ----------------------------------
+# -- manifest methods ----------------------------------------------------
+#
+# The manifest is a set of *libraries* now, so the ShapeCollection-shaped
+# methods this section used to cover (add_to_manifest of a collection,
+# replace_manifest, update_manifest) are gone. What replaced them lives in
+# test_manifest.py; the one thing worth pinning here is that the old argument
+# type is rejected outright rather than doing something surprising.
 
 
-def _shapes(path: str) -> ShapeCollection:
-    sc = ShapeCollection.create()
-    sc.add_graph(
-        Graph().parse(
-            data=f"""
-            @prefix sh: <http://www.w3.org/ns/shacl#> .
-            @prefix ex: <http://ex/> .
-            ex:{path} a sh:NodeShape .
-            """,
-            format="turtle",
-        )
-    )
-    return sc
-
-
-def test_add_to_manifest_merges(bm: BuildingMOTIF):
+def test_a_shape_collection_is_no_longer_a_manifest(bm: BuildingMOTIF):
     model = Model.create(BLDG)
-    model.add_to_manifest(_shapes("A"))
-    model.add_to_manifest(_shapes("B"))
-    text = model.get_manifest().graph.serialize(format="turtle")
-    assert "A" in text and "B" in text, "add_to_manifest should keep both"
+    with pytest.raises(TypeError, match="not ShapeCollections"):
+        model.add_to_manifest(ShapeCollection.create())
 
 
-def test_replace_manifest_replaces(bm: BuildingMOTIF):
-    """There was previously no way to do this: update_manifest only merged, so
-    a manifest could grow but never shrink."""
+def test_the_replaced_methods_are_gone(bm: BuildingMOTIF):
     model = Model.create(BLDG)
-    model.add_to_manifest(_shapes("A"))
-    model.replace_manifest(_shapes("B"))
-    text = model.get_manifest().graph.serialize(format="turtle")
-    assert "B" in text
-    assert "ex:A" not in text, "replace_manifest should drop the previous shapes"
-
-
-def test_update_manifest_still_works_but_warns(bm: BuildingMOTIF):
-    model = Model.create(BLDG)
-    with pytest.warns(DeprecationWarning, match="add_to_manifest"):
-        model.update_manifest(_shapes("A"))
-    assert "A" in model.get_manifest().graph.serialize(format="turtle")
-
-
-def test_update_manifest_is_still_a_merge(bm: BuildingMOTIF):
-    """The deprecated name keeps its old behavior exactly."""
-    model = Model.create(BLDG)
-    model.add_to_manifest(_shapes("A"))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        model.update_manifest(_shapes("B"))
-    text = model.get_manifest().graph.serialize(format="turtle")
-    assert "A" in text and "B" in text
+    assert not hasattr(model, "replace_manifest")
+    assert not hasattr(model, "update_manifest")

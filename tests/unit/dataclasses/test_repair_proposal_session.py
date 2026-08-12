@@ -7,6 +7,7 @@ from rdflib import Graph, Namespace
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model, RepairProposal
 from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
+from tests.unit.helpers import shapes_as_library
 
 BLDG = Namespace("urn:bldg/")
 
@@ -27,7 +28,7 @@ def _failing_context(bm: BuildingMOTIF) -> AlgebraicValidationContext:
             data="@prefix ex: <http://ex/> .\n<urn:bldg/x> a ex:Foo .", format="turtle"
         )
     )
-    model.get_manifest().add_graph(shapes)
+    model.manifest.add(shapes_as_library(shapes))
     ctx = model.validate()
     assert isinstance(ctx, AlgebraicValidationContext)
     return ctx

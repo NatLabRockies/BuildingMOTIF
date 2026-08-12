@@ -457,11 +457,13 @@ def test_validate_model_against_shapes(client, building_motif, shacl_engine):
         / "notebooks/mediumOffice-validation/mediumOffice_brick_compiled.ttl",
         format="ttl",
     )
-    manifest = Graph().parse(
-        PROJECT_DIR
-        / "notebooks/mediumOffice-validation/constraints/mediumOffice_constraints.ttl"
+    constraints = Library.from_ontology(
+        str(
+            PROJECT_DIR
+            / "notebooks/mediumOffice-validation/constraints/mediumOffice_constraints.ttl"
+        )
     )
-    medium_office_model.get_manifest().add_graph(manifest)
+    medium_office_model.manifest.add(constraints)
 
     # action
     results = client.post(
