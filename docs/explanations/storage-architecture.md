@@ -67,7 +67,8 @@ the row's triples:
 
 - `DBModel.graph_id` → the model's triples
 - `DBShapeCollection.graph_id` → the shape collection's triples (a model's
-  manifest is itself a shape collection)
+  manifest is stored as one, though it holds only `owl:imports` naming the
+  libraries the model must satisfy — see `explanations/manifests.md`)
 - `DBTemplate.body_id` → the template body's triples
 
 These identifiers are **UUIDs** (`str(uuid.uuid4())`), generated when the row

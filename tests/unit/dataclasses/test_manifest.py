@@ -363,3 +363,18 @@ def test_validate_uses_the_manifest(bm: BuildingMOTIF, shacl_engine):
 
     model.manifest.clear()
     assert model.validate().valid, "and emptying the manifest lifts them again"
+
+
+def test_replace_expands_like_add(bm: BuildingMOTIF):
+    """replace() is clear() + add(), expansion included -- documented in
+    docs/explanations/manifests.md, so it needs to stay true."""
+    Library.from_ontology("tests/unit/fixtures/Brick.ttl")
+    lib = Library.from_ontology(SHAPE1, infer_templates=False)
+    model = Model.create(uri=BLDG)
+    model.manifest.replace([lib])
+    assert model.manifest.library_names == [
+        "https://brickschema.org/schema/1.4/Brick",
+        "urn:shape1/",
+    ]
+    model.manifest.replace([lib], import_depth=0)
+    assert model.manifest.library_names == ["urn:shape1/"]

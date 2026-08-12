@@ -326,15 +326,20 @@ class Manifest:
             graph.remove(triple)
 
     def replace(
-        self, libraries: Iterable[LibraryRef] = (), resolve: bool = True
+        self,
+        libraries: Iterable[LibraryRef] = (),
+        resolve: bool = True,
+        import_depth: int = -1,
     ) -> None:
         """Make ``libraries`` the entire contents of this manifest.
 
-        Equivalent to :py:meth:`clear` followed by :py:meth:`add`, and the
-        replacement for the old ``Model.replace_manifest``.
+        Equivalent to :py:meth:`clear` followed by :py:meth:`add` -- including
+        the import expansion, so replacing with one library that imports
+        another leaves both -- and the replacement for the old
+        ``Model.replace_manifest``.
         """
         self.clear()
-        self.add(libraries, resolve=resolve)
+        self.add(libraries, resolve=resolve, import_depth=import_depth)
 
     def resolve(self, error_on_missing: bool = True) -> List[Library]:
         """The member libraries, loading any that are not yet loaded.

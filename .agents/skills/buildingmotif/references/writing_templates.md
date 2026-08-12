@@ -227,7 +227,9 @@ BuildingMOTIF adds dependencies to a shape-derived template when a property shap
 another node shape via `sh:class`, `sh:node`, or when the node shape uses `sh:node`. It
 follows `owl:imports` to find node shapes not defined in the current graph — so a shape
 that `sh:class brick:Air_Temperature_Sensor` adds a dependency on Brick's class template,
-found by walking the manifest's `owl:imports` of Brick. This is why a shape you write for
+found by walking that shape graph's own `owl:imports` of Brick. (This is the *library's*
+imports, resolved through OntoEnv during `infer_templates`; a model's manifest is a
+different thing and is not involved.) This is why a shape you write for
 an application (`writing_shapes.md`) also gives you the template to *build* what it requires — and
 why `sh:name` on a property shape is worth setting even when you write the shape by hand.
 
