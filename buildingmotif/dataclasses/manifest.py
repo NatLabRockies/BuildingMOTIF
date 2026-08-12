@@ -254,9 +254,19 @@ class Manifest:
         return f"Manifest({self.uri}, {self.library_names})"
 
     def add(
-        self, *libraries: Union[LibraryRef, Iterable[LibraryRef]], resolve: bool = True
+        self,
+        *libraries: Union[LibraryRef, Iterable[LibraryRef]],
+        resolve: bool = True,
+        import_depth: int = -1,
     ) -> None:
         """Add libraries to this manifest. Adding a member twice is a no-op.
+
+        What a library ``owl:imports`` is pulled in **here**, as members of its
+        own, rather than resolved again on every validation. A manifest is
+        therefore an explicit and complete list: what
+        :py:attr:`library_names` shows is exactly what the model is compiled
+        and validated against, with no resolution step in between that could
+        quietly add or drop a graph.
 
         :param libraries: :py:class:`Library` objects, library names, or
             iterables of either
@@ -266,8 +276,14 @@ class Manifest:
             the active BuildingMOTIF permits fetching -- and loaded as a
             library. A name that resolves nowhere raises rather than being
             recorded as an import that will fail later. Pass False to record
-            the import without resolving it.
+            the import without resolving it; no expansion happens either, since
+            nothing was loaded to read imports from.
         :type resolve: bool
+        :param import_depth: how far to follow each library's ``owl:imports``,
+            with OntoEnv's own meaning: ``-1`` (default) for the full closure,
+            ``0`` for the named libraries alone, ``1`` for them and what they
+            import directly, and so on.
+        :type import_depth: int
         :raises ManifestLibraryNotFound: if ``resolve`` and a name resolves
             nowhere
         :raises TypeError: if handed something that is not a library or a name
@@ -276,9 +292,12 @@ class Manifest:
         self._ensure_declared()
         for item in _flatten(libraries):
             name = _name_of(item)
-            if resolve and not isinstance(item, Library):
+            names = [name]
+            if resolve:
                 self._resolve_one(name)
-            graph.add((self.uri, OWL.imports, library_iri(name)))
+                names = self._expand(name, import_depth)
+            for member in names:
+                graph.add((self.uri, OWL.imports, library_iri(member)))
 
     def remove(self, *libraries: Union[LibraryRef, Iterable[LibraryRef]]) -> None:
         """Remove libraries from this manifest.
@@ -355,89 +374,110 @@ class Manifest:
             for library in self.resolve(error_on_missing=error_on_missing)
         ]
 
-    def register(self) -> str:
-        """Register this manifest's graph with the ontology environment.
+    def shapes_graph(self, error_on_missing: bool = True) -> Graph:
+        """The merged shapes graph this model is validated and compiled against.
 
-        The manifest *is* an ontology -- a declaration and a list of
-        ``owl:imports`` -- so OntoEnv can resolve it like any other, which is
-        what makes :py:meth:`imports_closure` a single call. Registering is
-        idempotent and overwrites, so it is cheap to redo rather than track
-        whether the manifest changed since last time (the graph is one triple
-        per member).
+        Simply the union of the member libraries' shape collections. There is
+        no import resolution here, and no round trip through OntoEnv: a
+        library's ``owl:imports`` were followed when it was added
+        (:py:meth:`add`), so every graph that matters is already a member.
+        That also means validation sees each library's **own** stored graph --
+        including whatever SHACL inference added when the library was loaded --
+        rather than a separately stored copy of the same ontology.
 
-        :return: the name OntoEnv registered it under, i.e. :py:attr:`uri`
-        :rtype: str
-        """
-        # OntoEnv names a graph by its owl:Ontology declaration, so a manifest
-        # that has never been added to has nothing to register *as*.
-        self._ensure_declared()
-        return self._model._bm.ontology_environment.add(
-            self.graph, fetch_imports=False, overwrite=True
-        )
-
-    def imports_closure(self, error_on_missing: bool = True) -> Graph:
-        """The merged shapes graph this model is validated against.
-
-        One OntoEnv closure rooted at this manifest, rather than resolving each
-        member's imports separately: the manifest declares every member as an
-        ``owl:imports``, so the closure is exactly "every graph this model is
-        checked against", already transitive and already deduplicated.
-
-        Members OntoEnv cannot resolve -- a directory-loaded library, whose
-        name is not an ontology URI, or one built with :py:meth:`Library.create`
-        -- come from their own shape collections instead. Each member is taken
-        from **one** source, never both: OntoEnv's copy of an ontology and the
-        library's shape collection hold the same triples but relabel blank
-        nodes, so unioning them would duplicate every SHACL property shape and
-        report each violation twice.
-
-        :param error_on_missing: if True (default), an import that resolves
-            neither through OntoEnv nor as a library raises, as
-            :py:meth:`ShapeCollection.resolve_imports` has always done. If
-            False they are logged and skipped.
+        :param error_on_missing: if True (default), raise when a member's
+            ``owl:imports`` names something neither loaded nor resolvable,
+            which is the check :py:meth:`ShapeCollection.resolve_imports` has
+            always made. If False they are logged and skipped.
         :type error_on_missing: bool
         :raises OntologyImportsNotFound: per ``error_on_missing``
         :return: the shapes graph
         :rtype: Graph
         """
-        if not self.imports:
-            # An empty manifest asks nothing of the model. Short-circuit rather
-            # than round-tripping through OntoEnv, which would have no graph to
-            # root a closure at anyway.
-            return Graph()
+        graph = Graph()
+        for shape_collection in self.shape_collections(
+            error_on_missing=error_on_missing
+        ):
+            graph += shape_collection.graph
+        if not len(graph):
+            return graph
+
+        # Ask OntoEnv the same question resolve_imports asks, once over the
+        # union rather than once per collection: is anything imported here
+        # unaccounted for? Expansion at add() time means the answer is normally
+        # no -- this catches a library reloaded with new imports since, or one
+        # added with import_depth=0.
+        missing = self._model._bm.ontology_environment.missing_imports(graph)
+        if missing:
+            if error_on_missing:
+                raise OntologyImportsNotFound(missing)
+            logger.warning(
+                "Manifest of %s: %s is imported but not a member and could not "
+                "be resolved; shapes it defines will not be applied.",
+                self._model.name,
+                ", ".join(sorted(missing)),
+            )
+        return graph
+
+    def _expand(self, name: str, import_depth: int) -> List[str]:
+        """``name`` plus the libraries it imports, to ``import_depth``.
+
+        OntoEnv answers this for free when it knows the ontology
+        (``list_closure`` is a name lookup, not a graph build). For a member it
+        does not know -- a directory-loaded library, named after its directory
+        -- the same walk is done over the library's own shape collection, which
+        is where its ``owl:imports`` live.
+        """
+        if import_depth == 0:
+            return [name]
 
         env = self._model._bm.ontology_environment
-        self.register()
+        if env.knows(name):
+            candidates = env.closure_names(name, recursion_depth=import_depth)
+        else:
+            candidates = self._imported_names(name, import_depth)
 
-        closure, _ = env.closure_copy(str(self.uri))
-
-        # Whatever the closure could not reach: manifest members OntoEnv does
-        # not know, plus anything transitively imported and missing (which
-        # resolve_imports has always treated as an error).
-        unresolved = []
-        for iri in env.missing_imports(str(self.uri)):
-            name = library_name(URIRef(iri))
+        names = []
+        for candidate in candidates:
             try:
-                library = self._resolve_one(name)
+                self._resolve_one(candidate)
             except ManifestLibraryNotFound:
-                unresolved.append(iri)
+                # An import that resolves nowhere is not a reason to reject the
+                # library that named it; shapes_graph() reports it if it still
+                # matters at validation time.
+                logger.warning(
+                    "Manifest of %s: %r imports %r, which could not be loaded "
+                    "as a library and is not a member.",
+                    self._model.name,
+                    name,
+                    candidate,
+                )
                 continue
-            closure += (
-                library.get_shape_collection()
-                .resolve_imports(error_on_missing_imports=error_on_missing)
-                .graph
-            )
+            names.append(candidate)
+        return names
 
-        if unresolved:
-            if error_on_missing:
-                raise OntologyImportsNotFound(unresolved)
-            logger.warning(
-                "Manifest of %s could not resolve: %s. Validation will not see "
-                "any shapes those graphs define.",
-                self._model.name,
-                ", ".join(sorted(unresolved)),
-            )
-        return closure
+    def _imported_names(self, name: str, import_depth: int) -> List[str]:
+        """:py:meth:`_expand`'s walk for libraries OntoEnv does not know."""
+        found: List[str] = []
+        seen = set()
+        queue = [(name, import_depth)]
+        while queue:
+            current, depth = queue.pop(0)
+            if current in seen:
+                continue
+            seen.add(current)
+            found.append(current)
+            if depth == 0:
+                continue
+            try:
+                library = self._resolve_one(current)
+            except ManifestLibraryNotFound:
+                continue
+            for imported in library.get_shape_collection().graph.objects(
+                None, OWL.imports
+            ):
+                queue.append((str(imported), -1 if depth < 0 else depth - 1))
+        return found
 
     def _ensure_declared(self) -> None:
         """Give the manifest graph an ``owl:Ontology`` declaration if it has none."""

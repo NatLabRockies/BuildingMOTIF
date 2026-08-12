@@ -394,11 +394,11 @@ Two things in this script that trip people up:
   validate against the manifest plus extras, spread `model.manifest.shape_collections()`
   into the list. `model.validate()` with no list validates against the manifest alone —
   that is, against the shape collections of every library the manifest names.
-- **The no-argument form is also the faster one.** A manifest is an ontology whose
-  `owl:imports` name its members, so `model.validate()` resolves them as a single OntoEnv
-  closure rooted at the manifest instead of resolving each collection's imports separately
-  — flat in the number of members rather than linear. Passing an explicit list gives up
-  that path, since a bare list has no manifest to root a closure at.
+- **The no-argument form does no import resolution at all.** A manifest expands a
+  library's `owl:imports` into members when you add it, so `model.validate()` just unions
+  the members' shape collections. Passing an explicit list carries no such guarantee, so
+  that path still resolves each collection's imports. `model.manifest.library_names` is
+  therefore the complete list of what a no-argument `validate()` checks against.
 - **`error_on_missing_imports=False` is the notebooks' default for real models.** A real
   model's shapes usually `owl:imports` something you haven't loaded; with `True` (the
   default) validation raises and stops. `False` gets you a report now — but always check

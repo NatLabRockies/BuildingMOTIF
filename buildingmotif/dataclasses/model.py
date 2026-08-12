@@ -330,11 +330,10 @@ class Model:
             manifest = self.manifest
             shape_collections = manifest.shape_collections()
         backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
-        # NB: inference compiles against the member shape collections
-        # themselves, *not* the manifest's imports closure -- what a model
-        # infers from should be the shapes it was compiled against, and pulling
-        # every transitively imported ontology into the inference input would
-        # change what lands in every compiled model.
+        # Compiling against the members is compiling against everything they
+        # import, because a manifest expands imports when a library is added
+        # rather than resolving them here. There is deliberately no separate
+        # resolution step: the explicit membership is the whole story.
         compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
         return CompiledModel(
             self,

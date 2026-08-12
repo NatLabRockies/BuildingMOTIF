@@ -238,6 +238,13 @@ environment (cache first, then a fetch if it is a URL), so
 `model.manifest.add("https://brickschema.org/schema/1.4/Brick")` loads Brick if it has
 to; a name that resolves nowhere raises rather than failing later at validation time.
 
+Adding a library also adds what it **imports**, transitively, as members of their own, so
+`library_names` is the complete list of what the model is validated and compiled against —
+there is no resolution step at validation time that could add or drop a graph.
+`add(lib, import_depth=0)` records just the library named; `import_depth` otherwise takes
+OntoEnv's meaning (`-1` full closure, `1` direct imports). Removal does not cascade: drop
+the shapes library and Brick stays a member until you remove it too.
+
 Storage-wise the manifest is a graph of `owl:imports` and nothing else —
 `model.manifest.graph` hands you a copy to serialize or diff.
 
