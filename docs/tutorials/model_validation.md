@@ -239,9 +239,10 @@ print(model.manifest.library_names)
 ### Validating the Model
 
 We can now ask BuildingMOTIF to validate the model against the manifest and ask BuildingMOTIF for some details if it fails.
-By default, BuildingMOTIF will include all shape collections imported by the manifest (`owl:imports`). BuildingMOTIF will
-complain if the manifest requires ontologies that have not yet been loaded into BuildingMOTIF; this is why we are careful
-to load in the Brick and Guideline36 libraries at the top of this tutorial.
+The manifest is validated against exactly the libraries it lists — which is why the list printed above includes Brick and
+Guideline36 even though we only added one library: adding a library also adds what it `owl:imports`, so the manifest ends
+up naming everything the model is checked against. Loading those libraries at the top of this tutorial is what lets that
+expansion find them locally instead of fetching them.
 
 
 ```{code-cell}

@@ -130,6 +130,7 @@ repairs interact, and you won't know which one broke or unblocked what.
 | Build from point lists, SCADA/BMS labels, BACnet object names, or other source metadata; parse suffixes/tokens and map them to the **target vocabulary** | `references/point_labels.md` + the target vocabulary reference (`brick_vocabulary.md`, or `watr_vocabulary.md` + `223p_vocabulary.md`) |
 | **Fix a model** — propose/apply repairs, drive the gap→evidence→user→apply loop | `references/repair.md` |
 | **Write shapes** (pointlists, app requirements, manifests, `bmotif:` tags, `constraint:` vocabulary) | `references/writing_shapes.md` |
+| **Say what a model must satisfy** — its manifest: add/remove libraries, inspect membership, import expansion | `references/writing_shapes.md` |
 | **Write templates** (YAML bodies, parameters, dependencies, decompiling shapes) | `references/writing_templates.md` |
 | Find evidence in point lists / submittals / BACnet dumps | `references/evidence.md` |
 | Find, choose, and fill templates (evaluate, match against a model) | `references/templates.md` |

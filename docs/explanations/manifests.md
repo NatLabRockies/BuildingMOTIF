@@ -79,7 +79,8 @@ that has never seen Brick. A name that resolves nowhere raises
 `ManifestLibraryNotFound` **at `add` time** rather than at validation time, which is where
 a typo would otherwise surface. To record an import deliberately before its library
 exists, pass `resolve=False`; `model.validate(error_on_missing_imports=False)` then skips
-what it cannot resolve instead of raising.
+what it cannot resolve instead of raising. `resolve=False` skips the import expansion below
+too — nothing was loaded, so there is nothing to read imports from.
 
 ## Imports are followed when you add, not when you validate
 
@@ -138,3 +139,37 @@ manifest *plus* extras, spread it in:
 ```python
 model.validate([*model.manifest.shape_collections(), extra.get_shape_collection()])
 ```
+
+## The API
+
+| | |
+|---|---|
+| `model.manifest` | the manifest; a fresh object each access, over the same stored graph |
+| `.add(*libs, resolve=True, import_depth=-1)` | add libraries, their names, or iterables of either, plus what they import |
+| `.remove(*libs)` / `.discard(*libs)` | remove; `remove` raises `KeyError` if absent, `discard` does not |
+| `.clear()` / `.replace(libs)` | empty it / make `libs` the whole membership |
+| `.library_names` / `.libraries` | member names, sorted / the `Library` objects, loading any not yet loaded |
+| `.imports` | the members as the IRIs the graph stores them under |
+| `.shape_collections()` | what `validate()`/`compile()` use |
+| `.shapes_graph()` | those collections merged into one graph |
+| `.graph` / `.uri` | a copy of the stored graph / the URI it declares itself under |
+| `x in m`, `len(m)`, `for name in m` | membership by name, size, iteration over names |
+
+`model.add_to_manifest(...)` and `model.remove_from_manifest(...)` are conveniences for
+`add` and `discard`.
+
+## Coming from the old API
+
+| Was | Now |
+|---|---|
+| `model.get_manifest()` → `ShapeCollection` | `model.manifest` → `Manifest`; `get_manifest()` still works, warns, and returns the `Manifest` |
+| `model.get_manifest().graph += shapes` | `model.manifest.add(Library.from_ontology(shapes))` |
+| `model.add_to_manifest(shape_collection)` | `model.add_to_manifest(library)` — a `ShapeCollection` raises `TypeError` naming the fix |
+| `model.replace_manifest(sc)` | `model.manifest.replace([lib])` |
+| `model.update_manifest(sc)` | removed; it was already deprecated |
+| `model.validate([model.get_manifest(), extra])` | `model.validate([*model.manifest.shape_collections(), extra])` |
+
+The one migration that needs thought is the first form of appending shapes: those shapes
+need a home with a name. `Library.from_ontology(graph)` gives them one, taking the name
+from the graph's `owl:Ontology` declaration — add that declaration if the graph has none,
+since it is what the manifest will record.
