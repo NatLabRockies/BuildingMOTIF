@@ -26,8 +26,9 @@ these), and the shape you write depends on which:
    don't write these; you load them and validate against them to check the model *uses*
    the ontology correctly. `model.validate([brick.get_shape_collection()])`.
 2. **Manifest shapes** — your model's *standing* requirements: "this site has exactly 1
-   AHU, 1 supply fan, …". A manifest is a shape collection you associate with the model
-   via `model.add_to_manifest(...)`. Written with the `constraint:` vocabulary (below).
+   AHU, 1 supply fan, …". You write them into a library and add that library to the
+   model's manifest with `model.manifest.add(lib)`; the manifest is the set of libraries
+   the model claims to satisfy. Written with the `constraint:` vocabulary (below).
 3. **Application / use-case shapes** — "to run G36 §4.8, an AHU must have these points."
    These are the pointlist/equipment shapes that answer "is my model sufficient for X?"
    and are what most of this file is about. Libraries tag them as
@@ -214,17 +215,31 @@ associate it:
 
 ```python
 manifest = Library.from_ontology("my_manifest.ttl")
-model.add_to_manifest(manifest.get_shape_collection())
+model.manifest.add(manifest)
 ctx = model.validate()   # validates against the manifest by default
 ```
 
-`add_to_manifest` **merges** into whatever the model already has — call it twice and you get
-the union, so a manifest can grow but never shrink. To swap the requirements out wholesale,
-use `model.replace_manifest(sc)`, which discards the previous contents. Reach for `replace_`
-when re-running a script that would otherwise accumulate stale requirements across runs.
+The manifest is a **set of libraries**, so it behaves like one:
 
-(`update_manifest` is the old name for `add_to_manifest`. It still works and warns; the name
-was misleading, since it never replaced anything.)
+```python
+model.manifest.add(manifest, g36)        # Libraries, names, or iterables of either
+model.manifest.remove(g36)               # KeyError if absent; .discard() forgives
+model.manifest.library_names             # ['urn:my/manifest', ...]
+"urn:my/manifest" in model.manifest
+model.manifest.replace([manifest])       # the whole set at once
+model.manifest.libraries                 # the Library objects
+```
+
+Shapes only ever reach a manifest *through a library* — there is no way to append loose
+shapes to it. That is what makes the set inspectable and subtractable: a manifest that
+had absorbed a copy of some shapes could grow but never shrink, and could not say where
+anything came from. A name that is not a loaded library is resolved through the ontology
+environment (cache first, then a fetch if it is a URL), so
+`model.manifest.add("https://brickschema.org/schema/1.4/Brick")` loads Brick if it has
+to; a name that resolves nowhere raises rather than failing later at validation time.
+
+Storage-wise the manifest is a graph of `owl:imports` and nothing else —
+`model.manifest.graph` hands you a copy to serialize or diff.
 
 ### ⚠ `constraint:` components validate but block repair
 

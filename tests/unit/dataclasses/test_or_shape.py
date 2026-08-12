@@ -12,6 +12,7 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model
 from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.dataclasses.validation import OrShape
+from tests.unit.helpers import shapes_as_library
 
 BLDG = Namespace("urn:bldg/")
 EX = Namespace("http://ex/")
@@ -39,10 +40,14 @@ def _failing_model(extra_shapes: str = "") -> Model:
             format="turtle",
         )
     )
-    manifest = model.get_manifest()
-    manifest.add_graph(_or_shapes())
+    model.manifest.add(shapes_as_library(_or_shapes(), "urn:test/or-shapes"))
     if extra_shapes:
-        manifest.add_graph(Graph().parse(data=extra_shapes, format="turtle"))
+        model.manifest.add(
+            shapes_as_library(
+                Graph().parse(data=extra_shapes, format="turtle"),
+                "urn:test/extra-shapes",
+            )
+        )
     return model
 
 

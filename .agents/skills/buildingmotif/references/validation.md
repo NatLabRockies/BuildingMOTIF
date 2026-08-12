@@ -391,8 +391,9 @@ Two things in this script that trip people up:
 - **Passing shape collections replaces the manifest.** `model.validate([sc1, sc2])`
   validates against *only* `sc1, sc2` — the model's standing manifest is **not** added.
   That's usually what you want for an ad-hoc "does it support *this* app?" check. To
-  validate against the manifest plus extras, include `model.get_manifest()` in the list.
-  `model.validate()` with no list validates against the manifest alone.
+  validate against the manifest plus extras, spread `model.manifest.shape_collections()`
+  into the list. `model.validate()` with no list validates against the manifest alone —
+  that is, against the shape collections of every library the manifest names.
 - **`error_on_missing_imports=False` is the notebooks' default for real models.** A real
   model's shapes usually `owl:imports` something you haven't loaded; with `True` (the
   default) validation raises and stops. `False` gets you a report now — but always check

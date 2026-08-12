@@ -85,6 +85,14 @@ def bm():
     BuildingMOTIF.clean()
 
 
+@pytest.fixture
+def shapes_library():
+    """:py:func:`tests.unit.helpers.shapes_as_library`, as a fixture."""
+    from tests.unit.helpers import shapes_as_library
+
+    return shapes_as_library
+
+
 def pytest_generate_tests(metafunc):
     """
     Generates BuildingMOTIF tests for a variety of contexts

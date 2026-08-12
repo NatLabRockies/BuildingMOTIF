@@ -500,6 +500,15 @@ the old name implied), the latter built on `ShapeCollection.replace_graph`, so i
 copy-on-write -- a failure leaves the previous contents intact. `update_manifest` still works
 and warns. All 7 call sites migrated.
 
+**Superseded by the manifest rework (`gtf-manifest`).** This fix kept the manifest a *shape
+graph* and only made its two mutations honest, which left the underlying problem: a manifest
+made of copied triples has nothing to subtract by name, cannot say where a shape came from,
+and goes stale when its source library is reloaded. A manifest is now a **set of libraries**
+stored as `owl:imports` -- `model.manifest.add(lib)` / `.remove(lib)` -- so `add_to_manifest`
+takes libraries rather than shape collections, `replace_manifest` becomes
+`model.manifest.replace([...])`, and `update_manifest` is gone rather than deprecated. See
+`docs/explanations/manifests.md`.
+
 ---
 
 ## Proposed, not yet done

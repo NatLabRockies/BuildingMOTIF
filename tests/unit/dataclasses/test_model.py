@@ -12,6 +12,7 @@ from buildingmotif.dataclasses import (
     ValidationContext,
 )
 from buildingmotif.namespaces import BRICK, OWL, RDF, RDFS, SH, A
+from tests.unit.helpers import shapes_as_library
 
 BLDG = Namespace("urn:building/")
 
@@ -102,8 +103,10 @@ def test_update_model_manifest(clean_building_motif):
     lib = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert lib is not None
     # update manifest with library
-    m.add_to_manifest(lib.get_shape_collection())
-    assert len(list(m.get_manifest().graph.subjects(RDF.type, SH.NodeShape))) == 2
+    m.manifest.add(lib)
+    assert m.manifest.library_names == [lib.name]
+    shapes = m.manifest.shape_collections()[0].graph
+    assert len(list(shapes.subjects(RDF.type, SH.NodeShape))) == 2
 
 
 def test_validate_model_manifest(clean_building_motif, shacl_engine):
@@ -115,7 +118,7 @@ def test_validate_model_manifest(clean_building_motif, shacl_engine):
     lib = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert lib is not None
 
-    m.add_to_manifest(lib.get_shape_collection())
+    m.manifest.add(lib)
 
     # validate against manifest -- should fail
     result = m.validate()
@@ -156,7 +159,7 @@ def test_validate_model_manifest_with_imports(clean_building_motif, shacl_engine
     lib = Library.from_ontology("tests/unit/fixtures/shapes/shape2.ttl")
     assert lib is not None
 
-    m.add_to_manifest(lib.get_shape_collection())
+    m.manifest.add(lib)
 
     # add triples to graph to validate
     # using subclasses here -- buildingmotif must resolve the library import in order for these to validate correctly
@@ -293,14 +296,16 @@ def test_model_compile(bm: BuildingMOTIF, shacl_engine):
     assert len(in_first) == 0
 
 
-def test_get_manifest(clean_building_motif):
+def test_manifest_is_stable_across_lookups(clean_building_motif):
     BLDG = Namespace("urn:building/")
     model = Model.create(uri=BLDG)
-    manifest = model.get_manifest()
-    manifest.graph.add((URIRef("http://example.org/alex"), RDF.type, FOAF.Person))
+    lib = shapes_as_library(Graph(), "urn:test/empty-shapes")
+    model.manifest.add(lib)
 
-    assert model.get_manifest() == manifest
-    assert isomorphic(manifest.load(manifest.id).graph, manifest.graph)
+    # a fresh Manifest object each time, describing the same stored set
+    assert model.manifest == model.manifest
+    assert model.manifest.library_names == ["urn:test/empty-shapes"]
+    assert isomorphic(Model.load(model.id).manifest.graph, model.manifest.graph)
 
 
 def test_validate_with_manifest(clean_building_motif, shacl_engine):
@@ -338,8 +343,7 @@ def test_validate_with_manifest(clean_building_motif, shacl_engine):
     BLDG = Namespace("urn:building/")
     model = Model.create(uri=BLDG)
     model.add_graph(g)
-    manifest = model.get_manifest()
-    manifest.add_graph(manifest_g)
+    model.manifest.add(shapes_as_library(manifest_g))
 
     ctx = model.validate()
     assert not ctx.valid, "Model validated but it should throw an error"
@@ -404,8 +408,7 @@ def test_get_validation_severity(clean_building_motif, shacl_engine):
 
     model = Model.create(uri=NS)
     model.add_graph(g)
-    manifest = model.get_manifest()
-    manifest.add_graph(manifest_g)
+    model.manifest.add(shapes_as_library(manifest_g))
 
     ctx = model.validate()
     assert not ctx.valid, "Model validated but it should throw an error"

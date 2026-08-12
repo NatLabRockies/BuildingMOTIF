@@ -9,6 +9,7 @@ from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model, ValidationContext, ValidationResult
 from buildingmotif.dataclasses.algebraic_validation import AlgebraicValidationContext
 from buildingmotif.namespaces import SH
+from tests.unit.helpers import shapes_as_library
 
 BLDG = Namespace("urn:bldg/")
 EX = Namespace("http://ex/")
@@ -33,7 +34,7 @@ def _failing_model() -> Model:
             data="@prefix ex: <http://ex/> .\n<urn:bldg/x> a ex:Foo .", format="turtle"
         )
     )
-    model.get_manifest().add_graph(_shapes())
+    model.manifest.add(shapes_as_library(_shapes()))
     return model
 
 
@@ -72,7 +73,7 @@ def test_valid_model_conforms(bm: BuildingMOTIF):
             format="turtle",
         )
     )
-    model.get_manifest().add_graph(_shapes())
+    model.manifest.add(shapes_as_library(_shapes()))
     for engine in ("pyshifty", "pyshacl"):
         result = model.validate(shacl_engine=engine)
         assert result.conforms, f"{engine} should conform"

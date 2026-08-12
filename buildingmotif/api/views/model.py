@@ -177,7 +177,10 @@ def validate_model(models_id: int) -> flask.Response:
 
     # no body provided -- default to model manifest
     if request.content_length is None:
-        shape_collections = [model.get_manifest()]
+        # error_on_missing=False for the same reason validate() below passes
+        # error_on_missing_imports=False: a service should report what it could
+        # check rather than 500 because one manifest entry is unloadable.
+        shape_collections = model.manifest.shape_collections(error_on_missing=False)
     else:
         # get body
         if request.content_type != "application/json":
