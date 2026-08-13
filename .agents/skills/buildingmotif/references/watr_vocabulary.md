@@ -34,6 +34,10 @@ instead of copying a local name from an old model or guessing from prose.
 - [Validation and reporting](#validation-and-reporting)
 - [Gotchas](#gotchas)
 
+Use `scripts/inspect_ontology.py` from the skill directory for quick namespace-preserving
+term probes, or keep equivalent queries in the durable build script. Use the complete URI
+returned by discovery rather than reconstructing a WaTr or 223P IRI from a local name.
+
 ## Namespaces and imports
 
 The canonical namespace and ontology IRI are different:
@@ -316,19 +320,15 @@ Use QUDT's `qudt:hasQuantityKind` and `qudt:hasUnit`; do not use similarly named
 `s223:` properties. Check terms against the imported QUDT version and follow the
 deprecation check in `223p_vocabulary.md`.
 
-Before scaling a tag mapper, validate these load-bearing 223/WaTr requirements:
+Before scaling a tag mapper, run the complete representative-pattern preflight in
+`223p_vocabulary.md`. Then confirm the WaTr-specific obligations:
 
-- every observable property has a single-property `s223:Sensor` with `s223:observes` and
-  `s223:hasObservationLocation`;
-- every enumerable property has `s223:hasEnumerationKind`;
-- every actuatable property is linked from its equipment with
-  `s223:actuatedByProperty`;
-- every quantifiable property has a verified QUDT quantity kind and unit;
 - every specific WaTr unit process has its required `watr:hasProcess`;
-- concrete equipment and connection-point classes meet their inlet/outlet and medium
+- every water-quality property identifies the medium and/or substance needed to
+  disambiguate the measurement;
+- concrete WaTr classes meet their class-specific inlet, outlet, medium, and process
   constraints;
-- `s223:mapsTo` is one-to-one in both directions—do not map several parallel columns to
-  one composite port.
+- project-specific media or constituents are minted only when the source supports them.
 
 Do not substitute a dimensionally related but differently scaled unit merely to make
 validation pass. For example, `mW/cm²` cannot silently become `mW/m²`; convert the values

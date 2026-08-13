@@ -1,5 +1,14 @@
 # Finding, choosing, and filling templates
 
+## Contents
+
+- [How a template is defined](#how-a-template-is-defined)
+- [Load libraries](#loading-libraries-order-matters)
+- [Find the right template](#finding-the-right-template)
+- [TemplateMatcher performance](#templatematcher-performance-read-this-before-you-use-it)
+- [Fill a template](#filling-a-template)
+- [Use templates in repair](#templates-in-repair)
+
 A **Template** is a function that generates an RDF graph. Its parameters are the
 `urn:___param___#` (`PARAM`) nodes in its body; `name` is the distinguished root
 parameter. Templates are BuildingMOTIF's domain vocabulary: they're what you fill to

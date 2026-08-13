@@ -1,5 +1,14 @@
 # Point labels and class mapping
 
+## Contents
+
+- [Workflow](#workflow)
+- [Starter Brick mappings](#starter-brick-mapping-patterns)
+- [BuildingMOTIF label parser](#buildingmotif-label-parser)
+- [Synthesize graph triples](#synthesizing-graph-triples-from-token-records)
+- [Non-BMS inputs](#non-bms-inputs)
+- [Reporting](#reporting)
+
 Point-list builds are usually not blocked by graph mechanics; they are blocked by the
 mapping from source metadata to the requested ontology. BMS point labels are a common
 Brick source, but the same workflow applies to WaTr SCADA tags, CSV columns, BACnet object
@@ -33,8 +42,12 @@ mapping loop.
    when the point list only gives point identity/type/owner.
 6. Validate, then refine the mapping and graph structure.
 
-Keep the mapping table as a visible artifact in the script. It is evidence-bearing domain
-logic, not boilerplate.
+Keep the mapping table as a visible artifact in the durable BuildingMOTIF build script. In
+the same script, print the distinct source tokens and unmapped counts, query candidate
+ontology terms, validate a representative mapping, and then apply the verified table to
+all rows. This makes exploration reproducible and keeps a candidate discovered during an
+interactive query from silently becoming an assertion. The mapping table is
+evidence-bearing domain logic, not boilerplate.
 
 ## Starter Brick mapping patterns
 

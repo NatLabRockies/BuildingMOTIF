@@ -1,5 +1,18 @@
 # Validation: writing BuildingMOTIF scripts
 
+## Contents
+
+- [What validation means](#what-validation-means-here)
+- [Minimal validation script](#the-minimal-validate-and-report-script)
+- [Use the validation loop](#validation-is-the-top-of-a-loop-not-a-one-shot-check)
+- [Read failures](#reading-validation-failures-in-building-terms)
+- [Diagnose shapes that did not fire](#why-didnt-my-shape-fire)
+- [Handle missing imports](#error_on_missing_imports-the-one-flag-to-understand)
+- [Compile without validating](#compiling-without-validating-inspect-the-inferred-graph)
+- [Inspect libraries](#listing-whats-in-a-library)
+- [Run the complete sufficiency check](#a-complete-is-this-model-sufficient-script)
+- [Switch references](#when-to-stop-reading-and-switch-files)
+
 This is the script-first reference for **read-only** use of BuildingMOTIF: *does this
 model conform, and if not, what exactly is missing?* It is the file to reach for when you
 are writing a Python script (or notebook cell) to validate a model, list templates, dump a
@@ -55,8 +68,8 @@ conforming W3C report graph, and — as of `pyshifty` 0.2.7 — improved SPARQL-
 SHACL-AF rule inference (`sh:rule` Triple Rules and SPARQL Construct Rules), which was the
 one place a gap could plausibly have pushed someone toward `pyshacl`. It's also the only
 engine that repairs. There is no case in this skill's workflows where `pyshacl` is the
-right choice. `topquadrant` remains available (needs a JVM; see `SKILL.md`'s
-"Installation") only for the rare case of cross-validating against a separate, Java-based
+right choice. `topquadrant` remains available (needs a JVM; see `setup.md`) only for the
+rare case of cross-validating against a separate, Java-based
 implementation — it is not what this skill teaches by default and is not repair-capable.
 
 ## The minimal validate-and-report script

@@ -14,6 +14,20 @@ Current compiled ontology: <https://open223.info/223p.ttl>
 Everything below is verified against the ontology's own `rdfs:comment` definitions and the
 worked templates in `libraries/ashrae/223p/nrel-templates/` on disk — quoted, not guessed.
 
+## Contents
+
+- [Loading 223P](#loading-223p)
+- [Fast path for structured sources](#fast-path-for-structured-sources)
+- [Core concepts](#core-concepts-verified-from-the-ontology)
+- [The connection pattern](#the-connection-pattern)
+- [Properties and sensors](#properties-and-sensors)
+- [Enumerated values](#enumerated-values-roles-domains-media)
+- [Discover and verify terms](#discover-and-verify-before-asserting)
+- [Prefer non-deprecated terms](#prefer-non-deprecated-terms-including-qudt-units)
+- [Preflight repeated patterns](#preflight-repeated-patterns)
+- [Gotchas](#gotchas)
+- [Output](#output-to-produce-for-the-user)
+
 ## Loading 223P
 
 223P is **not a builtin library** — unlike `brick/Brick.ttl`, there is no packaged
@@ -38,7 +52,23 @@ definitions, not a template library. This repo's `libraries/ashrae/223p/nrel-tem
 has a hand-written set (see below), but like `guideline36`/`chiller-plant` it is **repo-only,
 not shipped in the package** — same fallback options as any other sample library (clone the
 repo, a `git:` entry in `libraries.yml`, or write your own inline templates following the
-patterns below). See `SKILL.md`'s "Where libraries live" section.
+patterns below). See `setup.md`'s repository-only library section.
+
+## Fast path for structured sources
+
+For a BACnet dump, point list, equipment schedule, or other repeated source, use the durable
+BuildingMOTIF build script described in `building_models.md`:
+
+1. Inventory distinct equipment labels, object types, point suffixes, units, and I/O types.
+2. Ask once about material topology or semantic choices the source does not establish.
+3. Verify only the terms used by the mapping table, preserving every full IRI and namespace.
+4. Build one representative equipment instance with each recurring topology/property
+   pattern and run the preflight below.
+5. Validate that small graph before expanding it across the source.
+6. Report mapped and unresolved records, then validate and serialize the full graph.
+
+Do not build the complete repeated graph and use dozens of identical validation failures as
+the term-discovery mechanism.
 
 ## Core concepts, verified from the ontology
 
@@ -76,7 +106,8 @@ Three relations do the topology work, verified from their own `rdfs:comment`s:
 - **`s223:mapsTo`** — "associate a ConnectionPoint of a Connectable to a corresponding
   ConnectionPoint of the one containing it" (the equipment-*containment* pattern, via
   `s223:contains`): when equipment A contains sub-equipment B, and B's connection point is
-  what A exposes externally, A's own connection point `mapsTo` B's internal one. The
+  what A exposes externally, **B's internal connection point `mapsTo` A's containing
+  connection point**. The direction is contained → container. The
   current shapes permit at most one `mapsTo` value and at most one inverse `mapsTo` value:
   this relation is one-to-one, not a manifold for several parallel child ports.
 
@@ -135,6 +166,12 @@ then exposes its own external connection points with `mapsTo`:
     qudt:hasQuantityKind quantitykind:DimensionlessRatio ;
     qudt:hasUnit unit:PERCENT .
   ```
+- Every enumerated property needs an `s223:hasEnumerationKind` value such as
+  `s223:Binary-OnOff` or `s223:EnumerationKind-Occupancy`. The property class alone does
+  not identify the enumeration.
+- Link actuatable properties from their owning equipment with
+  `equipment s223:actuatedByProperty property`. `s223:hasProperty` alone does not satisfy
+  the actuation relationship.
 - **`s223:Sensor`** "observes an ObservableProperty... which may be quantifiable... or
   Enumerable." Wire a sensor to what it measures and where with `s223:observes` (binds the
   sensor to the `Property`) and `s223:hasObservationLocation` (binds it to the
@@ -200,6 +237,29 @@ describe_s223("Damper")
 print(subclasses_of_s223("HeatExchanger"))
 ```
 
+The helper above deliberately verifies only the core `s223:` namespace. Candidate searches
+must preserve extension namespaces. Several extensions reuse plausible local names, and a
+local-name hit does not imply that `S223[local_name]` exists. Search for and retain the
+complete URI:
+
+```python
+from rdflib import URIRef
+
+def find_full_iris(local_name: str):
+    suffixes = (f"#{local_name}", f"/{local_name}")
+    return sorted({
+        node for node in s223_graph.all_nodes()
+        if isinstance(node, URIRef) and str(node).endswith(suffixes)
+    }, key=str)
+
+for iri in find_full_iris("HotWaterCoil"):
+    print(iri)  # may be a G36-extension IRI, not s223:HotWaterCoil
+```
+
+Use the returned `URIRef` in the mapping/build. Never discard its namespace and recreate it
+with `S223[local_name]`. The bundled `scripts/inspect_ontology.py` performs this
+namespace-preserving lookup and also reports types, deprecation, comments, and superclasses.
+
 List the enumerated instances the same way — they're individuals, not a class hierarchy,
 so the simplest robust check is local-name prefix over every node in the graph:
 
@@ -251,6 +311,31 @@ qudt_check(QUDTQK.SurgeImpedanceOfTheMedium)  # example: check before using
 shape graph does not necessarily include OntoEnv's resolved import closure. If the term is
 absent, query the resolved closure per `ontology_imports.md` before declaring it missing.)
 
+## Preflight repeated patterns
+
+Before scaling a builder across source rows, validate one representative instance and
+confirm every applicable obligation:
+
+- Every connection point uses a concrete inlet/outlet/bidirectional class, belongs to its
+  connectable through `s223:hasConnectionPoint`/`isConnectionPointOf`, and has the required
+  medium.
+- Every explicit connection joins the intended connection points through `s223:cnx`.
+- Every containment boundary maps **child/internal → parent/external**; `s223:mapsTo` is
+  one-to-one in both directions, and the same point is not also connected through an
+  external connection in a way prohibited by the active shapes.
+- Every quantifiable property has a verified QUDT quantity kind and unit.
+- Every enumerated property has `s223:hasEnumerationKind`.
+- Every observable property has a single-property sensor with `s223:observes` and
+  `s223:hasObservationLocation`.
+- Every actuatable property is linked from its owning equipment with
+  `s223:actuatedByProperty`.
+- Every asserted class uses the complete verified IRI, including any extension namespace,
+  and is not abstract or deprecated.
+
+Include numeric observable, numeric actuatable, enumerated observable, and enumerated
+actuatable examples when those patterns occur in the source. Validate the representative
+graph to zero violations before generating the repeated instances.
+
 ## Gotchas
 
 - **Do not invent a plug for an unconnected `ConnectionPoint`.** In the current 223
@@ -266,6 +351,9 @@ absent, query the resolved closure per `ontology_imports.md` before declaring it
 - **`mapsTo` is one-to-one in both directions.** Several contained filters or reactors
   cannot all `mapsTo` one composite inlet or outlet; use evidence-backed junction/manifold
   topology or leave their parallel ports unaggregated.
+- **Preserve extension namespaces.** A term found by local name in G36 or another extension
+  is not an `s223:` term. Assert the full discovered IRI or choose a verified core 223P
+  alternative supported by the evidence.
 - **Role/Domain/Medium are values, not types.** A shape requirement phrased as "must have a
   heating role" is `sh:hasValue s223:Role-Heating` on `s223:hasRole`, not a class check.
 - **`System` never gets `hasConnectionPoint`.** If validation wants a `ConnectionPoint` on
