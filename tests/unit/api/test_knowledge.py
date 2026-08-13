@@ -1,6 +1,8 @@
 from hashlib import sha256
 from io import BytesIO
 
+from buildingmotif.knowledge import EvidenceChunk
+
 
 def _upload(client, content=b"air handler schedule", **fields):
     data = {
@@ -97,3 +99,86 @@ def test_update_validation(client):
     assert client.patch(url, json={"name": "  "}).status_code == 400
     assert client.patch(url, json={"description": 3}).status_code == 400
     assert client.patch(url, json={"unexpected": True}).status_code == 400
+
+
+class FakeKnowledgeService:
+    def __init__(self):
+        self.indexed = []
+        self.removed = []
+        self.queries = []
+
+    def index_document(self, document_id):
+        self.indexed.append(document_id)
+        return 3
+
+    def remove_document(self, document_id):
+        self.removed.append(document_id)
+
+    def retrieve(self, query, *, limit=10, document_ids=None):
+        self.queries.append((query, limit, document_ids))
+        return [
+            EvidenceChunk(
+                score=0.75,
+                knowledge_document_id=1,
+                source_sha256="abc",
+                source_name="Schedule",
+                source_description="Controls evidence",
+                file_name="schedule.pdf",
+                mime_type="application/pdf",
+                chunk_ordinal=2,
+                text="AHU-1 has a supply fan",
+                provenance={"page": 4},
+            )
+        ]
+
+
+def test_index_and_search_api(client, app):
+    service = FakeKnowledgeService()
+    app.knowledge_service = service
+    document_id = _upload(client).json["id"]
+
+    indexed = client.post(f"/knowledge/documents/{document_id}/index")
+    assert indexed.status_code == 200
+    assert indexed.json == {"document_id": document_id, "chunk_count": 3}
+
+    searched = client.post(
+        "/knowledge/search",
+        json={"query": "supply fan", "limit": 5, "document_ids": [document_id]},
+    )
+    assert searched.status_code == 200
+    assert searched.json[0]["knowledge_document_id"] == 1
+    assert searched.json[0]["provenance"] == {"page": 4}
+    assert service.queries == [("supply fan", 5, [document_id])]
+
+    client.patch(f"/knowledge/documents/{document_id}", json={"description": "changed"})
+    client.delete(f"/knowledge/documents/{document_id}")
+    assert service.removed == [document_id, document_id]
+
+
+def test_index_api_requires_configuration(client):
+    assert client.post("/knowledge/documents/1/index").status_code == 503
+    assert client.post("/knowledge/search", json={"query": "fan"}).status_code == 503
+
+
+def test_search_validation(client, app):
+    app.knowledge_service = FakeKnowledgeService()
+
+    assert client.post("/knowledge/search").status_code == 400
+    assert client.post("/knowledge/search", json={}).status_code == 400
+    assert client.post("/knowledge/search", json={"query": " "}).status_code == 400
+    assert (
+        client.post("/knowledge/search", json={"query": "fan", "limit": 0}).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/knowledge/search", json={"query": "fan", "document_ids": [True]}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/knowledge/search", json={"query": "fan", "unexpected": True}
+        ).status_code
+        == 400
+    )

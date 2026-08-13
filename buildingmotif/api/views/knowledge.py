@@ -37,6 +37,16 @@ def _required_text(value, field: str) -> Tuple[Optional[str], Optional[Tuple]]:
     return value.strip(), None
 
 
+def _knowledge_service():
+    service = getattr(current_app, "knowledge_service", None)
+    if service is None:
+        return None, _error(
+            "knowledge index is not configured",
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return service, None
+
+
 @blueprint.route("/documents", methods=["GET"])
 def list_documents() -> flask.Response:
     documents = (
@@ -147,6 +157,8 @@ def update_document(document_id: int) -> flask.Response:
         return _error("no changes supplied", status.HTTP_400_BAD_REQUEST)
 
     try:
+        if current_app.knowledge_service is not None:
+            current_app.knowledge_service.remove_document(document_id)
         document = (
             current_app.building_motif.table_connection.update_db_knowledge_document(
                 document_id,
@@ -165,9 +177,69 @@ def update_document(document_id: int) -> flask.Response:
 @blueprint.route("/documents/<int:document_id>", methods=["DELETE"])
 def delete_document(document_id: int) -> flask.Response:
     try:
+        if current_app.knowledge_service is not None:
+            current_app.knowledge_service.remove_document(document_id)
         current_app.building_motif.table_connection.delete_db_knowledge_document(
             document_id
         )
     except KnowledgeDocumentNotFound:
         return _error(f"ID: {document_id}", status.HTTP_404_NOT_FOUND)
     return flask.Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@blueprint.route("/documents/<int:document_id>/index", methods=["POST"])
+def index_document(document_id: int) -> flask.Response:
+    service, error = _knowledge_service()
+    if error:
+        return error
+    try:
+        chunk_count = service.index_document(document_id)
+    except KnowledgeDocumentNotFound:
+        return _error(f"ID: {document_id}", status.HTTP_404_NOT_FOUND)
+    return (
+        jsonify({"document_id": document_id, "chunk_count": chunk_count}),
+        status.HTTP_200_OK,
+    )
+
+
+@blueprint.route("/search", methods=["POST"])
+def search_documents() -> flask.Response:
+    service, error = _knowledge_service()
+    if error:
+        return error
+    if request.mimetype != "application/json":
+        return _error(
+            "request content type must be application/json",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return _error("body must be a JSON object", status.HTTP_400_BAD_REQUEST)
+    query, error = _required_text(body.get("query"), "query")
+    if error:
+        return error
+    limit = body.get("limit", 10)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        return _error(
+            "limit must be an integer between 1 and 100",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    document_ids = body.get("document_ids")
+    if document_ids is not None and (
+        not isinstance(document_ids, list)
+        or any(
+            isinstance(item, bool) or not isinstance(item, int) for item in document_ids
+        )
+    ):
+        return _error(
+            "document_ids must be a list of integers",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    unknown = set(body) - {"query", "limit", "document_ids"}
+    if unknown:
+        return _error(
+            f"unknown fields: {', '.join(sorted(unknown))}",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    results = service.retrieve(query, limit=limit, document_ids=document_ids)
+    return jsonify([result.to_dict() for result in results]), status.HTTP_200_OK

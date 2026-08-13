@@ -51,6 +51,8 @@ def create_app(
     DB_URI,
     shacl_engine: Optional[str] = DEFAULT_SHACL_ENGINE,
     graph_store_path: Optional[Union[str, Path]] = None,
+    knowledge_index_path: Optional[Union[str, Path]] = None,
+    knowledge_service=None,
 ):
     """Creates a Flask API.
 
@@ -63,6 +65,9 @@ def create_app(
     :type shacl_engine: str, optional
     :param graph_store_path: directory for the Oxigraph graph store. Defaults
         to GRAPH_STORE_PATH or BuildingMOTIF's database-derived default.
+    :param knowledge_index_path: optional path for a persistent local Qdrant
+        index. Defaults to KNOWLEDGE_INDEX_PATH and requires the knowledge extra.
+    :param knowledge_service: optional pre-built service for custom backends.
     :return: flask app
     :rtype: Flask.app
     """
@@ -73,12 +78,20 @@ def create_app(
         KNOWLEDGE_MAX_DOCUMENT_BYTES=int(
             os.getenv("KNOWLEDGE_MAX_DOCUMENT_BYTES", str(100 * 1024 * 1024))
         ),
+        KNOWLEDGE_INDEX_PATH=knowledge_index_path or os.getenv("KNOWLEDGE_INDEX_PATH"),
     )
     app.building_motif = BuildingMOTIF(
         app.config["DB_URI"],
         shacl_engine=shacl_engine,
         graph_store_path=app.config["GRAPH_STORE_PATH"],
     )
+    if knowledge_service is None and app.config["KNOWLEDGE_INDEX_PATH"]:
+        from buildingmotif.knowledge import KnowledgeService
+
+        knowledge_service = KnowledgeService.local(
+            app.building_motif, app.config["KNOWLEDGE_INDEX_PATH"]
+        )
+    app.knowledge_service = knowledge_service
 
     app.after_request(_after_request)
     app.register_error_handler(Exception, _after_error)
