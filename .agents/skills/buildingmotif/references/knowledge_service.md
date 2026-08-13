@@ -169,13 +169,18 @@ document. Deleting a document also deletes its indexed chunks.
 Through Python:
 
 ```python
-hits = bm.knowledge.retrieve(
+all_hits = bm.knowledge.retrieve(
     "Does AHU-1 have a supply fan?",
     limit=5,
-    document_ids=[1, 4],  # optional source restriction
 )
 
-for hit in hits:
+source_limited_hits = bm.knowledge.retrieve(
+    "Does AHU-1 have a supply fan?",
+    limit=5,
+    document_ids=[1, 4],
+)
+
+for hit in all_hits:
     print(hit.score, hit.text)
     print(hit.knowledge_document_id, hit.file_name, hit.chunk_ordinal)
     print(hit.source_sha256, hit.provenance)
@@ -188,6 +193,12 @@ curl -X POST -H 'Content-Type: application/json' \
      -d '{"query":"Does AHU-1 have a supply fan?","limit":5,"document_ids":[1,4]}' \
      http://localhost:5000/knowledge/search
 ```
+
+When `document_ids` is omitted (or `None` in Python), retrieval searches all chunks in
+the configured index and returns the highest-ranked `limit` chunks across that corpus. It
+does **not** search documents that exist only in SQL and have not been successfully
+indexed. Supply `document_ids` only when the query should be restricted to selected
+sources; the source filter is applied before ranking.
 
 Each `EvidenceChunk` contains:
 

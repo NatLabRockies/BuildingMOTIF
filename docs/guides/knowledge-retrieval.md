@@ -74,10 +74,13 @@ curl -X POST -H 'Content-Type: application/json' \
      http://localhost:5000/knowledge/search
 ```
 
-Use `document_ids` in the JSON body to restrict a query to selected sources. Every result
-contains the SQL document ID, source SHA-256, filename, chunk ordinal, and Docling
-provenance. A retrieval result is evidence for a user to review; it is not permission to
-assert metadata or automatically apply a model repair.
+Because the request above omits `document_ids`, it searches all chunks in the configured
+index and returns the highest-ranked five. This means all documents that have been
+successfully indexed—not every document merely stored in SQL. Add `document_ids` to
+restrict a query to selected sources. Every result contains the SQL document ID, source
+SHA-256, filename, chunk ordinal, and Docling provenance. A retrieval result is evidence
+for a user to review; it is not permission to assert metadata or automatically apply a
+model repair.
 
 ## Python API
 
@@ -107,6 +110,17 @@ with BuildingMOTIF(
         document_ids=[document.id],
     )
 ```
+
+Omit `document_ids` to search the whole configured index:
+
+```python
+evidence = bm.knowledge.retrieve("AHU-1 supply fan", limit=5)
+```
+
+That searches every successfully indexed document and returns the five highest-ranked
+chunks across the corpus. Documents that have only been added to SQL do not participate
+until `index_document(...)` succeeds. Supplying `document_ids=[...]` applies a source
+filter before ranking.
 
 `add_document` accepts a string or `Path`; relative paths resolve from the Python
 process's current working directory, and absolute paths work unchanged. It reads the file
