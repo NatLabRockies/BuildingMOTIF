@@ -18,12 +18,14 @@ in the repository:
     ├── 223p_vocabulary.md          # ASHRAE 223P (s223:) topology, connections, properties
     ├── brick_vocabulary.md         # verify Brick class names before asserting `a brick:X`
     ├── building_models.md          # Model.create + TemplateBuilderContext + evidence
-    ├── evidence.md                 # finding evidence in point lists / submittals / BACnet
+    ├── evidence.md                 # reviewing evidence in point lists / documents / BACnet
+    ├── knowledge_service.md        # Docling/Qdrant document indexing and retrieval
     ├── ontology_imports.md         # OntoEnv, owl:imports resolution, offline/cache knobs
     ├── point_labels.md             # point lists, BMS labels, BACnet names -> Brick classes
     ├── repair.md                   # propose/apply repairs, gap -> evidence -> user -> apply
     ├── templates.md                # find/evaluate/fill templates
     ├── validation.md               # validate a model, read failures in building terms
+    ├── watr_vocabulary.md          # WaTr extension classes and relationships
     ├── writing_shapes.md           # SHACL shapes, `bmotif:` constraint vocabulary
     └── writing_templates.md        # YAML template bodies, dependencies, decompiling shapes
 ```
@@ -41,7 +43,7 @@ as the only acceptable loop.
 
 There are two separate installs here, and it's worth being precise about which is which:
 
-- **The skill's own files** — `SKILL.md` + `references/*.md`, a dozen markdown files
+- **The skill's own files** — `SKILL.md` + `references/*.md`, fourteen Markdown files
   totaling well under 1MB — have to come from the repository. They aren't published
   anywhere else yet (see "Packaging" below).
 - **The `buildingmotif` Python package** the skill teaches an agent to `import` is a
@@ -55,7 +57,7 @@ What it rules out is writing `import buildingmotif` scripts that only work insid
 repository working tree; it says nothing about how the skill files themselves got there.
 
 You don't need a full clone of this repository (tens of MB, most of it Brick/QUDT/223P
-ontology files and history the skill doesn't need) just to get twelve markdown files. Two
+ontology files and history the skill doesn't need) just to get fourteen Markdown files. Two
 ways to grab only `.agents/skills/buildingmotif/`:
 
 **Sparse, blobless clone (recommended — plain `git`, and `git pull` keeps it updated):**
