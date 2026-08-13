@@ -8,7 +8,7 @@ images whose wording is not predictable enough for grep alone.
 ## Contents
 
 - [Install and configure](#install-and-configure)
-- [Upload and document lifecycle](#upload-and-document-lifecycle)
+- [Add documents and manage their lifecycle](#add-documents-and-manage-their-lifecycle)
 - [Retrieve evidence](#retrieve-evidence)
 - [Use it in the repair loop](#use-it-in-the-repair-loop)
 - [Custom index backends](#custom-index-backends)
@@ -24,6 +24,10 @@ The architecture is deliberately split:
 
 The SQL document is authoritative. A Qdrant chunk is derived data and may be deleted and
 regenerated. Never treat an index hit as an asserted fact about the building.
+
+SQL storage accepts any non-empty file. The default Docling processor handles common
+formats including PDF, text/Markdown, HTML, office documents, and images. Do not assume
+that every stored blob is convertible by every configured processor.
 
 ## Install and configure
 
@@ -51,9 +55,15 @@ with BuildingMOTIF(
     "sqlite:///buildingmotif.db",
     knowledge_index_path=".buildingmotif-knowledge",
 ) as bm:
-    assert bm.has_knowledge
-    count = bm.knowledge.index_document(1)
-    hits = bm.knowledge.retrieve("AHU-1 supply fan", limit=5)
+    document = bm.knowledge.add_document(
+        "ahu-schedule.pdf",
+        name="AHU schedule",
+        description="Controls submittal",
+    )
+    count = bm.knowledge.index_document(document.id)
+    hits = bm.knowledge.retrieve(
+        "AHU-1 supply fan", document_ids=[document.id], limit=5
+    )
 ```
 
 The `BuildingMOTIF` context closes the Qdrant client along with its SQL, graph-store, and
@@ -64,17 +74,79 @@ The first indexing operation may download the Docling tokenizer and FastEmbed mo
 `HF_HOME` and `FASTEMBED_CACHE_PATH` for persistent model caches. A local Qdrant path must
 not be shared by multiple processes.
 
-## Upload and document lifecycle
+## Add documents and manage their lifecycle
 
-The Python service indexes rows that already exist in the `knowledge_document` SQL table.
-The HTTP API is the normal way to create those rows:
+For a file on disk, use `add_document`. It accepts a string or `Path`; relative paths
+resolve from the Python process's current working directory, and absolute paths work
+unchanged. It reads the bytes and infers the MIME type from the filename:
+
+```python
+from pathlib import Path
+
+source_path = Path("documents") / "ahu-schedule.pdf"
+document = bm.knowledge.add_document(
+    source_path,
+    name="AHU schedule",                 # defaults to the filename
+    description="Controls submittal",
+    mime_type="application/pdf",         # optional inference override
+)
+```
+
+For content already in memory, provide the filename and MIME type explicitly:
+
+```python
+document = bm.knowledge.create_document(
+    name="Sequence of operations",
+    description="Text export",
+    file_name="sequence.txt",
+    mime_type="text/plain",
+    content=b"Enable AHU-1 when occupied.",
+)
+```
+
+Storage and indexing are deliberately separate. After adding a document, call
+`bm.knowledge.index_document(document.id)`. The other Python lifecycle methods are:
+
+```python
+documents = bm.knowledge.list_documents()  # metadata; content remains deferred
+metadata = bm.knowledge.get_document(document.id)
+content = bm.knowledge.get_document(document.id, include_content=True).content
+
+bm.knowledge.update_document(document.id, description="Reviewed submittal")
+bm.knowledge.index_document(document.id)  # update removed the old chunks
+bm.knowledge.delete_document(document.id)  # deletes source and indexed chunks
+```
+
+The same operations are available over HTTP. Upload a document with multipart form data:
 
 ```bash
 curl -F 'name=AHU schedule' \
      -F 'description=Controls submittal' \
-     -F 'file=@ahu-schedule.pdf' \
+     -F 'file=@./documents/ahu-schedule.pdf;type=application/pdf' \
      http://localhost:5000/knowledge/documents
 ```
+
+Or upload the same relative path with a Python HTTP client:
+
+```python
+from pathlib import Path
+
+import requests
+
+path = Path("documents/ahu-schedule.pdf")
+with path.open("rb") as stream:
+    response = requests.post(
+        "http://localhost:5000/knowledge/documents",
+        data={"name": "AHU schedule", "description": "Controls submittal"},
+        files={"file": (path.name, stream, "application/pdf")},
+        timeout=60,
+    )
+response.raise_for_status()
+document_id = response.json()["id"]
+```
+
+The HTTP upload limit is 100 MiB by default and is configurable with
+`KNOWLEDGE_MAX_DOCUMENT_BYTES`.
 
 Available document operations:
 

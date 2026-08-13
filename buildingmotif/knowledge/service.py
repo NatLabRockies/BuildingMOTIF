@@ -1,3 +1,4 @@
+import mimetypes
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -58,6 +59,93 @@ class KnowledgeService:
             sha256=document.sha256,
             content=document.content,
         )
+
+    def add_document(
+        self,
+        path: Union[str, Path],
+        *,
+        name: Optional[str] = None,
+        description: str = "",
+        mime_type: Optional[str] = None,
+    ) -> DBKnowledgeDocument:
+        """Store a file as a knowledge document.
+
+        The source bytes are retained in SQL. Call :meth:`index_document`
+        separately to build or rebuild its retrieval chunks.
+        """
+        source_path = Path(path)
+        guessed_type, _ = mimetypes.guess_type(source_path.name)
+        return self.create_document(
+            name=name or source_path.name,
+            description=description,
+            file_name=source_path.name,
+            mime_type=mime_type or guessed_type or "application/octet-stream",
+            content=source_path.read_bytes(),
+        )
+
+    def create_document(
+        self,
+        *,
+        name: str,
+        file_name: str,
+        mime_type: str,
+        content: bytes,
+        description: str = "",
+    ) -> DBKnowledgeDocument:
+        """Store an in-memory document and its metadata in SQL."""
+        if not name.strip():
+            raise ValueError("name must be a non-empty string")
+        if not file_name.strip():
+            raise ValueError("file_name must be a non-empty string")
+        if not mime_type.strip():
+            raise ValueError("mime_type must be a non-empty string")
+        if not content:
+            raise ValueError("content must not be empty")
+        return self.building_motif.table_connection.create_db_knowledge_document(
+            name=name.strip(),
+            description=description,
+            file_name=file_name.strip(),
+            mime_type=mime_type.strip(),
+            content=content,
+        )
+
+    def list_documents(self) -> List[DBKnowledgeDocument]:
+        """List document metadata without loading the stored blobs."""
+        return self.building_motif.table_connection.get_all_db_knowledge_documents()
+
+    def get_document(
+        self, document_id: int, *, include_content: bool = False
+    ) -> DBKnowledgeDocument:
+        """Get one document, optionally including its stored bytes."""
+        return self.building_motif.table_connection.get_db_knowledge_document(
+            document_id, include_content=include_content
+        )
+
+    def update_document(
+        self,
+        document_id: int,
+        *,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        file_name: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        content: Optional[bytes] = None,
+    ) -> DBKnowledgeDocument:
+        """Update a source document and invalidate its retrieval chunks."""
+        self.remove_document(document_id)
+        return self.building_motif.table_connection.update_db_knowledge_document(
+            document_id,
+            name=name,
+            description=description,
+            file_name=file_name,
+            mime_type=mime_type,
+            content=content,
+        )
+
+    def delete_document(self, document_id: int) -> None:
+        """Delete a source document and its retrieval chunks."""
+        self.remove_document(document_id)
+        self.building_motif.table_connection.delete_db_knowledge_document(document_id)
 
     def index_document(self, document_id: int) -> int:
         document = self.building_motif.table_connection.get_db_knowledge_document(

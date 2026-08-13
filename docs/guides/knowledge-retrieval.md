@@ -5,13 +5,17 @@ BuildingMOTIF can retain source documents in SQL and build a derived retrieval i
 [Qdrant](https://qdrant.tech/). The SQL blob remains the authoritative source. Indexed
 chunks are disposable and can always be regenerated from it.
 
+SQL storage accepts any non-empty file. The default Docling processor can index common
+document formats including PDF, plain text/Markdown, HTML, office documents, and images.
+A successfully stored blob is not necessarily indexable by every configured processor.
+
 Install the optional dependencies:
 
 ```bash
 uv sync --extra knowledge
 ```
 
-## Local API setup
+## HTTP API setup
 
 Set a persistent Qdrant path before starting the API:
 
@@ -26,15 +30,36 @@ directories. Do not share a local Qdrant path between multiple server processes;
 Qdrant server and construct `QdrantKnowledgeIndex` with a remote client for that
 deployment shape.
 
-Upload and index a document:
+Upload a PDF from a path relative to the shell's current directory, then index it:
 
 ```bash
 curl -F 'name=AHU schedule' \
      -F 'description=Controls submittal' \
-     -F 'file=@ahu-schedule.pdf' \
+     -F 'file=@./documents/ahu-schedule.pdf;type=application/pdf' \
      http://localhost:5000/knowledge/documents
 
 curl -X POST http://localhost:5000/knowledge/documents/1/index
+```
+
+Absolute paths work with curl as well. The API accepts multipart uploads up to 100 MiB by
+default; set `KNOWLEDGE_MAX_DOCUMENT_BYTES` to change that limit. A Python HTTP client can
+upload the same local file:
+
+```python
+from pathlib import Path
+
+import requests  # pip install requests
+
+path = Path("documents/ahu-schedule.pdf")
+with path.open("rb") as stream:
+    response = requests.post(
+        "http://localhost:5000/knowledge/documents",
+        data={"name": "AHU schedule", "description": "Controls submittal"},
+        files={"file": (path.name, stream, "application/pdf")},
+        timeout=60,
+    )
+response.raise_for_status()
+document = response.json()
 ```
 
 Indexing is synchronous in this first implementation. Updating a document or its
@@ -54,22 +79,75 @@ contains the SQL document ID, source SHA-256, filename, chunk ordinal, and Docli
 provenance. A retrieval result is evidence for a user to review; it is not permission to
 assert metadata or automatically apply a model repair.
 
-## Python API and custom indexes
+## Python API
 
-The service depends only on BuildingMOTIF's `DocumentProcessor` and `KnowledgeIndex`
-protocols. The default local setup is:
+Add a file, index it, and retrieve evidence through the service owned by the
+`BuildingMOTIF` instance:
 
 ```python
+from pathlib import Path
+
 from buildingmotif import BuildingMOTIF
+
+source_path = Path("documents") / "ahu-schedule.pdf"  # relative to this process
+
 with BuildingMOTIF(
     "sqlite:///buildingmotif.db",
     knowledge_index_path=".buildingmotif-knowledge",
 ) as bm:
-    chunk_count = bm.knowledge.index_document(1)
-    evidence = bm.knowledge.retrieve("AHU-1 supply fan", limit=5)
+    document = bm.knowledge.add_document(
+        source_path,
+        name="AHU schedule",
+        description="Controls submittal",
+    )
+    chunk_count = bm.knowledge.index_document(document.id)
+    evidence = bm.knowledge.retrieve(
+        "AHU-1 supply fan",
+        limit=5,
+        document_ids=[document.id],
+    )
 ```
 
-For a remote Qdrant deployment, construct the adapter explicitly:
+`add_document` accepts a string or `Path`; relative paths resolve from the Python
+process's current working directory, and absolute paths work unchanged. It reads the file
+(PDF, text, image, or another supported type) and infers its MIME type from the filename.
+Pass `mime_type=` to override the inference. For bytes already in memory, use
+`create_document`:
+
+```python
+document = bm.knowledge.create_document(
+    name="Sequence of operations",
+    description="Text export",
+    file_name="sequence.txt",
+    mime_type="text/plain",
+    content=b"Enable AHU-1 when occupied.",
+)
+```
+
+Document storage and indexing are separate operations: call `index_document(document.id)`
+after creating a document and again after updating it. The Python lifecycle methods are:
+
+```python
+documents = bm.knowledge.list_documents()  # metadata only; blobs remain deferred
+document = bm.knowledge.get_document(document.id)
+source = bm.knowledge.get_document(document.id, include_content=True).content
+
+bm.knowledge.update_document(
+    document.id,
+    name="Reviewed AHU schedule",
+    description="Approved controls submittal",
+)
+bm.knowledge.index_document(document.id)  # update invalidated the old chunks
+bm.knowledge.delete_document(document.id)  # removes SQL source and indexed chunks
+```
+
+All SQL writes commit when the `BuildingMOTIF` context exits normally and roll back when
+an exception escapes it.
+
+## Custom indexes
+
+The service depends only on BuildingMOTIF's `DocumentProcessor` and `KnowledgeIndex`
+protocols. For a remote Qdrant deployment, construct the adapter explicitly:
 
 ```python
 from qdrant_client import QdrantClient
