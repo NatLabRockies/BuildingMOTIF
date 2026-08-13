@@ -88,18 +88,14 @@ Add a file, index it, and retrieve evidence through the service owned by the
 `BuildingMOTIF` instance:
 
 ```python
-from pathlib import Path
-
 from buildingmotif import BuildingMOTIF
-
-source_path = Path("documents") / "ahu-schedule.pdf"  # relative to this process
 
 with BuildingMOTIF(
     "sqlite:///buildingmotif.db",
     knowledge_index_path=".buildingmotif-knowledge",
 ) as bm:
     document = bm.knowledge.add_document(
-        source_path,
+        "documents/ahu-schedule.pdf",  # relative to the current working directory
         name="AHU schedule",
         description="Controls submittal",
     )
