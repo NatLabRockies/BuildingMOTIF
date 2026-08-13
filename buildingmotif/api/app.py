@@ -84,14 +84,30 @@ def create_app(
         app.config["DB_URI"],
         shacl_engine=shacl_engine,
         graph_store_path=app.config["GRAPH_STORE_PATH"],
+        knowledge_index_path=app.config["KNOWLEDGE_INDEX_PATH"]
+        if knowledge_service is None
+        else None,
+        knowledge_service=knowledge_service,
     )
-    if knowledge_service is None and app.config["KNOWLEDGE_INDEX_PATH"]:
+    # create_app is also used in tests that may already hold the singleton.
+    # Ensure an explicitly injected service is applied to that existing instance.
+    if knowledge_service is not None and (
+        not app.building_motif.has_knowledge
+        or app.building_motif.knowledge is not knowledge_service
+    ):
+        app.building_motif.configure_knowledge(knowledge_service)
+    elif (
+        knowledge_service is None
+        and app.config["KNOWLEDGE_INDEX_PATH"]
+        and not app.building_motif.has_knowledge
+    ):
         from buildingmotif.knowledge import KnowledgeService
 
-        knowledge_service = KnowledgeService.local(
-            app.building_motif, app.config["KNOWLEDGE_INDEX_PATH"]
+        app.building_motif.configure_knowledge(
+            KnowledgeService.local(
+                app.building_motif, app.config["KNOWLEDGE_INDEX_PATH"]
+            )
         )
-    app.knowledge_service = knowledge_service
 
     app.after_request(_after_request)
     app.register_error_handler(Exception, _after_error)

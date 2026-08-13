@@ -106,6 +106,7 @@ class FakeKnowledgeService:
         self.indexed = []
         self.removed = []
         self.queries = []
+        self.closed = False
 
     def index_document(self, document_id):
         self.indexed.append(document_id)
@@ -131,10 +132,13 @@ class FakeKnowledgeService:
             )
         ]
 
+    def close(self):
+        self.closed = True
+
 
 def test_index_and_search_api(client, app):
     service = FakeKnowledgeService()
-    app.knowledge_service = service
+    app.building_motif.configure_knowledge(service)
     document_id = _upload(client).json["id"]
 
     indexed = client.post(f"/knowledge/documents/{document_id}/index")
@@ -161,7 +165,7 @@ def test_index_api_requires_configuration(client):
 
 
 def test_search_validation(client, app):
-    app.knowledge_service = FakeKnowledgeService()
+    app.building_motif.configure_knowledge(FakeKnowledgeService())
 
     assert client.post("/knowledge/search").status_code == 400
     assert client.post("/knowledge/search", json={}).status_code == 400

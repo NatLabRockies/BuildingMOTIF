@@ -61,12 +61,12 @@ protocols. The default local setup is:
 
 ```python
 from buildingmotif import BuildingMOTIF
-from buildingmotif.knowledge import KnowledgeService
-
-with BuildingMOTIF("sqlite:///buildingmotif.db") as bm:
-    with KnowledgeService.local(bm, ".buildingmotif-knowledge") as knowledge:
-        chunk_count = knowledge.index_document(1)
-        evidence = knowledge.retrieve("AHU-1 supply fan", limit=5)
+with BuildingMOTIF(
+    "sqlite:///buildingmotif.db",
+    knowledge_index_path=".buildingmotif-knowledge",
+) as bm:
+    chunk_count = bm.knowledge.index_document(1)
+    evidence = bm.knowledge.retrieve("AHU-1 supply fan", limit=5)
 ```
 
 For a remote Qdrant deployment, construct the adapter explicitly:
@@ -80,10 +80,14 @@ from buildingmotif.knowledge import (
     QdrantKnowledgeIndex,
 )
 
-client = QdrantClient(url="http://qdrant:6333")
-processor = DoclingDocumentProcessor()
-index = QdrantKnowledgeIndex(client=client)
-knowledge = KnowledgeService(bm, processor, index)
+with BuildingMOTIF("postgresql://...") as bm:
+    client = QdrantClient(url="http://qdrant:6333")
+    processor = DoclingDocumentProcessor()
+    index = QdrantKnowledgeIndex(client=client)
+    bm.configure_knowledge(KnowledgeService(bm, processor, index))
+
+    # The API stays the same regardless of the index backend.
+    evidence = bm.knowledge.retrieve("AHU-1 supply fan", limit=5)
 ```
 
 An alternative pgvector or domain-specific retriever can implement `KnowledgeIndex`

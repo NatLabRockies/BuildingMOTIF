@@ -12,6 +12,7 @@ class FakeIndex:
         self.source = None
         self.chunks = None
         self.removed = []
+        self.closed = False
 
     def replace_document(self, source, chunks):
         self.source = source
@@ -23,6 +24,9 @@ class FakeIndex:
 
     def retrieve(self, query, *, limit=10, document_ids=None):
         return []
+
+    def close(self):
+        self.closed = True
 
 
 def test_service_indexes_sql_source(bm):
@@ -42,3 +46,6 @@ def test_service_indexes_sql_source(bm):
 
     service.remove_document(document.id)
     assert index.removed == [document.id]
+
+    service.close()
+    assert index.closed

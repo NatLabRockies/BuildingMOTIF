@@ -38,13 +38,12 @@ def _required_text(value, field: str) -> Tuple[Optional[str], Optional[Tuple]]:
 
 
 def _knowledge_service():
-    service = getattr(current_app, "knowledge_service", None)
-    if service is None:
+    if not current_app.building_motif.has_knowledge:
         return None, _error(
             "knowledge index is not configured",
             status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    return service, None
+    return current_app.building_motif.knowledge, None
 
 
 @blueprint.route("/documents", methods=["GET"])
@@ -157,8 +156,8 @@ def update_document(document_id: int) -> flask.Response:
         return _error("no changes supplied", status.HTTP_400_BAD_REQUEST)
 
     try:
-        if current_app.knowledge_service is not None:
-            current_app.knowledge_service.remove_document(document_id)
+        if current_app.building_motif.has_knowledge:
+            current_app.building_motif.knowledge.remove_document(document_id)
         document = (
             current_app.building_motif.table_connection.update_db_knowledge_document(
                 document_id,
@@ -177,8 +176,8 @@ def update_document(document_id: int) -> flask.Response:
 @blueprint.route("/documents/<int:document_id>", methods=["DELETE"])
 def delete_document(document_id: int) -> flask.Response:
     try:
-        if current_app.knowledge_service is not None:
-            current_app.knowledge_service.remove_document(document_id)
+        if current_app.building_motif.has_knowledge:
+            current_app.building_motif.knowledge.remove_document(document_id)
         current_app.building_motif.table_connection.delete_db_knowledge_document(
             document_id
         )

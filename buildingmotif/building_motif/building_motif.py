@@ -39,6 +39,8 @@ class BuildingMOTIF(metaclass=Singleton):
         ontology_offline: bool = False,
         ontology_strict: bool = False,
         graph_store_path: Optional[Union[str, Path]] = None,
+        knowledge_index_path: Optional[Union[str, Path]] = None,
+        knowledge_service=None,
         create_tables: bool = True,
     ) -> None:
         """Class constructor.
@@ -69,6 +71,12 @@ class BuildingMOTIF(metaclass=Singleton):
             databases default to <sqlite-db-file>.oxigraph. In-memory SQLite
             databases use an in-memory graph store. Other databases default to
             .buildingmotif-oxigraph in the current working directory.
+        :param knowledge_index_path: path for a persistent local knowledge
+            index. When supplied, ``bm.knowledge`` provides Docling/Qdrant
+            indexing and retrieval and the ``knowledge`` extra is required.
+        :param knowledge_service: a pre-built knowledge service for dependency
+            injection or a custom index backend. Mutually exclusive with
+            ``knowledge_index_path``.
         :param create_tables: if true (the default), create any missing
             BuildingMOTIF tables in the database. This is idempotent and never
             drops or alters an existing table. Pass False when the schema is
@@ -76,6 +84,10 @@ class BuildingMOTIF(metaclass=Singleton):
             ``migrations/`` -- so this instance never touches the schema.
         :type create_tables: bool
         """
+        if knowledge_index_path is not None and knowledge_service is not None:
+            raise ValueError(
+                "knowledge_index_path and knowledge_service are mutually exclusive"
+            )
         self.db_uri = db_uri
         self.shacl_engine = normalize_shacl_engine(shacl_engine)
         self.ontology_fetch_imports = ontology_fetch_imports
@@ -112,6 +124,34 @@ class BuildingMOTIF(metaclass=Singleton):
             strict=ontology_strict,
             graph_connection=self.graph_connection,
         )
+        self._knowledge = knowledge_service
+        if knowledge_index_path is not None:
+            from buildingmotif.knowledge import KnowledgeService
+
+            self._knowledge = KnowledgeService.local(self, knowledge_index_path)
+
+    @property
+    def has_knowledge(self) -> bool:
+        """Return whether document indexing and retrieval are configured."""
+        return self._knowledge is not None
+
+    @property
+    def knowledge(self):
+        """Return this instance's configured knowledge service."""
+        if self._knowledge is None:
+            from buildingmotif.knowledge.errors import KnowledgeIndexNotConfigured
+
+            raise KnowledgeIndexNotConfigured(
+                "knowledge retrieval is not configured; pass knowledge_index_path "
+                "to BuildingMOTIF or inject a knowledge_service"
+            )
+        return self._knowledge
+
+    def configure_knowledge(self, service) -> None:
+        """Attach a custom knowledge service to this BuildingMOTIF instance."""
+        if self._knowledge is not None and self._knowledge is not service:
+            self._knowledge.close()
+        self._knowledge = service
 
     @property
     def shacl_engine(self) -> str:
@@ -301,6 +341,14 @@ class BuildingMOTIF(metaclass=Singleton):
 
     def close(self) -> None:
         """Close session and engine."""
+        if self._knowledge is not None:
+            try:
+                self._knowledge.close()
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "Knowledge service close failed", exc_info=True
+                )
+            self._knowledge = None
         try:
             self.collect_graph_garbage()
         except Exception:
