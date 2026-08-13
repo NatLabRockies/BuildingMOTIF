@@ -55,3 +55,11 @@ class TemplateDependencyNotFound(Exception):
 
     def __str__(self):
         return f"ID: {self.template_dependency_id}"
+
+
+class KnowledgeDocumentNotFound(Exception):
+    def __init__(self, idnum: int):
+        self.document_id = idnum
+
+    def __str__(self):
+        return f"ID: {self.document_id}"

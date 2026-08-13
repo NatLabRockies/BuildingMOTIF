@@ -60,6 +60,10 @@ all = [
 ]
 postgres = ["psycopg2>=2.9.5,<3"]
 topquadrant = ["brick-tq-shacl==0.3.4a2"]
+knowledge = [
+    "docling>=2.119,<3",
+    "qdrant-client[fastembed]>=1.19,<2",
+]
 # dependencies for ingresses (e.g. BAC0, openpyxl) are also included in dev dependencies
 bacnet-ingress = ["BAC0>=22.9.21,<23", "netifaces>=0.11.0,<0.12", "pytz>=2022.7.1,<2023"]
 xlsx-ingress = ["openpyxl>=3.0.10,<4"]

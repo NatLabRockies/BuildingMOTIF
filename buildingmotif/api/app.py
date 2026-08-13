@@ -6,6 +6,7 @@ from flask import Flask, current_app
 from flask_api import status
 from sqlalchemy.exc import SQLAlchemyError
 
+from buildingmotif.api.views.knowledge import blueprint as knowledge_blueprint
 from buildingmotif.api.views.library import blueprint as library_blueprint
 from buildingmotif.api.views.model import blueprint as model_blueprint
 from buildingmotif.api.views.parser import blueprint as parsers_blueprint
@@ -50,6 +51,8 @@ def create_app(
     DB_URI,
     shacl_engine: Optional[str] = DEFAULT_SHACL_ENGINE,
     graph_store_path: Optional[Union[str, Path]] = None,
+    knowledge_index_path: Optional[Union[str, Path]] = None,
+    knowledge_service=None,
 ):
     """Creates a Flask API.
 
@@ -62,6 +65,9 @@ def create_app(
     :type shacl_engine: str, optional
     :param graph_store_path: directory for the Oxigraph graph store. Defaults
         to GRAPH_STORE_PATH or BuildingMOTIF's database-derived default.
+    :param knowledge_index_path: optional path for a persistent local Qdrant
+        index. Defaults to KNOWLEDGE_INDEX_PATH and requires the knowledge extra.
+    :param knowledge_service: optional pre-built service for custom backends.
     :return: flask app
     :rtype: Flask.app
     """
@@ -69,17 +75,45 @@ def create_app(
     app.config.from_mapping(
         DB_URI=DB_URI,
         GRAPH_STORE_PATH=graph_store_path,
+        KNOWLEDGE_MAX_DOCUMENT_BYTES=int(
+            os.getenv("KNOWLEDGE_MAX_DOCUMENT_BYTES", str(100 * 1024 * 1024))
+        ),
+        KNOWLEDGE_INDEX_PATH=knowledge_index_path or os.getenv("KNOWLEDGE_INDEX_PATH"),
     )
     app.building_motif = BuildingMOTIF(
         app.config["DB_URI"],
         shacl_engine=shacl_engine,
         graph_store_path=app.config["GRAPH_STORE_PATH"],
+        knowledge_index_path=app.config["KNOWLEDGE_INDEX_PATH"]
+        if knowledge_service is None
+        else None,
+        knowledge_service=knowledge_service,
     )
+    # create_app is also used in tests that may already hold the singleton.
+    # Ensure an explicitly injected service is applied to that existing instance.
+    if knowledge_service is not None and (
+        not app.building_motif.has_knowledge
+        or app.building_motif.knowledge is not knowledge_service
+    ):
+        app.building_motif.configure_knowledge(knowledge_service)
+    elif (
+        knowledge_service is None
+        and app.config["KNOWLEDGE_INDEX_PATH"]
+        and not app.building_motif.has_knowledge
+    ):
+        from buildingmotif.knowledge import KnowledgeService
+
+        app.building_motif.configure_knowledge(
+            KnowledgeService.local(
+                app.building_motif, app.config["KNOWLEDGE_INDEX_PATH"]
+            )
+        )
 
     app.after_request(_after_request)
     app.register_error_handler(Exception, _after_error)
 
     app.register_blueprint(library_blueprint, url_prefix="/libraries")
+    app.register_blueprint(knowledge_blueprint, url_prefix="/knowledge")
     app.register_blueprint(template_blueprint, url_prefix="/templates")
     app.register_blueprint(model_blueprint, url_prefix="/models")
     app.register_blueprint(parsers_blueprint, url_prefix="/parsers")

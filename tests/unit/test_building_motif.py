@@ -6,6 +6,7 @@ from rdflib import Graph, Namespace
 
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model
+from buildingmotif.knowledge.errors import KnowledgeIndexNotConfigured
 
 BLDG = Namespace("urn:bldg/")
 
@@ -90,6 +91,40 @@ def test_context_manager_resets_singleton_on_exit(db_uri):
 
     with BuildingMOTIF(db_uri) as second:
         assert second is not first
+
+
+class FakeKnowledgeService:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def test_knowledge_service_is_owned_by_buildingmotif(db_uri):
+    service = FakeKnowledgeService()
+
+    with BuildingMOTIF(db_uri, knowledge_service=service) as bm:
+        assert bm.has_knowledge
+        assert bm.knowledge is service
+
+    assert service.closed
+
+
+def test_unconfigured_knowledge_service_has_actionable_error(db_uri):
+    with BuildingMOTIF(db_uri) as bm:
+        assert not bm.has_knowledge
+        with pytest.raises(KnowledgeIndexNotConfigured, match="knowledge_index_path"):
+            _ = bm.knowledge
+
+
+def test_knowledge_configuration_options_are_mutually_exclusive(db_uri):
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        BuildingMOTIF(
+            db_uri,
+            knowledge_index_path="unused",
+            knowledge_service=FakeKnowledgeService(),
+        )
 
 
 def test_context_manager_rolls_back_on_exception(db_uri):

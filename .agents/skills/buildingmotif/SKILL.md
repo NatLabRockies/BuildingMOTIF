@@ -1,6 +1,6 @@
 ---
 name: buildingmotif
-description: Use BuildingMOTIF to validate, repair, and build building and water-system metadata models (Brick/223P/WaTr/SHACL). Covers writing scripts to validate a model and expose failures in domain terms, listing templates and inspecting shape libraries, algebraic (pyshifty) validation and soundness-gated graph repair, finding and filling templates, and writing/debugging shapes for pointlists and application requirements. Use when the user mentions BuildingMOTIF, Brick, 223P, WaTr, SHACL shapes/validation, repair proposals or witnesses, pointlists, templates, or asks whether a model is "sufficient" for an application.
+description: Use BuildingMOTIF to validate, repair, and build building and water-system metadata models (Brick/223P/WaTr/SHACL), and to store, index, and retrieve source documents as repair evidence. Covers validation, algebraic repair, templates, pointlists, application shapes, and the Docling/Qdrant knowledge service. Use when the user mentions BuildingMOTIF, Brick, 223P, WaTr, SHACL, repair proposals or witnesses, pointlists, templates, knowledge documents, evidence retrieval, or asks whether a model is "sufficient" for an application.
 ---
 
 # BuildingMOTIF
@@ -133,6 +133,7 @@ repairs interact, and you won't know which one broke or unblocked what.
 | **Say what a model must satisfy** — its manifest: add/remove libraries, inspect membership, import expansion | `references/writing_shapes.md` |
 | **Write templates** (YAML bodies, parameters, dependencies, decompiling shapes) | `references/writing_templates.md` |
 | Find evidence in point lists / submittals / BACnet dumps | `references/evidence.md` |
+| Upload, index, search, update, or delete documents with BuildingMOTIF's Docling/Qdrant knowledge service; configure a local or custom index | `references/knowledge_service.md` + `references/evidence.md` |
 | Find, choose, and fill templates (evaluate, match against a model) | `references/templates.md` |
 | Ontology `owl:imports` resolution, OntoEnv, offline/cache knobs | `references/ontology_imports.md` |
 
@@ -293,6 +294,9 @@ Most real requests are one of these:
    `references/223p_vocabulary.md` for WaTr.
 5. *"What's in this library?" / "list the templates" / "show me the shapes"* →
    `references/validation.md` (the library/template/shape-collection inspection scripts).
+6. *"Upload/index/search these manuals, submittals, sequences, PDFs, or images"* → use
+   BuildingMOTIF's knowledge service and preserve source provenance. →
+   `references/knowledge_service.md` + `references/evidence.md`.
 
 Report findings the way a building engineer reads them: "VAV-1 has no temperature
 sensor" beats "`CountLow` on path `brick:hasPoint`". Keep the SHACL detail available for

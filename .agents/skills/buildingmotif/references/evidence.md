@@ -4,11 +4,16 @@ A repair proposal is a *hypothesis about the building*. This is how you test it 
 what the user actually has: point lists, BACnet exports, control drawings, submittals,
 sequences of operation, commissioning reports.
 
-There is no vector database here and you don't need one. Repair queries are narrow and
-targeted — "is there a zone temperature sensor for VAV-1?" — and you already have
-`Grep`, `Read`, and `Bash`. Grep-first beats embeddings for this shape of question,
-because the winning evidence is almost always a *string*: a tag, a point name, an
-equipment ID.
+For a small corpus already available as files, start with `Grep`, `Read`, and `Bash`.
+Repair queries are narrow and targeted — "is there a zone temperature sensor for
+VAV-1?" — and grep-first beats embeddings for this shape of question because the winning
+evidence is often a *string*: a tag, a point name, or an equipment ID.
+
+When documents have been uploaded through BuildingMOTIF, or the corpus is large and
+unstructured, use `bm.knowledge` instead. It uses Docling for structured conversion and
+chunking and Qdrant/FastEmbed for retrieval while retaining document and chunk
+provenance. See `knowledge_service.md`. Retrieval changes how you *find* candidate
+evidence; it does not change the evidence-review rules below.
 
 ## 1. Build a text corpus
 
@@ -116,5 +121,8 @@ in this order before reaching for embeddings:
    plus `docs/explanations/point-label-parsing.md`,
    `docs/guides/ingress-bacnet-to-brick.md`, and
    `notebooks/BMS_Point_Naming_Convention.ipynb` in the BuildingMOTIF repo.
-3. Only if the corpus is large *and* unstructured prose (specs, O&M manuals) is semantic
-   retrieval worth its dependencies — and ask the user before adding any.
+3. If the corpus is large and unstructured (specs, O&M manuals, submittals), or its
+   documents are already managed by BuildingMOTIF, use the knowledge service described in
+   `knowledge_service.md`. Search with the equipment's real-world identifier and the
+   missing concept, then inspect each result's text and provenance before treating it as
+   evidence.
