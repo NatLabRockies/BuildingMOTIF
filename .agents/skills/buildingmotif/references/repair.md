@@ -1,5 +1,16 @@
 # Soundness-gated repair
 
+## Contents
+
+- [Validate with repair enabled](#validate-with-repair-enabled)
+- [Understand witnesses](#witnesses-one-per-failing-focus-statement)
+- [Evaluate proposals](#proposals-gated-ranked-and-not-all-useful)
+- [Run the repair loop](#the-repair-loop-one-witness-per-iteration)
+- [Ask the user](#asking-the-user)
+- [Apply a repair](#applying-a-repair)
+- [Deletion repairs](#deletion-repairs)
+- [When no proposal makes progress](#when-no-proposal-makes-progress)
+
 This file is about **fixing** a model that validation found to be non-conforming:
 proposing triples, gating them for soundness, and applying them with evidence. It is
 the second half of the loop; the first half — *validate and read the failures* — is in
@@ -243,7 +254,7 @@ re-validate round trip.
 
 ### Asking the user
 
-Use `AskUserQuestion` when evidence is missing or ambiguous. Give them the *building*
+Ask the user when evidence is missing or ambiguous. Give them the *building*
 choice, not the SHACL choice, and put evidence in the descriptions:
 
 > **VAV-1 has no temperature sensor. What's true of the building?**

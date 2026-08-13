@@ -1,10 +1,20 @@
 # Finding evidence in the user's documents
 
+## Contents
+
+- [Build a text corpus](#1-build-a-text-corpus)
+- [Search around the gap](#2-search-around-the-gap)
+- [Read the hit in context](#3-read-the-hit-in-context)
+- [Map evidence to the repair](#4-map-evidence-to-the-repair)
+- [Report evidence honestly](#5-report-evidence-honestly)
+- [Scale up](#scaling-up)
+
 A repair proposal is a *hypothesis about the building*. This is how you test it against
 what the user actually has: point lists, BACnet exports, control drawings, submittals,
 sequences of operation, commissioning reports.
 
-For a small corpus already available as files, start with `Grep`, `Read`, and `Bash`.
+For a small corpus already available as files, start with a text search such as `rg`, then
+read the surrounding source with the available file or shell tools.
 Repair queries are narrow and targeted — "is there a zone temperature sensor for
 VAV-1?" — and grep-first beats embeddings for this shape of question because the winning
 evidence is often a *string*: a tag, a point name, or an equipment ID.
@@ -59,7 +69,7 @@ user), then search on *that*. Searching for `urn:bldg/vav1` in a submittal finds
 
 ## 3. Read the hit in context
 
-Never map from a grep line alone. `Read` the surrounding rows: a point list's meaning
+Never map from a grep line alone. Read the surrounding rows: a point list's meaning
 lives in its header row and its neighbours. `VAV1_ZN_T` beside a column marked `°F` and
 `AI` is a zone temperature *sensor*; beside `AO` and a setpoint column it's a
 *setpoint* — a different Brick class and a different repair.
@@ -91,8 +101,8 @@ building:
 
 - **Direct hit** — "`points.csv:42` lists `VAV1_ZN_T` (AI, °F). Mapping it to
   `brick:Zone_Air_Temperature_Sensor` on VAV-1." Apply and cite.
-- **Ambiguous** — several candidates, or name doesn't disambiguate sensor vs setpoint →
-  `AskUserQuestion` with the actual document lines in the option descriptions.
+- **Ambiguous** — several candidates, or the name does not disambiguate sensor versus
+  setpoint → ask the user and include the actual document lines and consequences.
 - **Nothing found** — say so. "No temperature point for VAV-1 in any document." Then ask
   whether the sensor exists (document is incomplete) or doesn't (the shape is too strict
   for this VAV). **Do not mint it on the theory that the shape requires it** — the shape

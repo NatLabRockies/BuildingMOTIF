@@ -39,7 +39,7 @@ uv sync --extra knowledge
 ```
 
 For a downstream project, add the extra to the package source/version specified in
-`SKILL.md`'s installation section, for example:
+`setup.md`, for example:
 
 ```bash
 uv add "buildingmotif[knowledge] @ git+https://github.com/NatLabRockies/BuildingMOTIF.git@gtf-buildingmotif"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "BuildingMOTIF"
+  short_description: "Build, validate, repair, and retrieve evidence"
+  default_prompt: "Use $buildingmotif to build or assess a metadata model and ground any changes in source evidence."

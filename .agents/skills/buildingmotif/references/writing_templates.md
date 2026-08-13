@@ -1,5 +1,16 @@
 # Writing templates
 
+## Contents
+
+- [Choose a template form](#the-two-ways-to-define-a-template)
+- [YAML format](#yaml-format)
+- [Parameters](#parameters)
+- [Dependencies](#dependencies)
+- [Templates from SHACL](#templates-from-shacl-shapes-decompilation)
+- [Choose a form](#which-form-should-i-write)
+- [Checklist](#authoring-checklist)
+- [Test a template](#test-a-template-like-code)
+
 A **Template** is a function that generates an RDF graph. Its *parameters* are the
 `urn:___param___#` (`PARAM`) nodes in its body; `name` is the distinguished root
 parameter. You write templates to give a building its domain vocabulary — the reusable

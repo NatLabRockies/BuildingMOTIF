@@ -1,5 +1,19 @@
 # Writing shapes
 
+## Contents
+
+- [Three kinds of shape](#three-kinds-of-shape-youll-write)
+- [The point-list idiom](#the-pointlist-idiom-the-shape-youll-write-most)
+- [The BuildingMOTIF vocabulary](#the-bmotif-vocabulary)
+- [Manifests and constraints](#manifests-and-the-constraint-vocabulary)
+- [Manifest imports](#the-manifest-header-and-owlimports)
+- [Build shapes in Python](#building-shapes-in-python)
+- [Find application shapes](#finding-application-shapes-already-in-a-library)
+- [Supported SHACL subset](#the-shacl-subset-buildingmotif-decompiles)
+- [Debug a shape](#debugging-a-shape)
+- [Fix an incorrect shape](#when-the-shape-is-wrong-fix-the-shape)
+- [Checklist](#authoring-checklist)
+
 A **Shape** (SHACL) states what an application needs: the conditions and constraints an
 RDF graph must satisfy. Writing a good shape *is* the act of making "will this app work
 here?" answerable — most of the value in BuildingMOTIF comes from getting shapes right,

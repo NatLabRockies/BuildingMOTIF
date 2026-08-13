@@ -1,5 +1,19 @@
 # Brick vocabulary discovery
 
+## Contents
+
+- [Confirm a candidate class](#confirm-a-candidate-class)
+- [Search Brick classes by words](#search-brick-classes-by-words)
+- [List point classes by family](#list-point-classes-by-family)
+- [Find subclasses](#find-subclasses-of-a-broad-class)
+- [Inspect a class shape](#inspect-a-class-shape)
+- [Use templates as a vocabulary index](#templates-are-another-vocabulary-index)
+- [Output](#output-to-produce-for-the-user)
+
+For a quick namespace-preserving probe, run `scripts/inspect_ontology.py` from the skill
+directory against `brick/Brick.ttl`. A local name such as `AHU` can match both a Brick class
+and a BrickTag individual; retain and evaluate the complete returned IRI.
+
 When building or repairing a model, do not guess Brick class names. The recurring task is
 to translate building language (`DMPR COMD`, `Run Status`, `Duct Static Pressure SP`) into
 actual Brick IRIs before asserting `a brick:X` or binding a template parameter.

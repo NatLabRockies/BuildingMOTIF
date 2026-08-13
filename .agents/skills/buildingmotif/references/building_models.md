@@ -1,5 +1,20 @@
 # Building a model with BuildingMOTIF
 
+## Contents
+
+- [Use the build script as an exploration record](#use-the-build-script-as-a-structured-exploration-record)
+- [Why use the machinery](#why-use-the-machinery-dont-hand-write-turtle)
+- [The four-piece workflow](#the-four-piece-workflow)
+- [Template libraries](#1-the-template-library-reusable-written-once)
+- [Create the model](#2-modelcreate-the-model-shell)
+- [Wire templates](#3-templatebuildercontext-wire-templates-and-bind-parameters)
+- [Compile and validate](#4-compile-add-to-the-model-validate)
+- [Connect components directly](#connecting-components-the-model_builder-cant-express)
+- [Bulk point-list builds](#bulk-point-list-builds)
+- [Build incrementally](#building-incrementally-and-validating-as-you-go)
+- [Choose an approach](#when-to-use-what)
+- [Checklist](#checklist)
+
 This is the script-first guide for **constructing** a building model — not validating an
 existing one (`validation.md`) or fixing one (`repair.md`), but authoring one from scratch.
 BuildingMOTIF has machinery for exactly this: a reusable **template library**,
@@ -15,6 +30,35 @@ Source of truth on disk: `buildingmotif/model_builder.py` (`TemplateBuilderConte
 `TemplateWrapper`), `buildingmotif/dataclasses/model.py` (`Model.create`/`from_graph`),
 `buildingmotif/dataclasses/library.py`/`template.py`. The canonical walk-through is the
 `notebooks/Model-Builder.ipynb` notebook on GitHub — mirror its structure.
+
+## Use the build script as a structured exploration record
+
+Create the Python build script near the beginning of the task, before the model is fully
+understood. Treat it as an executable notebook that evolves from discovery into the final,
+reproducible build. Prefer extending and rerunning this script over issuing a sequence of
+unrelated ontology queries and graph mutations from the shell.
+
+Organize it into explicit phases:
+
+1. **Configuration and provenance** — resolve input/output paths, print the imported
+   BuildingMOTIF location, and identify the ontology versions or source URLs being used.
+2. **Source inventory** — summarize distinct equipment IDs, point/tag suffixes, units,
+   object types, and unresolved source values without asserting graph facts.
+3. **Vocabulary and shape discovery** — query the loaded shape collections for candidate
+   terms, full IRIs, namespaces, deprecation state, and relevant constraints. Preserve the
+   complete URI returned by discovery; do not reconstruct it from a local name.
+4. **Visible decisions** — keep verified source-to-ontology mappings and user-confirmed
+   topology choices as named dictionaries or data structures, next to their evidence.
+5. **Representative build** — construct one instance of each repeated modeling pattern and
+   validate it before scaling across the full input.
+6. **Full build and audit** — expand the validated patterns, report mapped and unresolved
+   source records, validate the complete model, and serialize it deterministically.
+
+Exploration may print candidate terms or shape details, but only the build phase may add
+facts to the model. Delete or disable noisy discovery output once its conclusions are
+captured in the visible mapping table; retain the checks that protect against ontology
+version drift. The finished script should rebuild the output from the original inputs in a
+fresh database or temporary working directory without depending on interactive history.
 
 ## Why use the machinery (don't hand-write Turtle)
 
@@ -217,9 +261,10 @@ The hybrid pattern is:
 ## Building incrementally and validating as you go
 
 A real model isn't built in one shot. The iterative workflow applies to *building* too, not
-just repair: add a few templates, compile, validate, read what's missing, add the next
-piece, re-validate. Early validation catches a missing point when it's one template away
-from the fix, rather than after you've built the whole model on top of a gap.
+just repair: use the build script to add one representative instance of each repeated
+pattern, compile, validate, read what's missing, and only then expand that pattern across
+the source. Early validation catches a missing point when it is one instance away from the
+fix, rather than after hundreds of rows reproduce the same mistake.
 
 ```python
 # build a little, then check

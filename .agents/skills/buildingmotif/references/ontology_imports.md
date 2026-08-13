@@ -1,5 +1,17 @@
 # Ontology imports and OntoEnv
 
+## Contents
+
+- [The one-paragraph model](#the-one-paragraph-model)
+- [What OntoEnv does at load time](#what-ontoenv-does-at-load-time)
+- [Constructor controls](#the-knobs-on-buildingmotif__init__)
+- [Per-load control](#per-load-control-libraryfrom_ontologyfetch_imports)
+- [Validation-time resolution](#validation-time-resolution-resolve_imports)
+- [Common ontology locations](#where-the-commonly-imported-ontologies-actually-live)
+- [Recover from import failures](#when-imports-still-fail)
+- [The graph store](#the-graph-store)
+- [Direct OntoEnv access](#direct-ontoenv-access-rarely-needed)
+
 BuildingMOTIF resolves `owl:imports` through [OntoEnv](https://github.com/gtfierro/ontoenv),
 an external ontology-dependency manager. This is what makes "validate a model whose shapes
 `owl:imports` Brick/QUDT/REC" actually work without the user hand-loading every transitive
@@ -126,7 +138,7 @@ available, "missing" usually means an ontology OntoEnv couldn't find locally *or
 ## Where the commonly-imported ontologies actually live
 
 For local search directories / offline loads / pinning a newer version than auto-fetch
-resolves — see `SKILL.md`'s "Other ontologies" table for exact URLs (Brick nightly on
+resolves — see `setup.md`'s external-ontology table for exact URLs (Brick nightly on
 GitHub, 223P at open223.info, WATR at watermetadata.org, QUDT via its own dereferenceable
 URIs). None of these are builtin or in the repo; OntoEnv fetches them by IRI when an
 `owl:imports` names them and `ontology_fetch_imports=True` (the default).
