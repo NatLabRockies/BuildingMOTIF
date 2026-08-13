@@ -6,6 +6,7 @@ from flask import Flask, current_app
 from flask_api import status
 from sqlalchemy.exc import SQLAlchemyError
 
+from buildingmotif.api.views.knowledge import blueprint as knowledge_blueprint
 from buildingmotif.api.views.library import blueprint as library_blueprint
 from buildingmotif.api.views.model import blueprint as model_blueprint
 from buildingmotif.api.views.parser import blueprint as parsers_blueprint
@@ -69,6 +70,9 @@ def create_app(
     app.config.from_mapping(
         DB_URI=DB_URI,
         GRAPH_STORE_PATH=graph_store_path,
+        KNOWLEDGE_MAX_DOCUMENT_BYTES=int(
+            os.getenv("KNOWLEDGE_MAX_DOCUMENT_BYTES", str(100 * 1024 * 1024))
+        ),
     )
     app.building_motif = BuildingMOTIF(
         app.config["DB_URI"],
@@ -80,6 +84,7 @@ def create_app(
     app.register_error_handler(Exception, _after_error)
 
     app.register_blueprint(library_blueprint, url_prefix="/libraries")
+    app.register_blueprint(knowledge_blueprint, url_prefix="/knowledge")
     app.register_blueprint(template_blueprint, url_prefix="/templates")
     app.register_blueprint(model_blueprint, url_prefix="/models")
     app.register_blueprint(parsers_blueprint, url_prefix="/parsers")

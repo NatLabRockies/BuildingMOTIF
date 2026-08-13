@@ -1,18 +1,22 @@
 import logging
 import uuid
 from functools import lru_cache
+from hashlib import sha256
 from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import defer
 
 from buildingmotif.database.errors import (
+    KnowledgeDocumentNotFound,
     LibraryNotFound,
     ModelNotFound,
     ShapeCollectionNotFound,
     TemplateNotFound,
 )
 from buildingmotif.database.tables import (
+    DBKnowledgeDocument,
     DBLibrary,
     DBModel,
     DBShapeCollection,
@@ -34,6 +38,82 @@ class TableConnection:
         """
         self.logger = logging.getLogger(__name__)
         self.bm = bm
+
+    # knowledge document functions
+
+    def create_db_knowledge_document(
+        self,
+        name: str,
+        file_name: str,
+        mime_type: str,
+        content: bytes,
+        description: str = "",
+    ) -> DBKnowledgeDocument:
+        """Create a document and retain its original bytes in SQL."""
+        document = DBKnowledgeDocument(
+            name=name,
+            description=description,
+            file_name=file_name,
+            mime_type=mime_type,
+            content=content,
+            size=len(content),
+            sha256=sha256(content).hexdigest(),
+        )
+        self.bm.session.add(document)
+        self.bm.session.flush()
+        return document
+
+    def get_all_db_knowledge_documents(self) -> List[DBKnowledgeDocument]:
+        """List document metadata without loading blob contents."""
+        return (
+            self.bm.session.query(DBKnowledgeDocument)
+            .options(defer(DBKnowledgeDocument.content))
+            .order_by(DBKnowledgeDocument.id)
+            .all()
+        )
+
+    def get_db_knowledge_document(
+        self, id: int, include_content: bool = True
+    ) -> DBKnowledgeDocument:
+        """Get one document, optionally deferring its blob contents."""
+        query = self.bm.session.query(DBKnowledgeDocument)
+        if not include_content:
+            query = query.options(defer(DBKnowledgeDocument.content))
+        try:
+            return query.filter(DBKnowledgeDocument.id == id).one()
+        except NoResultFound:
+            raise KnowledgeDocumentNotFound(idnum=id)
+
+    def update_db_knowledge_document(
+        self,
+        id: int,
+        *,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        file_name: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        content: Optional[bytes] = None,
+    ) -> DBKnowledgeDocument:
+        """Update document metadata and, when supplied, replace its bytes."""
+        document = self.get_db_knowledge_document(id)
+        if name is not None:
+            document.name = name
+        if description is not None:
+            document.description = description
+        if file_name is not None:
+            document.file_name = file_name
+        if mime_type is not None:
+            document.mime_type = mime_type
+        if content is not None:
+            document.content = content
+            document.size = len(content)
+            document.sha256 = sha256(content).hexdigest()
+        self.bm.session.flush()
+        return document
+
+    def delete_db_knowledge_document(self, id: int) -> None:
+        """Delete a document and its stored bytes."""
+        self.bm.session.delete(self.get_db_knowledge_document(id))
 
     # model functions
 

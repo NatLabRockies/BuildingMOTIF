@@ -1,9 +1,12 @@
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import (
     Column,
+    DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -19,6 +22,31 @@ from sqlalchemy.orm import Mapped, Session, declarative_base, relationship
 from buildingmotif.database.utils import JSONType
 
 Base = declarative_base()
+
+
+def _utcnow() -> datetime:
+    """Return an aware UTC timestamp for SQL metadata rows."""
+    return datetime.now(timezone.utc)
+
+
+class DBKnowledgeDocument(Base):
+    """A source document retained as evidence for metadata workflows."""
+
+    __tablename__ = "knowledge_document"
+    id: Mapped[int] = Column(Integer, primary_key=True)
+    name: Mapped[str] = Column(String(), nullable=False)
+    description: Mapped[str] = Column(Text(), default="", nullable=False)
+    file_name: Mapped[str] = Column(String(), nullable=False)
+    mime_type: Mapped[str] = Column(String(), nullable=False)
+    content: Mapped[bytes] = Column(LargeBinary(), nullable=False)
+    size: Mapped[int] = Column(Integer, nullable=False)
+    sha256: Mapped[str] = Column(String(64), nullable=False)
+    created_at: Mapped[datetime] = Column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = Column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
 
 # https://docs.sqlalchemy.org/en/14/dialects/sqlite.html#foreign-key-support
