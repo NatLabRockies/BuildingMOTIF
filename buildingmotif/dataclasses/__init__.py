@@ -1,5 +1,6 @@
 from buildingmotif.dataclasses.algebraic_validation import (  # noqa
     AlgebraicValidationContext,
+    MissingEdge,
     RepairConfig,
     RepairProposal,
     RepairWitness,
