@@ -154,3 +154,42 @@ res = model.graph.query(app_query)
 df = pd.DataFrame(res.bindings)
 print(df.iloc[0])
 ```
+
+### Extracting the values directly, without a query
+
+`shape_to_query` *translates* a shape into SPARQL, so it covers the constructs listed in
+[](../explanations/shacl_to_sparql.md) and ignores the rest. When you want the values
+rather than the query, ask the SHACL engine itself instead — that honours the whole shape,
+and tells you which focus nodes actually satisfied it:
+
+```{code-cell}
+compiled = model.compile([sc])
+
+df = compiled.shape_to_df(app1_shape)
+print(df)
+```
+
+`shape_to_df` returns one row per conforming focus node, with a `target` column and one
+column per `sh:name` on the shape — the same frame the query above produces, but derived
+from what SHACL matched rather than from a SPARQL approximation of the shape.
+
+The underlying *shape map* carries more than a table can. Each entry pairs one shape with
+one focus node and reports, per slot, the values bound, whether the slot was satisfied, how
+many values were expected against how many were found, and which near-miss values were
+rejected:
+
+```{code-cell}
+shape_map = compiled.shape_map(app1_shape)
+print("all conform:", shape_map.conforms)
+
+for mapping in shape_map:
+    print(mapping.focus, "conforms:", mapping.conforms)
+    for binding in mapping.values():
+        print("   ", binding.name, "=", [v.to_rdflib() for v in binding.values],
+              "" if binding.ok else f"(short {binding.missing})")
+```
+
+This is what makes a shape usable as an *extraction schema* and as a contract at the same
+time: the focus nodes that are missing a required value still appear, described, instead of
+dropping out of the result. Pass `include_nonconforming=True` to `shape_to_df` to keep
+those rows in the table as well, with their unfilled slots left null.

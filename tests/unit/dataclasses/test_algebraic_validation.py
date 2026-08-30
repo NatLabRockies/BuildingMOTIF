@@ -884,3 +884,111 @@ def test_ontology_projection_preserves_matching_semantics(bm: BuildingMOTIF):
     full = TemplateMatcher(model_graph, tmpl, ontology)
     proj = TemplateMatcher(model_graph, tmpl, projected)
     assert full.largest_mapping_size == proj.largest_mapping_size
+
+
+def test_empty_shape_collection_list_validates(bm: BuildingMOTIF):
+    """An empty shapes graph means "take the shapes from the data graph".
+
+    pyshifty rejects an *explicitly supplied* zero-triple shapes graph rather
+    than reporting vacuous conformance, so the context has to omit the argument
+    instead of handing over an empty graph. It used to pass it unconditionally,
+    which raised ``ValueError: explicit shapes graph is empty``.
+    """
+    data = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        @prefix bldg: <urn:bldg/> .
+        ex:S a sh:NodeShape ; sh:targetNode bldg:x ;
+          sh:property [ sh:path ex:p ; sh:minCount 1 ] .
+        bldg:x a ex:Foo .
+        """,
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], Graph(), data, model)
+
+    # the shapes embedded in the data graph still apply
+    assert not ctx.conforms
+    assert ctx.witnesses
+    # and the W3C report path, which takes the same shapes input, also works
+    assert len(ctx.report) > 0
+
+
+def test_missing_edges_name_the_edge_that_would_close_the_deficit(bm: BuildingMOTIF):
+    """A cardinality deficit describes itself in building terms.
+
+    pyshifty's ``MissingObligation`` carries the node, the path its values were
+    counted along, and how many are short -- so a caller can say "x needs 1 more
+    ex:p" without walking a repair tree or reading a SHACL report.
+    """
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+    (rw,) = ctx.witnesses
+
+    (edge,) = rw.missing_edges
+    assert edge.node == BLDG["x"]
+    assert edge.path == EX.p
+    assert edge.missing == 1
+    assert edge.observed_count == 0
+    assert edge.required_count == 1
+    assert "needs 1 more value(s)" in str(edge)
+
+
+def test_target_shape_comes_off_the_witness_not_the_pairing(bm: BuildingMOTIF):
+    """Shape identity does not depend on the violation join.
+
+    ``target_shape`` used to read the *paired* violation, so it went ``None``
+    whenever the (focus, statement_id, constraint_id) join came up empty. The
+    witness carries ``shape_iri`` itself, so it is available either way.
+    """
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+    (rw,) = ctx.witnesses
+    assert rw.target_shape == EX.S
+
+    # ...including when nothing was paired at all
+    unpaired = type(rw)(rw.focus, rw.witness, ctx, None, "unavailable")
+    assert unpaired.violation is None
+    assert unpaired.target_shape == EX.S
+
+
+def test_preview_reports_the_run_a_repair_would_produce(bm: BuildingMOTIF):
+    """``preview`` answers "what would this fix?" without mutating anything."""
+    lib = Library.create("previewlib")
+    _thing_template(lib)
+
+    shapes = _mincount_class_shapes()
+    data = Graph().parse(
+        data="@prefix bldg: <urn:bldg/> .\nbldg:x a bldg:Foo .", format="turtle"
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+
+    ctx = AlgebraicValidationContext.from_compiled(
+        [], shapes, data, model, libraries=[lib]
+    )
+    assert not ctx.conforms
+    best = ctx.witnesses[0].proposals()[0]
+
+    run = ctx.preview(best)
+    # the proposal is gated as progress-making, so the previewed run is clean
+    assert run.conforms
+
+    # preview is pure: the context it came from is unchanged
+    assert not ctx.conforms
+    assert ctx.witnesses

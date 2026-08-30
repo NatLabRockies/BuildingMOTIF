@@ -109,12 +109,83 @@ class SparqlDiagnostic(Protocol):
 
 
 @runtime_checkable
-class FocusWitness(Protocol):
-    """The part of pyshifty's ``FocusWitness`` this module reads."""
+class MissingObligation(Protocol):
+    """The part of pyshifty's ``MissingObligation`` this module reads.
+
+    One cardinality deficit on one edge: ``required_count`` values were wanted
+    along ``path`` from ``node``, each satisfying ``qualifier``, and only
+    ``observed_count`` were found.
+    """
+
+    @property
+    def node(self) -> object:
+        """The node the deficit is about."""
+        ...
+
+    @property
+    def path(self) -> object:
+        """The path the values were counted along."""
+        ...
+
+    @property
+    def qualifier(self) -> object:
+        """The constraint each counted value has to satisfy."""
+        ...
+
+    @property
+    def missing(self) -> int:
+        """How many values short the node is."""
+        ...
+
+    @property
+    def observed_count(self) -> int:
+        """How many qualifying values the data actually supplied."""
+        ...
+
+    @property
+    def required_count(self) -> int:
+        """How many qualifying values the shape asked for."""
+        ...
+
+
+@runtime_checkable
+class ShiftyFailure(Protocol):
+    """The part of pyshifty's ``Failure`` this module reads.
+
+    ``Failure`` is pyshifty's name for one focus node failing one statement --
+    what :meth:`shifty.RepairSession.witnesses` returns. Spelled
+    ``ShiftyFailure`` here to keep it distinct from
+    :class:`buildingmotif.dataclasses.validation_result.Failure`, which is
+    BuildingMOTIF's own engine-independent failure protocol -- the one
+    :class:`RepairWitness` *satisfies*, as opposed to the one it *wraps*.
+    """
 
     @property
     def focus(self) -> object:
         """The failing node."""
+        ...
+
+    @property
+    def shape_iri(self) -> object:
+        """The failing statement's source shape IRI.
+
+        ``None`` when the shape was written as a blank node and so has no IRI.
+        """
+        ...
+
+    @property
+    def shape_name(self) -> object:
+        """The failing statement's source shape, when named."""
+        ...
+
+    def missing_obligations(self) -> Sequence["MissingObligation"]:
+        """Cardinality deficits: what the focus is short of, and on which edge.
+
+        Each entry names the ``node`` the deficit is about, the ``path`` its
+        values were counted along, and the ``qualifier`` each counted value has
+        to satisfy -- enough to describe the edge that would close the deficit
+        without walking the repair tree.
+        """
         ...
 
     @property
@@ -421,6 +492,44 @@ class AlgebraicReason:
         return hash(self.reason())
 
 
+@dataclass(frozen=True)
+class MissingEdge:
+    """One cardinality deficit, in BuildingMOTIF terms.
+
+    The BuildingMOTIF-side view of a pyshifty :class:`MissingObligation`: the
+    RDF terms are rdflib nodes rather than pyshifty's N-Triples strings, so a
+    caller can use them against the model graph directly.
+
+    A deficit describes the edge that would close it. For example, "VAV1 needs 1
+    more value along ``brick:hasPoint`` satisfying ``brick:Air_Flow_Sensor``" is
+    ``node=VAV1``, ``path=brick:hasPoint``, ``missing=1``, with the qualifier
+    naming the class.
+    """
+
+    #: the node the deficit is about
+    node: Optional[Node]
+    #: the path its values were counted along
+    path: Optional[Node]
+    #: the native algebraic constraint each counted value must satisfy. Left as
+    #: pyshifty's own ``Constraint`` -- it is an algebra node, not an RDF term,
+    #: and has no lossless rdflib equivalent.
+    qualifier: Optional[object]
+    #: how many more qualifying values are needed
+    missing: int
+    #: how many qualifying values the data supplied
+    observed_count: int
+    #: how many qualifying values the shape asked for
+    required_count: int
+
+    def __str__(self) -> str:
+        node = self.node.n3() if self.node is not None else "the focus"
+        path = self.path.n3() if self.path is not None else "an unnamed path"
+        return (
+            f"{node} needs {self.missing} more value(s) along {path} "
+            f"({self.observed_count} of {self.required_count} present)"
+        )
+
+
 @dataclass
 class RepairProposal:
     """One soundness-gated repair candidate for a single :class:`RepairWitness`.
@@ -578,7 +687,7 @@ class RepairWitness:
     """The new per-failure validation-report unit: why one focus node failed one
     statement, together with its (template-guided, gated) repair proposals.
 
-    Wraps a shifty ``FocusWitness`` and defers candidate generation to the
+    Wraps a shifty ``Failure`` and defers candidate generation to the
     owning context's :class:`TemplateGuidedRepair` engine.
 
     ``eq=False`` keeps instances hashable by identity so they can live in the
@@ -587,8 +696,8 @@ class RepairWitness:
     """
 
     focus: Optional[URIRef]
-    # the raw pyshifty FocusWitness
-    witness: "FocusWitness"
+    # the raw pyshifty Failure
+    witness: "ShiftyFailure"
     # back-reference to the owning context (holds the session + repair engine)
     context: "AlgebraicValidationContext"
     # the matching violation from the context's separate validate_algebra()
@@ -597,6 +706,38 @@ class RepairWitness:
     violation: Optional["AlgebraicViolation"] = None
     # "stable-id" for the native (focus, statement_id, constraint_id) join.
     alignment: str = "unavailable"
+
+    @cached_property
+    def missing_edges(self) -> Tuple["MissingEdge", ...]:
+        """The edges that would close this failure's cardinality deficits.
+
+        Each entry says "``node`` needs ``missing`` more values along ``path``,
+        each satisfying ``qualifier``" -- the building-terms statement of what
+        is wrong, in the same vocabulary the model is written in, without
+        walking a repair tree or reading a SHACL report.
+
+        Empty for a failure that is not a cardinality deficit (a datatype or
+        node-kind violation, say): those have a wrong value rather than a
+        missing one, and are described by :attr:`validation_reasons`.
+        """
+        try:
+            obligations = self.witness.missing_obligations()
+        except Exception:
+            logger.debug(
+                "missing_obligations() raised for focus %s", self.focus, exc_info=True
+            )
+            return ()
+        return tuple(
+            MissingEdge(
+                node=_engine_term_to_node(getattr(obligation, "node", None)),
+                path=_engine_term_to_node(getattr(obligation, "path", None)),
+                qualifier=getattr(obligation, "qualifier", None),
+                missing=getattr(obligation, "missing", 0),
+                observed_count=getattr(obligation, "observed_count", 0),
+                required_count=getattr(obligation, "required_count", 0),
+            )
+            for obligation in obligations
+        )
 
     @cached_property
     def repair_summary(self) -> Tuple:
@@ -627,9 +768,8 @@ class RepairWitness:
         """Canonical validation findings for this focus/statement."""
         if self.violation is None:
             return ()
-        target_shape = _engine_term_to_node(getattr(self.violation, "shape_name", None))
         return tuple(
-            AlgebraicReason(reason, self.focus, target_shape)
+            AlgebraicReason(reason, self.focus, self.target_shape)
             for reason in getattr(self.violation, "reasons", ())
         )
 
@@ -644,7 +784,22 @@ class RepairWitness:
 
     @property
     def target_shape(self) -> Optional[Node]:
-        """The named algebra statement/shape that failed, when available."""
+        """The named shape whose statement this focus failed.
+
+        Read off the repair witness itself (``shape_iri``, falling back to
+        ``shape_name``), so it is available for *every* witness --
+        including one whose :attr:`violation` could not be paired. Pairing is a
+        join between two independently computed pyshifty results and can come up
+        empty (:attr:`alignment` ``"unavailable"``); shape identity is carried on
+        the witness and does not depend on it.
+
+        ``None`` only when the failing shape is genuinely anonymous -- a shape
+        written as a blank node has no IRI to report.
+        """
+        for attr in ("shape_iri", "shape_name"):
+            shape = _engine_term_to_node(getattr(self.witness, attr, None))
+            if shape is not None:
+                return shape
         if self.violation is None:
             return None
         return _engine_term_to_node(getattr(self.violation, "shape_name", None))
@@ -1495,13 +1650,34 @@ class AlgebraicValidationContext:
         # Turtle text, not the bare Graph -- see _shifty_shapes_input for why a
         # Graph object silently loses the prefixes any sh:sparql/sh:rule body
         # needs to resolve its query text.
-        shapes_input = _shifty_shapes_input(self.shapes_graph)
-        self._session = shifty.RepairSession(shapes_input, self.data_graph)
-        self._algebra = shifty.validate_algebra(
-            self.data_graph,
-            shapes_input,
-            minimum_severity="violation",
+        #
+        # An *empty* shapes graph has to be omitted rather than passed along:
+        # shifty rejects an explicitly supplied zero-triple shapes graph
+        # ("explicit shapes graph is empty; omit the shapes argument or pass
+        # None to use shapes embedded in the data graph") instead of reporting
+        # vacuous conformance. Omitting it asks shifty to take the shapes from
+        # the data graph, which is the same thing BuildingMOTIF means by an
+        # empty shape-collection list. `PyshiftyBackend.validate`/`.infer` guard
+        # this the same way.
+        shapes_input = (
+            _shifty_shapes_input(self.shapes_graph)
+            if len(self.shapes_graph)  # type: ignore[arg-type]
+            else None
         )
+        self._shapes_input = shapes_input
+        if shapes_input is None:
+            self._session = shifty.RepairSession(self.data_graph, self.data_graph)
+            self._algebra = shifty.validate_algebra(
+                self.data_graph,
+                minimum_severity="violation",
+            )
+        else:
+            self._session = shifty.RepairSession(shapes_input, self.data_graph)
+            self._algebra = shifty.validate_algebra(
+                self.data_graph,
+                shapes_input,
+                minimum_severity="violation",
+            )
         # ontology used by the monomorphism search (class hierarchy lives here)
         self._ontology = self.shapes_graph + self.data_graph
         templates: List["Template"] = []
@@ -1550,6 +1726,44 @@ class AlgebraicValidationContext:
         """The underlying pyshifty repair session."""
         return self._session
 
+    @cached_property
+    def evidence_session(self):
+        """A pyshifty ``EvidenceSession`` over the same data and shapes.
+
+        Built lazily and kept for the life of the context, because constructing
+        one parses and lowers the schema. Only :meth:`preview` needs it today,
+        so a context that never previews a repair never pays for it.
+        """
+        shifty = require_shifty()
+
+        shapes = (
+            self._shapes_input if self._shapes_input is not None else self.data_graph
+        )
+        return shifty.EvidenceSession(shapes, self.data_graph)
+
+    def preview(self, proposal: "RepairProposal"):
+        """The validation run this model *would* have if ``proposal`` were applied.
+
+        Answers "what does this repair actually fix?" without mutating anything
+        and without rebuilding a context: the session keeps its own snapshot, so
+        the current context stays valid and comparable afterwards.
+
+        Use this instead of ``proposal.advance()`` when the question is whether
+        to accept a proposal. ``advance()`` builds a whole new repair session
+        over ``G ⊕ ΔG`` (and a caller then usually rebuilds the
+        :class:`AlgebraicValidationContext` on top of it); ``preview`` reuses
+        the prepared schema and returns just the run.
+
+        A deletion takes its derivations with it: SHACL-AF rules are re-run over
+        the *pre-inference* graph, so removing a triple also removes what that
+        triple had inferred, rather than stranding it.
+
+        :param proposal: the candidate repair to evaluate
+        :type proposal: RepairProposal
+        :return: the native ``shifty.EvidenceRun`` over ``G ⊕ ΔG``
+        """
+        return self.evidence_session.revalidate(proposal.to_delta())
+
     @property
     def algebra(self) -> object:
         """The complete native result returned by ``validate_algebra()``."""
@@ -1590,7 +1804,10 @@ class AlgebraicValidationContext:
         """
         import shifty  # type: ignore
 
-        if len(self.shapes_graph) == 0:
+        # `_shapes_input` is already None for an empty shapes graph -- see
+        # __post_init__ for why that case must omit the argument rather than
+        # pass an empty graph.
+        if self._shapes_input is None:
             _, report_graph, _ = shifty.validate(
                 self.data_graph,
                 minimum_severity="violation",
@@ -1598,7 +1815,7 @@ class AlgebraicValidationContext:
         else:
             _, report_graph, _ = shifty.validate(
                 self.data_graph,
-                _shifty_shapes_input(self.shapes_graph),
+                self._shapes_input,
                 minimum_severity="violation",
             )
         return report_graph
@@ -1629,7 +1846,7 @@ class AlgebraicValidationContext:
 
     def _violation_for(
         self,
-        witness: FocusWitness,
+        witness: ShiftyFailure,
     ) -> Tuple[Optional[AlgebraicViolation], str]:
         """Pair a repair witness with its validation violation.
 

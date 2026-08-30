@@ -84,7 +84,7 @@ want the pyshifty-only repair surface.
 
 **Never pass `shacl_engine="pyshacl"`.** `pyshifty` is a strict superset for this skill's
 purposes: standard W3C SHACL-Core validation, `ctx.report`/`ctx.report_string` as a
-conforming W3C report graph, and — as of `pyshifty` 0.2.7 — improved SPARQL-based
+conforming W3C report graph, and improved SPARQL-based
 SHACL-AF rule inference (`sh:rule` Triple Rules and SPARQL Construct Rules), which was the
 one place a gap could plausibly have pushed someone toward `pyshacl`. It's also the only
 engine that repairs. There is no case in this skill's workflows where `pyshacl` is the
@@ -169,6 +169,39 @@ for focus, failures in ctx.diffset.items():
 `.reason()` is opaque, or to paste into a bug report. `ctx.report` is the W3C SHACL
 ValidationReport as an `rdflib.Graph` if you need to query it directly (e.g. severity
 paths, `sh:resultPath`).
+
+### The missing edge, without reading a report
+
+A cardinality failure knows exactly which edge would close it. `rw.missing_edges` gives
+that directly, in the model's own vocabulary — no report parsing, no repair tree:
+
+```python
+for focus, failures in ctx.diffset.items():
+    for rw in failures:
+        for edge in rw.missing_edges:
+            print(edge.node, "needs", edge.missing, "more", edge.path)
+# urn:bldg/vav1 needs 1 more https://brickschema.org/schema/Brick#hasPoint
+```
+
+Each `MissingEdge` carries `.node`, `.path`, `.missing`, `.observed_count`,
+`.required_count`, and `.qualifier` (the constraint each counted value has to satisfy).
+It is empty for a failure that is not a cardinality deficit — a wrong datatype or node
+kind has a *wrong* value rather than a missing one, so read `.reason()` for those.
+
+### Previewing a repair before taking it
+
+`ctx.preview(proposal)` returns the validation run the model *would* have if that proposal
+were applied, without mutating anything and without rebuilding a context:
+
+```python
+best = rw.proposals()[0]
+run = ctx.preview(best)
+print(run.conforms)     # would this actually fix the model?
+print(ctx.conforms)     # still False -- preview is pure
+```
+
+Use it to choose between proposals. `proposal.apply()` / `.advance()` are for when you
+have already chosen.
 
 ### Severity filtering
 
