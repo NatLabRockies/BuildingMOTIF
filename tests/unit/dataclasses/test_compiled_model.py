@@ -1,6 +1,7 @@
 import sqlite3
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import RDFS
@@ -317,3 +318,126 @@ def test_validate_model_against_shapes_matches_the_engine(bm: BuildingMOTIF):
             ), f"{engine} returned {type(result).__name__}"
             # whichever it is, the common read surface works
             assert isinstance(result.conforms, bool)
+
+
+def test_shape_map_reports_conformance_and_cardinality(clean_building_motif):
+    """A shape map is an extraction *and* a verdict.
+
+    A SPARQL projection of the same shape can only return the rows that matched.
+    The shape map additionally says, per focus node, whether it conformed, how
+    many qualifying values were wanted against how many were found, and which
+    values it rejected -- so a focus that is missing a required value is still
+    reported rather than silently dropping out of the result.
+    """
+    shape_graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <urn:ex/> .
+        ex:shape a sh:NodeShape ;
+            sh:targetClass ex:Box ;
+            sh:property [
+                sh:path ex:hasThing ;
+                sh:name "thing" ;
+                sh:qualifiedValueShape [ sh:class ex:Thing ] ;
+                sh:qualifiedMinCount 1
+            ] ;
+            sh:property [
+                sh:path ex:hasWidget ;
+                sh:name "widget" ;
+                sh:qualifiedValueShape [ sh:class ex:Widget ] ;
+                sh:qualifiedMinCount 1
+            ] .
+        """,
+        format="turtle",
+    )
+    shape_collection = Library.from_ontology(shape_graph).get_shape_collection()
+    model = Model.create("urn:model/")
+    model.add_graph(
+        Graph().parse(
+            data="""
+            @prefix ex: <urn:ex/> .
+            @prefix m: <urn:model/> .
+            m:good a ex:Box ; ex:hasThing m:t ; ex:hasWidget m:w .
+            m:bad  a ex:Box ; ex:hasWidget m:w .
+            m:t a ex:Thing .
+            m:w a ex:Widget .
+            """,
+            format="turtle",
+        )
+    )
+    compiled_model = model.compile([shape_collection])
+
+    shape_map = compiled_model.shape_map(URIRef("urn:ex/shape"))
+    assert not shape_map.conforms
+
+    by_focus = {str(m.focus.to_rdflib()): m for m in shape_map}
+    assert set(by_focus) == {"urn:model/good", "urn:model/bad"}
+    assert by_focus["urn:model/good"].conforms
+    assert not by_focus["urn:model/bad"].conforms
+
+    # the failing focus still reports the slot it *did* fill...
+    bad = {b.name: b for b in by_focus["urn:model/bad"].values()}
+    assert bad["widget"].ok
+    assert [v.to_rdflib() for v in bad["widget"].values] == [URIRef("urn:model/w")]
+    # ...and describes the one it did not
+    assert not bad["thing"].ok
+    assert bad["thing"].missing == 1
+    assert bad["thing"].values == []
+
+    # the dataframe defaults to the conforming focus nodes -- the rows a SPARQL
+    # projection of the same shape would return
+    df = compiled_model.shape_to_df(URIRef("urn:ex/shape"))
+    assert set(df.columns) == {"target", "thing", "widget"}
+    assert set(df["target"]) == {"urn:model/good"}
+
+    # ...and can be widened to the ones the shape selected but does not satisfy
+    everything = compiled_model.shape_to_df(
+        URIRef("urn:ex/shape"), include_nonconforming=True
+    )
+    assert set(everything["target"]) == {"urn:model/good", "urn:model/bad"}
+    bad_row = everything[everything["target"] == "urn:model/bad"]
+    assert bad_row["widget"].values[0] == "urn:model/w"
+    assert pd.isna(bad_row["thing"].values[0])
+
+
+def test_shape_to_df_names_a_single_slot_shape(clean_building_motif):
+    """Column names survive a shape with exactly one property shape.
+
+    pyshifty 0.4.0's ``shape_map`` resolves ``sh:name`` only when a node shape
+    has two or more property shapes; with exactly one it returns ``None``. The
+    names are read from the shapes graph so the column set does not depend on
+    that.
+    """
+    shape_graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <urn:ex/> .
+        ex:shape a sh:NodeShape ;
+            sh:targetClass ex:Box ;
+            sh:property [
+                sh:path ex:hasThing ;
+                sh:name "thing" ;
+                sh:qualifiedValueShape [ sh:class ex:Thing ] ;
+                sh:qualifiedMinCount 1
+            ] .
+        """,
+        format="turtle",
+    )
+    shape_collection = Library.from_ontology(shape_graph).get_shape_collection()
+    model = Model.create("urn:model/")
+    model.add_graph(
+        Graph().parse(
+            data="""
+            @prefix ex: <urn:ex/> .
+            @prefix m: <urn:model/> .
+            m:b a ex:Box ; ex:hasThing m:t .
+            m:t a ex:Thing .
+            """,
+            format="turtle",
+        )
+    )
+    compiled_model = model.compile([shape_collection])
+
+    df = compiled_model.shape_to_df(URIRef("urn:ex/shape"))
+    assert set(df.columns) == {"target", "thing"}
+    assert df.loc[df["target"] == "urn:model/b", "thing"].values[0] == "urn:model/t"

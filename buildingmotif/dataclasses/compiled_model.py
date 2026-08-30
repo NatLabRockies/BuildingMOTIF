@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Dict, List, Optional
+from itertools import product
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pandas as pd
 import rdflib
@@ -14,8 +15,10 @@ from buildingmotif.dataclasses.validation_result import ValidationResult
 from buildingmotif.namespaces import SH, A
 from buildingmotif.shacl import (
     DEFAULT_SHACL_ENGINE,
+    _shifty_shapes_input,
     get_shacl_backend,
     normalize_shacl_engine,
+    require_shifty,
 )
 from buildingmotif.utils import copy_graph
 
@@ -262,9 +265,82 @@ class CompiledModel:
                 return sc
         return None
 
+    def shape_map(
+        self,
+        shape: Optional[rdflib.URIRef] = None,
+        *,
+        name_path: str = "sh:name",
+        value_paths: Optional[Dict[str, str]] = None,
+    ):
+        """Extract the values this model supplies for a shape's slots.
+
+        A *shape map* is a binding table: one entry per selected
+        ``(shape, focus)`` pair, mapping each obligation the shape states to the
+        values the model actually supplied for it. It treats a shape as an
+        **extraction schema** -- "give me every VAV and its air flow sensor" --
+        rather than as a pass/fail test, which is what makes it the natural
+        backing for :meth:`shape_to_df` and :meth:`shape_to_table`.
+
+        Unlike a SPARQL projection of the same shape, each entry also reports
+        whether that focus *conformed*, how many values were expected against
+        how many were found, and which near-miss values were rejected. A focus
+        that is missing a required value still appears, with the deficit
+        described, instead of dropping out of the result.
+
+        :param shape: the shape to extract against, or ``None`` for every shape
+            in the model's shape collections
+        :type shape: Optional[rdflib.URIRef]
+        :param name_path: property path giving each slot its author-facing name,
+            evaluated against the shapes graph. The default reads ``sh:name``,
+            which is the name BuildingMOTIF shapes already carry.
+
+            A *prefixed* path is resolved against the prefixes declared in the
+            document shifty parses, and an unresolvable one raises
+            ``ValueError: undeclared prefix``. ``sh:`` and BuildingMOTIF's other
+            well-known prefixes are always declared (:func:`_shifty_shapes_input`
+            re-binds them, since the storage layer does not persist a source
+            file's prefixes). For anything else, write the path with a full IRI
+            in angle brackets -- ``"<http://example.org/label>"``.
+        :type name_path: str
+        :param value_paths: optional ``{label: property path}`` map used to
+            annotate each *bound value* from the model graph -- e.g.
+            ``{"label": "rdfs:label"}`` to carry a human-readable name alongside
+            each matched node.
+        :type value_paths: Optional[Dict[str, str]]
+        :return: the native ``shifty.ShapeMap``
+        :raises ValueError: if ``shape`` is given but no shape collection
+            defines it
+
+        .. note::
+            Inference is **not** re-run: a :class:`CompiledModel` already holds
+            the inferred closure, so the shape map reads the graph as compiled.
+        """
+        shifty = require_shifty()
+
+        if shape is not None and self.defining_shape_collection(shape) is None:
+            raise ValueError(
+                f"Shape {shape} is not defined in any of the shape collections"
+            )
+
+        shape_graph = rdflib.Graph()
+        for sc in self.shape_collections:
+            shape_graph += sc.graph
+
+        return shifty.shape_map(
+            self.graph,
+            _shifty_shapes_input(shape_graph),
+            name_path=name_path,
+            value_paths=value_paths,
+            shape_names=[str(shape)] if shape is not None else None,
+            # "info" rather than "violation": a shape map is an extraction, so a
+            # slot that merely warns should still report the values it bound.
+            minimum_severity="info",
+            infer=False,
+        )
+
     def shape_to_table(self, shape: rdflib.URIRef, table: str, conn):
         """
-        Turn the shape into a SPARQL query and execute it on the model's graph, storing the results in a table.
+        Turn the shape into a table of the values the model supplies for it, storing the results in a table.
 
         :param shape: the shape to query
         :type shape: rdflib.URIRef
@@ -276,30 +352,118 @@ class CompiledModel:
         metadata = self.shape_to_df(shape)
         metadata.to_sql(table, conn, if_exists="replace", index=False)
 
-    def shape_to_df(self, shape: rdflib.URIRef) -> pd.DataFrame:
+    def shape_to_df(
+        self, shape: rdflib.URIRef, include_nonconforming: bool = False
+    ) -> pd.DataFrame:
         """
-        Turn the shape into a SPARQL query and execute it on the model's graph, storing the results in a dataframe.
+        Turn the shape into a dataframe of the values the model supplies for it.
+
+        One row per focus node; a ``target`` column naming that focus, plus one
+        column per named slot (``sh:name``) on the shape. A focus binding
+        several values for one slot expands to one row per combination.
+
+        Backed by :meth:`shape_map`, so a slot's column is populated from the
+        values SHACL itself matched against that slot -- including through
+        ``sh:or``, ``sh:node`` and qualified value shapes -- rather than from a
+        hand-compiled approximation of the shape in SPARQL.
 
         :param shape: the shape to query
         :type shape: rdflib.URIRef
-        :return: the results of the query
+        :param include_nonconforming: also return the focus nodes the shape
+            *selected* but which do not satisfy it, with their unfilled slots
+            left null. Defaults to False, which returns only conforming focus
+            nodes -- the rows a SPARQL projection of the shape would return.
+
+            A shape map reports every selected focus, conforming or not, which
+            is the more useful answer when the question is "what is missing?"
+            rather than "what is configured?". It is opt-in because the two
+            answers differ: a partially-configured entity appears here and does
+            not appear in a query's results.
+        :type include_nonconforming: bool
+        :return: the values the model supplies for the shape
         :rtype: pd.DataFrame
+        :raises ValueError: if no shape collection defines ``shape``
+        """
+        shape_map = self.shape_map(shape)
+        slot_index = self._slot_index(shape)
+
+        # Column set comes from the shape, not from the rows: a shape that
+        # selects no focus nodes still has to report its columns (an empty
+        # frame with the right columns is a usable answer; a frame with no
+        # columns is not).
+        columns = ["target"] + sorted(set(slot_index.values()))
+
+        rows: List[Dict[str, object]] = []
+        for mapping in shape_map:
+            if not include_nonconforming and not mapping.conforms:
+                continue
+            named: Dict[str, Any] = {}
+            for binding in mapping.values():
+                # prefer the name the engine resolved; fall back to the shapes
+                # graph, which pyshifty 0.4.0 needs for a single-slot shape
+                name = binding.name or slot_index.get(self._slot_key(binding))
+                if name is not None:
+                    named[name] = binding
+            # one row per combination of the values bound to each slot, so a
+            # focus with two air flow sensors yields two rows
+            slots = [named.get(name) for name in columns[1:]]
+            value_lists = [
+                [term.to_rdflib() for term in binding.values]
+                if binding is not None and binding.values
+                else [None]
+                for binding in slots
+            ]
+            focus = mapping.focus.to_rdflib()
+            for combination in product(*value_lists) if value_lists else [()]:
+                row: Dict[str, object] = {"target": focus}
+                row.update(dict(zip(columns[1:], combination)))
+                rows.append(row)
+
+        metadata = pd.DataFrame(rows, columns=columns, dtype="string")
+        # convert the rdflib terms to Python types
+        return metadata.map(lambda x: x.toPython() if hasattr(x, "toPython") else x)
+
+    def _slot_index(self, shape: rdflib.URIRef) -> Dict[tuple, str]:
+        """Map each of a shape's slots to its author-facing ``sh:name``.
+
+        Keyed by ``(path IRI, qualifier class IRI or None)`` -- the same pair a
+        shape map's :class:`Key` carries -- so a binding can be matched back to
+        the property shape it came from.
+
+        This exists because ``shape_map(name_path=...)`` does not always
+        resolve the name itself: **pyshifty 0.4.0 drops ``sh:name`` when a node
+        shape has exactly one property shape**, and returns it correctly when
+        there are two or more. Reading the names out of the shapes graph here
+        makes the column set independent of that, and independent of whether the
+        model happens to have any data for the shape at all.
         """
         defining_sc = self.defining_shape_collection(shape)
         if defining_sc is None:
             raise ValueError(
                 f"Shape {shape} is not defined in any of the shape collections"
             )
-        query = defining_sc.shape_to_query(shape)
-        results = self.graph.query(query)
-        columns = [str(col) for col in results.vars]
-        metadata = pd.DataFrame(
-            [
-                {str(col): value for col, value in row.items()}
-                for row in results.bindings
-            ],
-            columns=columns,
-            dtype="string",
+        # The shape is interpolated rather than passed via initBindings: the
+        # Oxigraph store rejects a substitution for a variable that is not in
+        # the SELECT projection ("does not contain variable ?shape").
+        rows = defining_sc.graph.query(
+            f"""
+            PREFIX sh: <http://www.w3.org/ns/shacl#>
+            SELECT DISTINCT ?name ?path ?class WHERE {{
+                <{shape}> sh:property ?pshape .
+                ?pshape sh:name ?name ; sh:path ?path .
+                OPTIONAL {{ ?pshape sh:qualifiedValueShape/sh:class ?class }}
+                OPTIONAL {{ ?pshape sh:class ?class }}
+            }}
+            """
         )
-        # convert the rdflib terms to Python types
-        return metadata.map(lambda x: x.toPython())
+        index: Dict[tuple, str] = {}
+        for name, path, cls in rows:  # type: ignore[misc]
+            index[(str(path), str(cls) if cls is not None else None)] = str(name)
+        return index
+
+    @staticmethod
+    def _slot_key(binding) -> tuple:
+        """The ``(path, qualifier class)`` pair identifying a binding's slot."""
+        path = getattr(binding.path, "iri", None)
+        qualifier = getattr(binding.qualifier, "iri", None)
+        return (str(path) if path else None, str(qualifier) if qualifier else None)

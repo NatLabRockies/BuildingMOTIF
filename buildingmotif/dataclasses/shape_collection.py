@@ -413,6 +413,17 @@ class ShapeCollection:
             ?target <path> ?name . ?name rdf:type/rdfs:subClassOf* <class>
         - `<shape> sh:property [ sh:path <path>; sh:hasValue <value>]` ->
             ?target <path> <value>
+
+        This is a *translation* of the shape into SPARQL, and therefore an
+        approximation of it: it covers the constructs listed above and silently
+        ignores the rest. Use it when you need a query -- to run elsewhere, to
+        show someone, to embed in a larger query.
+
+        When you want the values themselves, prefer
+        :meth:`~buildingmotif.dataclasses.compiled_model.CompiledModel.shape_map`,
+        which asks the SHACL engine directly and so honours the whole shape,
+        and additionally reports per-focus conformance, cardinality, and
+        rejected near-miss values.
         """
         clauses, project = _shape_to_where(self.graph, shape, "?target")
         preamble = """PREFIX sh: <http://www.w3.org/ns/shacl#>
