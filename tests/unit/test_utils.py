@@ -562,3 +562,51 @@ def test_guarantee_unique_template_name(bm):
     # names in other libraries do not collide
     name = _guarantee_unique_template_name(lib, "other_template")
     assert name == "other_template"
+
+
+def test_pyshifty_inference_keeps_prefixes_when_data_is_also_shapes(
+    bm: BuildingMOTIF,
+):
+    """A SHACL-SPARQL rule inside the data graph still resolves its prefixes.
+
+    With no separate shapes argument the data graph is *also* the shapes graph,
+    so a ``sh:construct`` body inside it has to reach shifty with the prefix
+    declarations its query text needs. BuildingMOTIF's storage layer does not
+    persist those bindings, so they have to be re-applied on the way out --
+    otherwise the rule silently never fires (pyshifty < 0.4.1) or the call
+    raises ``Prefix not found`` (0.4.1+).
+
+    This is the shape of the bug that stopped Brick's own ``ref:`` rules from
+    running during ``Library.from_ontology``.
+    """
+    graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix brick: <https://brickschema.org/schema/Brick#> .
+        @prefix : <urn:rules/> .
+        : a owl:Ontology .
+        :S a sh:NodeShape ;
+            sh:targetClass brick:VAV ;
+            sh:rule [
+                a sh:SPARQLRule ;
+                sh:prefixes : ;
+                sh:construct \"\"\"
+                    CONSTRUCT { $this a brick:Terminal_Unit }
+                    WHERE { $this a brick:VAV }
+                \"\"\"
+            ] .
+        <urn:bldg/vav1> a brick:VAV .
+        """,
+        format="turtle",
+    )
+    # the binding the storage layer would have dropped
+    graph.namespace_manager.bind("brick", None, replace=True)
+
+    inferred = shacl_inference(graph, engine="pyshifty")
+
+    assert (
+        URIRef("urn:bldg/vav1"),
+        A,
+        BRICK.Terminal_Unit,
+    ) in inferred, "the sh:construct rule did not fire -- its prefixes were lost"

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type
 import pyshacl  # type: ignore
 from rdflib import Graph
 
-from buildingmotif.namespaces import BRICK, OWL
+from buildingmotif.namespaces import BRICK, OWL, SH
 
 if TYPE_CHECKING:
     from buildingmotif.dataclasses.shape_collection import ShapeCollection
@@ -65,9 +65,12 @@ def _shifty_shapes_input(shape_graph: Graph) -> bytes:
     rule then just never fires, with **no error and no diagnostic**, because a
     query it cannot resolve is treated as an unsupported feature the engine
     ignores by default. Passing Turtle text instead of a ``Graph`` keeps the
-    (already-declared) prefix table shifty's own parser depends on. The data
-    graph does not need this treatment: it doesn't carry any SPARQL query
-    literals for ``sh:prefixes`` to resolve against.
+    (already-declared) prefix table shifty's own parser depends on.
+
+    A *data* graph usually carries no SPARQL query literals and so needs none of
+    this -- but it does when it is handed over with no separate shapes argument,
+    because then it is also the shapes graph. :func:`_shifty_data_input` covers
+    that case.
 
     Verified empirically against pyshifty 0.2.7: an ``sh:rule``/``sh:construct``
     with a query body that uses a prefixed name (e.g. ``ex:Foo``) infers 0
@@ -104,6 +107,46 @@ def _shifty_shapes_input(shape_graph: Graph) -> bytes:
     prefixed = copy_graph(shape_graph)
     bind_prefixes(prefixed)
     return prefixed.serialize(format="turtle", encoding="utf-8")
+
+
+def _has_sparql_bodies(graph: Graph) -> bool:
+    """Whether ``graph`` carries SHACL-SPARQL bodies.
+
+    A ``sh:select``/``sh:construct``/``sh:ask`` body resolves its prefixed names
+    against the prefix declarations of the document shifty parses, so a graph
+    holding one has to reach shifty with those declarations intact. A graph
+    holding none has nothing to resolve and can be handed over untouched.
+    """
+    return any(
+        (None, predicate, None) in graph
+        for predicate in (SH.select, SH.construct, SH.ask)
+    )
+
+
+def _shifty_data_input(data_graph: Graph):
+    """The data graph, prepared for a call that passes shifty *no* shapes graph.
+
+    With no shapes argument the data graph is also the shapes graph, so any
+    SHACL-SPARQL body inside it has to resolve its prefixed names -- which means
+    it has to arrive carrying its prefix declarations, exactly as
+    :func:`_shifty_shapes_input` guarantees for a real shapes graph.
+
+    This matters because BuildingMOTIF's storage layer does not persist a source
+    file's ``@prefix`` bindings. ``Library.from_ontology("Brick-full.ttl")`` runs
+    SHACL inference over a Brick graph that has already lost its ``ref:``
+    binding, and Brick's own ``sh:construct`` rules and ``sh:select``
+    constraints use ``ref:hasExternalReference``. Under pyshifty < 0.4.1 those
+    queries were **silently skipped** -- the rules never fired and nothing said
+    so; 0.4.1 raises ``Prefix not found`` instead, which is what surfaced it.
+
+    Re-binding costs a copy and a serialization (~1.3s on Brick, against ~3.3s
+    for the inference itself), so it is only paid for a graph that actually
+    carries SPARQL bodies. An ordinary model graph has none and is passed
+    through as-is.
+    """
+    if _has_sparql_bodies(data_graph):
+        return _shifty_shapes_input(data_graph)
+    return data_graph
 
 
 @dataclass
@@ -257,7 +300,7 @@ class PyshiftyBackend(ShaclBackend):
         shifty = require_shifty()
 
         if shape_graph is None or len(shape_graph) == 0:  # type: ignore
-            return shifty.infer(data_graph).graph()  # type: ignore
+            return shifty.infer(_shifty_data_input(data_graph)).graph()  # type: ignore
         return shifty.infer(data_graph, _shifty_shapes_input(shape_graph)).graph()  # type: ignore
 
     def validate(
@@ -267,7 +310,7 @@ class PyshiftyBackend(ShaclBackend):
 
         if shape_graph is None or len(shape_graph) == 0:  # type: ignore
             return shifty.validate(  # type: ignore
-                data_graph,
+                _shifty_data_input(data_graph),
                 minimum_severity="violation",
             )
         return shifty.validate(  # type: ignore

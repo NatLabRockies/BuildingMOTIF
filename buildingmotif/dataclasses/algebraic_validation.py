@@ -50,7 +50,7 @@ from rdflib.term import Node
 from rdflib.util import from_n3
 
 from buildingmotif.namespaces import BRICK, OWL, PARAM, RDF, RDFS
-from buildingmotif.shacl import _shifty_shapes_input, require_shifty
+from buildingmotif.shacl import _shifty_data_input, _shifty_shapes_input, require_shifty
 from buildingmotif.utils import copy_graph, replace_nodes
 
 if TYPE_CHECKING:
@@ -1666,9 +1666,13 @@ class AlgebraicValidationContext:
         )
         self._shapes_input = shapes_input
         if shapes_input is None:
-            self._session = shifty.RepairSession(self.data_graph, self.data_graph)
+            # The data graph is also the shapes graph here, so it has to carry
+            # its prefix declarations for any SHACL-SPARQL body inside it --
+            # see _shifty_data_input.
+            data_as_shapes = _shifty_data_input(self.data_graph)
+            self._session = shifty.RepairSession(data_as_shapes, self.data_graph)
             self._algebra = shifty.validate_algebra(
-                self.data_graph,
+                data_as_shapes,
                 minimum_severity="violation",
             )
         else:
@@ -1809,7 +1813,7 @@ class AlgebraicValidationContext:
         # pass an empty graph.
         if self._shapes_input is None:
             _, report_graph, _ = shifty.validate(
-                self.data_graph,
+                _shifty_data_input(self.data_graph),
                 minimum_severity="violation",
             )
         else:
