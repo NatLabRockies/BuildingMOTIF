@@ -30,7 +30,7 @@ import logging
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, lru_cache
 from itertools import product
 from typing import (
     TYPE_CHECKING,
@@ -492,6 +492,58 @@ class AlgebraicReason:
         return hash(self.reason())
 
 
+def _match_slot(candidates: Sequence[Tuple], obligation: object) -> Tuple:
+    """Pick the shape-map slot an obligation is about, or report nothing.
+
+    ``candidates`` are the failing slots the shape states on this
+    ``(focus, path)``. When there is more than one -- a VAV wanting both an air
+    flow sensor and a damper command along ``brick:hasPoint`` -- they are told
+    apart by the class each demands, matched against the obligation's own
+    rendering of its qualifier.
+
+    Returns ``(slot, needs, near_misses)``, all empty when nothing matches
+    unambiguously. Reporting an obligation plainly is always correct; labelling
+    it with the wrong slot is not, so ambiguity resolves to no enrichment.
+    """
+    if not candidates:
+        return (None, None, ())
+    if len(candidates) == 1:
+        _, slot, needs, near_misses = candidates[0]
+        return (slot, needs, near_misses)
+
+    qualifier = getattr(obligation, "qualifier", None)
+    rendered = str(
+        getattr(qualifier, "definition", None)
+        or getattr(qualifier, "render", None)
+        or ""
+    )
+    matched = [c for c in candidates if c[0] and str(c[0]) in rendered]
+    if len(matched) != 1:
+        return (None, None, ())
+    _, slot, needs, near_misses = matched[0]
+    return (slot, needs, near_misses)
+
+
+@lru_cache(maxsize=1)
+def _report_namespaces():
+    """A namespace manager for rendering report terms as prefixed names.
+
+    A validation report is read by people, and
+    ``<https://brickschema.org/schema/Brick#hasPoint>`` is materially harder to
+    scan than ``brick:hasPoint``. rdflib only abbreviates against a namespace
+    manager, and the graphs reaching a report have usually lost their bindings
+    at the storage boundary, so this supplies BuildingMOTIF's well-known ones.
+
+    Cached: it is built once and shared, and it holds no graph data -- only the
+    prefix table.
+    """
+    from buildingmotif.namespaces import bind_prefixes
+
+    graph = Graph()
+    bind_prefixes(graph)
+    return graph.namespace_manager
+
+
 @dataclass(frozen=True)
 class MissingEdge:
     """One cardinality deficit, in BuildingMOTIF terms.
@@ -520,14 +572,46 @@ class MissingEdge:
     observed_count: int
     #: how many qualifying values the shape asked for
     required_count: int
+    #: the shape author's ``sh:name`` for this slot, when the shape gives one.
+    #: Reporting a failure in the author's own words beats reporting it in the
+    #: engine's.
+    slot: Optional[str] = None
+    #: what a qualifying value has to be, as a *typed* pyshifty term --
+    #: ``Cls(iri=...)`` for a class, ``Datatype``/``ShapeRef`` otherwise. Kept
+    #: typed rather than flattened to a URIRef so a caller can branch on the
+    #: kind, enumerate candidates for it, or generate a template that fills it.
+    #: ``None`` when no shape map could resolve the obligation.
+    needs: Optional[object] = None
+    #: existing nodes the path already reaches that failed :attr:`needs` --
+    #: near misses, each one edit from qualifying. Empty when the path reaches
+    #: nothing (so a new node is required) or when nothing could be resolved.
+    #:
+    #: Nodes already bound to a *satisfied* slot of the same focus are excluded:
+    #: amending one of those would fix this obligation by breaking that one.
+    near_misses: Tuple[Node, ...] = ()
+
+    def _render(self, term: Optional[Node], fallback: str) -> str:
+        if term is None:
+            return fallback
+        try:
+            return term.n3(_report_namespaces())
+        except Exception:  # pragma: no cover - rendering must never fail a report
+            return term.n3()
 
     def __str__(self) -> str:
-        node = self.node.n3() if self.node is not None else "the focus"
-        path = self.path.n3() if self.path is not None else "an unnamed path"
-        return (
-            f"{node} needs {self.missing} more value(s) along {path} "
-            f"({self.observed_count} of {self.required_count} present)"
+        node = self._render(self.node, "the focus")
+        path = self._render(self.path, "an unnamed path")
+        slot = f"[{self.slot}] " if self.slot else ""
+        needs = getattr(self.needs, "iri", None)
+        of_class = f" of class {self._render(URIRef(needs), '')}" if needs else ""
+        text = (
+            f"{slot}{node} needs {self.missing} more value(s) along {path}"
+            f"{of_class} ({self.observed_count} of {self.required_count} present)"
         )
+        if self.near_misses:
+            candidates = ", ".join(self._render(n, "?") for n in self.near_misses)
+            text += f"; already on that path but not qualifying: {candidates}"
+        return text
 
 
 @dataclass
@@ -727,17 +811,28 @@ class RepairWitness:
                 "missing_obligations() raised for focus %s", self.focus, exc_info=True
             )
             return ()
-        return tuple(
-            MissingEdge(
-                node=_engine_term_to_node(getattr(obligation, "node", None)),
-                path=_engine_term_to_node(getattr(obligation, "path", None)),
-                qualifier=getattr(obligation, "qualifier", None),
-                missing=getattr(obligation, "missing", 0),
-                observed_count=getattr(obligation, "observed_count", 0),
-                required_count=getattr(obligation, "required_count", 0),
+        index = self.context._near_miss_index
+        edges = []
+        for obligation in obligations:
+            node = _engine_term_to_node(getattr(obligation, "node", None))
+            path = _engine_term_to_node(getattr(obligation, "path", None))
+            slot, needs, near_misses = _match_slot(
+                index.get((node, path), ()), obligation
             )
-            for obligation in obligations
-        )
+            edges.append(
+                MissingEdge(
+                    node=node,
+                    path=path,
+                    qualifier=getattr(obligation, "qualifier", None),
+                    missing=getattr(obligation, "missing", 0),
+                    observed_count=getattr(obligation, "observed_count", 0),
+                    required_count=getattr(obligation, "required_count", 0),
+                    slot=slot,
+                    needs=needs,
+                    near_misses=near_misses,
+                )
+            )
+        return tuple(edges)
 
     @cached_property
     def repair_summary(self) -> Tuple:
@@ -1744,6 +1839,85 @@ class AlgebraicValidationContext:
             self._shapes_input if self._shapes_input is not None else self.data_graph
         )
         return shifty.EvidenceSession(shapes, self.data_graph)
+
+    @cached_property
+    def shape_map(self):
+        """A pyshifty ``ShapeMap`` over this validation, as a binding table.
+
+        Built from the :attr:`evidence_session`'s own run rather than by
+        validating again, so it reuses the prepared schema. It is still a run,
+        though, so this is lazy: a context nobody asks about near misses never
+        pays for it.
+
+        The session is passed along deliberately -- without it, passing keys on
+        a failing focus report ``values = None`` and ``sh:name`` cannot resolve,
+        both of which :attr:`_near_miss_index` depends on.
+        """
+        shifty = require_shifty()
+
+        session = self.evidence_session
+        return shifty.ShapeMap.from_run(
+            session.validate(), session, name_path="sh:name"
+        )
+
+    @cached_property
+    def _near_miss_index(self) -> Dict[Tuple[Node, Node], Tuple[Tuple, ...]]:
+        """``(focus, path)`` -> the failing slots the shape states on that path.
+
+        Each entry is ``(qualifier IRI, slot name, typed qualifier, near
+        misses)``. A shape may state several slots on one path -- a VAV needing
+        both an air flow sensor and a damper command along ``brick:hasPoint`` --
+        so ``(focus, path)`` alone does not identify one; the qualifier IRI
+        picks it out, matched against the obligation's own rendering.
+
+        The join is deliberately *semantic* rather than by ``constraint_id``.
+        Those ids are session-local: the repair session and the evidence session
+        number the same constraint differently (and even a single run numbers a
+        shape-map binding differently from the obligation beneath it), so an
+        id-based join silently mislabels slots.
+
+        Only failing slots are indexed -- a satisfied slot is not a finding.
+        """
+        index: Dict[Tuple[Node, Node], Tuple[Tuple, ...]] = {}
+        try:
+            shape_map = self.shape_map
+        except Exception:
+            logger.debug("could not build a shape map for near misses", exc_info=True)
+            return index
+
+        for mapping in shape_map:
+            try:
+                focus = mapping.focus.to_rdflib()
+            except Exception:
+                continue
+
+            # Values already serving a *satisfied* slot of this focus are not
+            # near misses: amending one would fix this obligation by breaking
+            # the slot it currently satisfies.
+            spoken_for: Set[Node] = set()
+            for binding in mapping.values():
+                if not binding.ok:
+                    continue
+                for value in binding.values or ():
+                    spoken_for.add(value.to_rdflib())
+
+            for binding in mapping.values():
+                if binding.ok:
+                    continue
+                path_iri = getattr(binding.path, "iri", None)
+                qualifier_iri = getattr(binding.qualifier, "iri", None)
+                if path_iri is None:
+                    continue
+                near_misses = tuple(
+                    value.to_rdflib()
+                    for value in binding.rejected_values or ()
+                    if value.to_rdflib() not in spoken_for
+                )
+                key = (focus, URIRef(path_iri))
+                index[key] = index.get(key, ()) + (
+                    (qualifier_iri, binding.name, binding.qualifier, near_misses),
+                )
+        return index
 
     def preview(self, proposal: "RepairProposal"):
         """The validation run this model *would* have if ``proposal`` were applied.
