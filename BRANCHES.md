@@ -74,6 +74,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 37 | `f56ea637` | `gtf-new-pyshifty` (pyshifty 0.4 interface) | `770073ab` | 2 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 38 | `738bca85` | `gtf-new-pyshifty` (data-as-shapes prefix fix) | `bd3e48f5` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 39 | (see below) | `gtf-new-pyshifty` (prefix docstring correction) | `a84d0286` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 40 | `424b7b4e` | `gtf-new-pyshifty` (near-miss reporting) | `18182df4` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -1052,6 +1053,46 @@ Brick among them, and Brick cannot be fixed from here (79 of its 80 SPARQL bodie
 `sh:prefixes` at bare namespace IRIs carrying no `sh:declare`; its five real `sh:declare`
 triples hang off an ontology node nothing references; one rule has no `sh:prefixes` at all).
 That last part is an upstream Brick bug worth reporting separately.
+
+### Merge #40 — near-miss values on validation failures, merged clean (2026-08-31)
+
+`18182df4`. `MissingEdge` gains `slot`, `needs` (typed) and `near_misses`, so a cardinality
+failure distinguishes *"a node is wired up but mislabelled"* from *"nothing is there"*.
+547 passed / 1 skipped on the feature branch.
+
+**The join key is the thing to remember here.** The obvious key is `constraint_id` -- both a
+`MissingObligation` and a shape-map `Binding` carry one -- and it is **wrong**. Those ids are
+session-local: the repair session and the evidence session number the same constraint
+differently (5 vs 6 for one slot), and even within a single run a binding is numbered
+differently from the obligation beneath it (6 vs 4). An id join does not fail loudly; it
+attaches the wrong slot name and the wrong required class to a real finding.
+
+It was caught only because a consistency guard was added on suspicion — comparing the
+binding's qualifier IRI against the obligation's rendered qualifier — and the guard fired on
+everything. **On a cross-source join where a mismatch mislabels rather than crashes, verify
+rather than trust.**
+
+The join is now semantic: `(focus, path)` for lookup, disambiguated by the qualifier class
+when a shape states two slots on one path (a VAV wanting both an air flow sensor and a
+damper command along `brick:hasPoint`). Ambiguity resolves to *no* enrichment.
+
+Two exclusions that keep the output honest, both tested:
+
+- A value already serving a **satisfied** slot of the same focus is not a near miss. The
+  engine does report it as rejected for the failing slot, but amending it would fix one
+  obligation by breaking another.
+- Satisfied slots are not findings and are not reported at all.
+
+Known rough edge, not addressed: the *nested* obligations still render raw
+(`sen_a needs 1 more value(s) along rdf:type/rdfs:subClassOf*`) because they come from
+shifty's obligation tree rather than this enrichment — and one of them reproduces exactly
+the bad suggestion the `spoken_for` filter removes at the slot level. Worth a follow-up.
+
+Still open: feeding these near misses into candidate generation, so repair can propose
+`sen_a a brick:Air_Flow_Sensor` instead of minting a phantom sensor and leaving the real,
+already-wired point mislabelled. Verified that the engine cannot currently produce that
+repair at all — the hole is filled by minting or by an existing node that *already*
+conforms, never by amending one that nearly does.
 
 ## Verification status
 
