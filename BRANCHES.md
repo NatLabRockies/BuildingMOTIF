@@ -77,6 +77,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 40 | `424b7b4e` | `gtf-new-pyshifty` (near-miss reporting) | `18182df4` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 41 | `592c7b5f` | `gtf-new-pyshifty` (amendment repairs, pyshifty 0.4.2) | `fbd2d3a1` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 42 | `1d85a36a` | `gtf-ontoenv` (stream read-only ontology graphs) | `9693d416` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
+| 43 | `0f1e1842` | `gtf-ontoenv` (skip unused 223P template inference) | `1d0a2b6f` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -1265,6 +1266,16 @@ cost: template inference and later pyshifty validation still run where a test re
 The focused library tests pass (**2 passed**), including a spy that proves loading the root and
 its imported dependency does not request a mutable OntoEnv copy; the only remaining copy in that
 test is the later, intentional template-inference copy.
+
+### Merge #43 — skip unused 223P template inference in library tests (2026-08-31)
+
+`tests/library/test_223p_templates.py` validates generated models against the 223P shape
+collection; it never uses templates inferred from the 223P ontology. Its session fixture now
+passes `infer_templates=False` while retaining import resolution and the complete shape graph.
+The profiled setup fell from **22.25s** to **17.17s**. The remaining dominant work is the
+intentional materialization of imported ontologies as queryable Library/ShapeCollection rows;
+that needs a separate opt-in API to omit those rows without changing normal library-loading
+semantics.
 
 ## Verification status
 
