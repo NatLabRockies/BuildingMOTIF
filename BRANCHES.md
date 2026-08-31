@@ -72,6 +72,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 31 | `01f7f689` | `origin/gtf-buildingmotif` (catch up: WaTr skill reference) | `e510b024` | 2 | n/a |
 | 32-36 | — | **not recorded** — see "Gap in the merge table" below | — | — | — |
 | 37 | `f56ea637` | `gtf-new-pyshifty` (pyshifty 0.4 interface) | `770073ab` | 2 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 38 | `738bca85` | `gtf-new-pyshifty` (data-as-shapes prefix fix) | `bd3e48f5` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -964,6 +965,46 @@ Rows 32-36 were never recorded. The merge commits themselves carry the numbering
 (`gtf-knowledge-base`) and `c7101b56` (`gtf-buildingmotif-skill`) went in unnumbered.
 Reconstruct them from `git log --merges --first-parent 01f7f689..` if the detail is needed;
 this entry does not attempt it.
+
+### Merge #38 — data-as-shapes prefix fix, 1 conflict resolved here (2026-08-30)
+
+One commit (`bd3e48f5`). Found by running the unit suite against an unreleased pyshifty
+0.4.1 build: `test_model_compile[pyshifty]` failed with
+`ValueError: invalid shapes graph: ... Prefix not found`.
+
+**It was not a pyshifty regression.** Three call sites hand shifty a data graph with *no*
+shapes argument, which makes the data graph its own shapes graph — so a SHACL-SPARQL body
+inside it has to arrive with the prefix declarations its query text resolves against, the
+same guarantee `_shifty_shapes_input` gives a real shapes graph. It was not getting it.
+`Library.from_ontology("Brick-full.ttl")` therefore ran inference over a Brick graph our
+storage layer had already stripped the `ref:` binding from, and Brick's own rules and
+constraints use `ref:hasExternalReference`. **Those queries had been silently skipped all
+along** — the rules never fired and nothing said so. pyshifty 0.4.1 raises instead of
+skipping, which is the only reason it surfaced.
+
+Fix: `_shifty_data_input`, guarded by `_has_sparql_bodies` so the copy-and-serialize
+(~1.3s on Brick, against ~3.3s for the inference itself) is only paid by a graph that
+actually carries SPARQL bodies. Applied to `PyshiftyBackend.infer`, `.validate`, and the
+empty-shape-collection branch of `AlgebraicValidationContext` (repair session, algebra
+pass, and W3C report path), which had the identical latent bug.
+
+Regression test `test_pyshifty_inference_keeps_prefixes_when_data_is_also_shapes`; verified
+to fail with the fix reverted, and valid on both pyshifty lines (0.4.0 silently infers
+nothing, 0.4.1 raises).
+
+Still outstanding, and **not** fixed here: the storage layer does not round-trip namespace
+bindings at all. `bind_prefixes` restores BuildingMOTIF's well-known prefixes, which covers
+any shape written against one of our own ontologies, but a custom downstream-defined prefix
+is still lost when its graph is persisted — now loudly rather than silently. Fixing that
+means persisting bindings through `GraphConnection`; it deserves its own issue.
+
+#### The conflict — `buildingmotif/shacl.py`, resolved by keeping both sides
+
+Purely additive, and it exists on no feature branch. `gtf-manifest` had added
+`_resolved_shape_graph` immediately after `_shifty_shapes_input`; `gtf-new-pyshifty` added
+`_has_sparql_bodies` and `_shifty_data_input` at the same spot. Neither touches the other,
+so both were kept, manifest's first. Verified afterwards that every top-level `def`/`class`
+from both parents survives the merge (11 + 12 with 10 shared = 13).
 
 ## Verification status
 
