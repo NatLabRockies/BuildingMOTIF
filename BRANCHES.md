@@ -75,6 +75,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 38 | `738bca85` | `gtf-new-pyshifty` (data-as-shapes prefix fix) | `bd3e48f5` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 39 | (see below) | `gtf-new-pyshifty` (prefix docstring correction) | `a84d0286` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 40 | `424b7b4e` | `gtf-new-pyshifty` (near-miss reporting) | `18182df4` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 41 | `592c7b5f` | `gtf-new-pyshifty` (amendment repairs, pyshifty 0.4.2) | `fbd2d3a1` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -1092,7 +1093,152 @@ Still open: feeding these near misses into candidate generation, so repair can p
 `sen_a a brick:Air_Flow_Sensor` instead of minting a phantom sensor and leaving the real,
 already-wired point mislabelled. Verified that the engine cannot currently produce that
 repair at all — the hole is filled by minting or by an existing node that *already*
-conforms, never by amending one that nearly does.
+conforms, never by amending one that nearly does. **Closed by merge #41 below.**
+
+### Merge #41 — amend-a-near-miss repair, nested obligations, pyshifty 0.4.2 (2026-08-31)
+
+Closes both follow-ups left open by #40, plus the join guard.
+
+**Amendment repairs (`origin == "amend"`).** The repair tree genuinely cannot express
+this, which is why it needed a source of its own rather than another `_fill_strategies`
+branch. For "VAV1 needs a `brick:hasPoint` value that is an `Air_Flow_Sensor`" the tree
+offers exactly one edit shape — `add VAV1 hasPoint ?0` with `?0 : instance of
+Air_Flow_Sensor` — so every filler is either newly minted or an existing node that
+*already* conforms. When the real point is wired up and merely mislabelled, neither branch
+reaches it: the edge the tree wants to add is already in the graph, and the edit that
+fixes the model is a type on the **value**, which the tree never names as a hole.
+`TemplateGuidedRepair._amend_candidates` builds that one-triple delta from
+`missing_edges`' near misses and hands it to the same soundness gate. Reading
+`missing_edges` builds the context's shape map — a *second* validation run that repair
+itself never needed — so `RepairWitness.has_amendable_values` gates it: a cheap scan of the
+repair session's own obligations for a nested one, which is the only case an amendment can
+come from. A model with nothing to amend pays nothing, and `evidence_session`/`shape_map`
+stay as lazy as their docstrings claim. It ranks first on
+the existing key without changing it (one addition, one reused node beats minting two
+triples); `"amend"` was added to `origin_pref` only as a tie-break. Class slots only —
+`needs` is populated for datatype slots too, and `<node> rdf:type xsd:string` is nonsense.
+
+**Nested obligations, and a second place the `spoken_for` filter belongs.** pyshifty emits
+an obligation per candidate value beneath a failing slot, counted along a property path
+rather than a predicate. Two things were wrong with passing them through raw:
+
+- `_engine_term_to_node("rdf:type/rdfs:subClassOf*")` does not fail — `from_n3` expands the
+  prefix and keeps the rest, minting
+  `http://www.w3.org/1999/02/22-rdf-syntax-ns#type/rdfs:subClassOf*`. A caller would use
+  that against the model graph and match nothing, silently. `_obligation_path` now returns
+  `(None, label)` for anything that is not a bracketed IRI, so `MissingEdge.path` is
+  `None` and `path_label` carries the rendering.
+- A nested obligation is emitted for `cmd_b` as well — the air flow slot rejected it, so
+  retyping it *would* discharge the deficit. **That edit gates sound**: `rdf:type` is
+  additive, so `cmd_b` stays a `Damper_Position_Command` and the damper slot never breaks.
+  The gate cannot rule it out and neither can the engine; only the near-miss exclusion
+  can. Nested obligations are therefore attributed to the top-level deficit whose
+  `near_misses` contain their node — which also supplies the slot name and required class
+  — and dropped when that attribution is absent or ambiguous. Tested both ways, including
+  an assertion that the gate really does accept the bad edit.
+
+**A consistency guard on the stable-id join** (`_shapes_agree`). `_violation_for` joins
+`validate_algebra`'s violations to `RepairSession`'s witnesses on `(focus, statement_id,
+constraint_id)` — three session-local integers from two independent runs. It *holds* on
+0.4.1: verified directly, ids agree across both runs, and `focus` separates two foci
+failing the same statement. But it is the same silent-mislabelling shape as #40's
+`constraint_id` trap — a wrong match attaches another finding's reasons and
+`target_shape` to a real witness with nothing raised — so the match is now cross-checked
+against the shape IRI each side derives independently, and a definite disagreement
+degrades to `alignment == "unavailable"` rather than being trusted. This guards an
+assumption; it is not a workaround for a known break.
+
+#### `_slot_index` could **not** be removed — 0.4.1 fixes only half the bug
+
+Merge #37 recorded "pyshifty 0.4.0 `shape_map()` does not resolve `sh:name` when a node
+shape has exactly one property shape" and said to drop the fallback once fixed upstream.
+Checked against the 0.4.1 wheel before removing it, and the fix is partial:
+
+| single property shape states | `Binding.name` on 0.4.1 |
+|---|---|
+| `sh:minCount` only | resolved |
+| `sh:class` only | resolved |
+| `sh:qualifiedValueShape` + `sh:qualifiedMinCount` | resolved (**0.4.0 did not**) |
+| `sh:class` + `sh:minCount` | **`None`** — splits into two bindings, both unnamed |
+| `sh:datatype` + `sh:minCount` | **`None`** — same split |
+
+Two or more property shapes resolve their names in every spelling. So the trigger is not
+"exactly one property shape" but "a lone property shape stating both a value constraint
+and a cardinality constraint", and the existing regression test happened to use the
+`sh:qualifiedValueShape` spelling — the one 0.4.1 fixed — so it no longer guarded
+anything. Added `test_shape_to_df_names_a_split_single_slot_shape` for the spelling that
+still needs the fallback.
+
+Independently, `_slot_index` is required regardless of that bug: a shape selecting no
+focus nodes yields no rows, and a shape map exposes no slot vocabulary apart from its rows
+(`shape_names()` gives shape IRIs, `to_dict()` an empty list per shape). The column set
+has to come from the shapes graph or it cannot exist. Docstring rewritten to say both.
+
+#### The same split misfiles the *values*, and `_slot_index` cannot fix that
+
+Found because the new regression test failed on its value assertion while its column
+assertion passed. In the split, a **conforming** focus reports its values on the
+cardinality half (`qualifier is None`) and leaves the class half — the one carrying the
+author's slot — with `values == []`:
+
+```
+focus <urn:model/b> conforms True
+   name=None path=Pred(urn:ex/hasThing) qual=Cls(urn:ex/Thing) ok=True values=[]
+   name=None path=Pred(urn:ex/hasThing) qual=None              ok=True values=[Iri(urn:model/t)]
+```
+
+So `shape_to_df` reported `NA` for an entirely correct model written in the most ordinary
+spelling there is. Naming the slot does not help; the values are on the other binding.
+
+`CompiledModel._slot_values` recovers them, and the guard is the point: values are
+borrowed from the unqualified companion **only when the focus conforms**. Then every value
+on the path satisfies every constraint stated on it, so there is no way to present a value
+as filling a slot it actually failed. Borrowing unconditionally would have been the same
+silent-mislabelling mistake as an id join.
+
+Writing the test for that turned up a *third* consequence of the split, this one
+pre-existing rather than introduced here: on a **failing** focus pyshifty puts the rejected
+value in the class half's `values`, so `shape_to_df(include_nonconforming=True)` reported
+`m:t` as filling a slot it does not satisfy — while the `sh:qualifiedValueShape` spelling
+of the same model reports `NA`, which is what `test_shape_to_df_include_nonconforming`
+already pinned. `_slot_values` now drops the values of any binding with `ok == False`, so
+both spellings agree and a slot never advertises a value that fails it.
+`test_split_slot_does_not_borrow_values_across_a_failure` pins it with a value that
+satisfies `sh:minCount` but not `sh:class`. What was tried and refused is still available
+on `Binding.rejected_values`, which is where near-miss reporting reads it.
+
+Both halves of this (the name and the values) are worth one upstream report against 0.4.1.
+
+#### The 0.4.1 pin, and a stale command in `CLAUDE.md`
+
+`pyproject.toml` asks for `pyshifty>=0.4.1,<0.5`. The pin was bumped at the maintainer's
+direction while 0.4.1 was still being deployed, which left `uv.lock` stranded on 0.4.0 for
+part of this work (`uv lock` refused: `Because only pyshifty<=0.4.0 is available...`), so
+the earlier results here were produced against a hand-installed wheel with
+`.venv/bin/python`. 0.4.1 published during the session; `uv lock --upgrade-package
+pyshifty` then resolved cleanly, `uv sync` installed it from PyPI, and everything was
+re-verified against the published build. `uv run` is safe again.
+
+While syncing, found that `CLAUDE.md`'s first command — `uv sync --extra pyshifty --extra
+topquadrant` — **errors**: `Extra 'pyshifty' is not defined in the optional-dependencies
+table`. `pyshifty` stopped being an extra in merge #7, when it was promoted to a required
+dependency, and the instruction was never updated. Corrected to `uv sync --extra
+topquadrant`.
+
+#### 0.4.2 follow-up — split bindings fixed upstream
+
+pyshifty 0.4.2 fixes both remaining halves of the lone value-constraint plus cardinality
+property-shape defect. The direct `sh:class`/`sh:datatype` plus `sh:minCount` spelling now
+returns one named, qualified binding; a conforming value is in `Binding.values`, and a
+rejected one is in `Binding.rejected_values`. The same result holds for the equivalent
+qualified-value spelling.
+
+Accordingly, `pyproject.toml` and `uv.lock` now require `pyshifty>=0.4.2,<0.5`, and the
+value-recovery workaround (`CompiledModel._slot_values`) was removed. `_slot_index` remains:
+it supplies named columns for a shape that selects no focus nodes, for which a shape map has
+no binding-derived slot vocabulary. The direct binding assertions now guard the repaired
+engine contract. Focused regression coverage: **10 passed**, covering named and rejected
+class/cardinality values, nested obligations, amendment repairs, and the join guard.
 
 ## Verification status
 
