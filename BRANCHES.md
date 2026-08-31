@@ -73,6 +73,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 32-36 | — | **not recorded** — see "Gap in the merge table" below | — | — | — |
 | 37 | `f56ea637` | `gtf-new-pyshifty` (pyshifty 0.4 interface) | `770073ab` | 2 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 38 | `738bca85` | `gtf-new-pyshifty` (data-as-shapes prefix fix) | `bd3e48f5` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 39 | (see below) | `gtf-new-pyshifty` (prefix docstring correction) | `a84d0286` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -992,11 +993,22 @@ Regression test `test_pyshifty_inference_keeps_prefixes_when_data_is_also_shapes
 to fail with the fix reverted, and valid on both pyshifty lines (0.4.0 silently infers
 nothing, 0.4.1 raises).
 
-Still outstanding, and **not** fixed here: the storage layer does not round-trip namespace
-bindings at all. `bind_prefixes` restores BuildingMOTIF's well-known prefixes, which covers
-any shape written against one of our own ontologies, but a custom downstream-defined prefix
-is still lost when its graph is persisted — now loudly rather than silently. Fixing that
-means persisting bindings through `GraphConnection`; it deserves its own issue.
+**Correction (2026-08-31): the storage change this entry originally called for is not
+needed.** The first draft said a custom downstream prefix was lost for good and that fixing
+it meant round-tripping namespace bindings through `GraphConnection`. That is wrong. SHACL's
+own `sh:declare` mechanism is *triples*, not syntax, so it survives storage untouched, and
+shifty resolves `sh:prefixes` → `sh:declare` spec-compliantly. Verified end-to-end: a
+custom-prefixed `sh:construct` rule loaded via `Library.from_ontology`, read back with its
+`@prefix` bindings gone, still fires — with no re-binding at all. A shapes author who uses
+`sh:declare` needs nothing from us.
+
+What `bind_prefixes` is still for is graphs that only ever declared prefixes in Turtle
+syntax — **Brick among them, and Brick cannot be fixed from here**. Of its 80 SPARQL bodies,
+79 point `sh:prefixes` at bare namespace IRIs carrying no `sh:declare`; its five genuine
+`sh:declare` triples hang off `<https://brickschema.org/schema/1.3/Brick>`, which no
+`sh:prefixes` references; and one rule (the `brick:meters` CONSTRUCT) has no `sh:prefixes`
+at all. That is an upstream Brick bug worth reporting separately — the declarations exist,
+they are simply wired to a node nothing points at.
 
 #### The conflict — `buildingmotif/shacl.py`, resolved by keeping both sides
 
@@ -1005,6 +1017,41 @@ Purely additive, and it exists on no feature branch. `gtf-manifest` had added
 `_has_sparql_bodies` and `_shifty_data_input` at the same spot. Neither touches the other,
 so both were kept, manifest's first. Verified afterwards that every top-level `def`/`class`
 from both parents survives the merge (11 + 12 with 10 shared = 13).
+
+### Merge #39 — `sh:declare` findings, and a skill edit made here (2026-08-31)
+
+`a84d0286` on `gtf-new-pyshifty` corrects `_shifty_shapes_input`'s docstring; merged clean.
+
+**Why the skill edit is on this branch and not a feature branch.**
+`.agents/skills/buildingmotif/references/writing_shapes.md` gained a "SPARQL in a shape:
+declare prefixes with `sh:declare`" section. That belongs on `gtf-buildingmotif-skill` by
+the usual rule, and it is **not** there — because the file has already diverged three ways
+and there is no single canonical branch to put it on:
+
+| pair | difference in `writing_shapes.md` |
+|---|---|
+| `gtf-buildingmotif` vs `origin/gtf-buildingmotif-skill` | 35 lines |
+| `gtf-buildingmotif` vs `gtf-new-pyshifty` | 45 lines |
+
+The patch would not apply to `gtf-new-pyshifty` at all. That drift predates this work.
+Reconciling it is its own job; this entry records that the edit landed here so it is not
+lost when the skill branch is next rebuilt. **The `sh:declare` section has to be carried
+across by hand if `writing_shapes.md` is ever reconciled.**
+
+There is precedent for skill edits on a feature branch when they apply cleanly: `ca89c9c0`
+(merge #37) edited `validation.md` on `gtf-new-pyshifty` because that file had not diverged.
+
+**What the `sh:declare` finding is.** `sh:declare` is triples, not syntax, so unlike
+`@prefix` it survives our storage layer, and shifty resolves `sh:prefixes` → `sh:declare`
+spec-compliantly. Verified end to end: a custom-prefixed `sh:construct` rule loaded via
+`Library.from_ontology`, read back with its `@prefix` bindings gone, still fires with no
+re-binding. So a shapes author who uses `sh:declare` needs nothing from us, and the
+"custom prefixes are lost forever" claim in merge #38's original entry was wrong (corrected
+there). `bind_prefixes` remains the fallback for graphs that only ever used `@prefix` --
+Brick among them, and Brick cannot be fixed from here (79 of its 80 SPARQL bodies point
+`sh:prefixes` at bare namespace IRIs carrying no `sh:declare`; its five real `sh:declare`
+triples hang off an ontology node nothing references; one rule has no `sh:prefixes` at all).
+That last part is an upstream Brick bug worth reporting separately.
 
 ## Verification status
 

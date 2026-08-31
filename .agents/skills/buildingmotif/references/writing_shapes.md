@@ -10,6 +10,7 @@
 - [Build shapes in Python](#building-shapes-in-python)
 - [Find application shapes](#finding-application-shapes-already-in-a-library)
 - [Supported SHACL subset](#the-shacl-subset-buildingmotif-decompiles)
+- [SPARQL in a shape: `sh:declare`](#sparql-in-a-shape-declare-prefixes-with-shdeclare)
 - [Debug a shape](#debugging-a-shape)
 - [Fix an incorrect shape](#when-the-shape-is-wrong-fix-the-shape)
 - [Checklist](#authoring-checklist)
@@ -374,6 +375,52 @@ fine, but the generated template won't capture the parts decompilation doesn't u
 For shapes you also want as builders, stay within the subset; for pure validation shapes,
 use whatever SHACL you need.
 
+## SPARQL in a shape: declare prefixes with `sh:declare`
+
+If your shape carries a `sh:sparql` constraint or a `sh:rule` with a SPARQL body, the
+prefixed names *inside the query text* need declarations that survive being stored.
+
+**`@prefix` in your Turtle file is not enough.** BuildingMOTIF persists triples, not
+syntax, so the `@prefix` lines are gone by the time the shape collection is read back out.
+A query that says `custom:Thing` then has no way to resolve `custom:` — and depending on
+the engine version that either raises `Prefix not found` or, worse, silently skips the
+constraint so it never fires and nothing tells you.
+
+Use SHACL's own mechanism, which *is* triples and so round-trips intact:
+
+```turtle
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix custom: <http://custom.example/> .
+
+custom: a owl:Ontology ;
+    sh:declare [
+        sh:prefix "custom" ;
+        sh:namespace "http://custom.example/"^^xsd:anyURI ;
+    ] .
+
+custom:S a sh:NodeShape ;
+    sh:targetClass custom:Widget ;
+    sh:rule [
+        a sh:SPARQLRule ;
+        sh:prefixes custom: ;          # <- points at the node carrying sh:declare
+        sh:construct """
+            CONSTRUCT { $this a custom:Gadget }
+            WHERE { $this a custom:Widget }
+        """
+    ] .
+```
+
+Two things that have to line up, and the usual mistake is the second:
+
+1. Every prefix used in the query text has a `sh:declare` block.
+2. `sh:prefixes` points at **the node those `sh:declare` triples hang off** — normally your
+   `owl:Ontology` node. Pointing it at a bare namespace IRI declares nothing.
+
+BuildingMOTIF re-declares its own well-known prefixes (`brick:`, `s223:`, `qudt:`, `ref:`,
+…) as a fallback, so a query using only those works either way. Anything you define
+yourself needs `sh:declare`.
+
 ## Debugging a shape
 
 The failure mode to expect is not a crash — it's a shape that passes when it shouldn't,
@@ -416,5 +463,8 @@ a wrong shape produces a model that lies (`repair.md`).
       `sh:class` reached from another shape) — or it'll pass vacuously.
 - [ ] `sh:name` on property shapes you'll decompile (so parameters get real names).
 - [ ] The graph declares `: a owl:Ontology .` and `owl:imports` what it needs.
+- [ ] Any SPARQL body (`sh:sparql`, `sh:rule`) declares its prefixes with `sh:declare`,
+      and `sh:prefixes` points at the node carrying them — `@prefix` alone does not survive
+      being stored.
 - [ ] If you want it *repairable*, it's plain SHACL — not `constraint:` (which blocks).
 - [ ] You've validated it against a conforming and a non-conforming model.
