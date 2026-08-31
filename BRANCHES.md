@@ -1240,6 +1240,15 @@ no binding-derived slot vocabulary. The direct binding assertions now guard the 
 engine contract. Focused regression coverage: **10 passed**, covering named and rejected
 class/cardinality values, nested obligations, amendment repairs, and the join guard.
 
+#### Push status (2026-08-31)
+
+Both branches are pushed as fast-forwards and their local and tracking refs are **0/0**:
+
+| Branch | Range pushed |
+|---|---|
+| `gtf-new-pyshifty` | `770073ab..fbd2d3a1` |
+| `gtf-buildingmotif` | `2f57e4c6..18b5a483` |
+
 ## Verification status
 
 - **Not re-run after merge #30.** The 722-passed result below predates it. #30 only deletes an
