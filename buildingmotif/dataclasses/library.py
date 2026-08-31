@@ -191,10 +191,18 @@ class Library:
         if not overwrite and cls._library_exists(ontology_name):
             return cls.by_name(ontology_name)
 
-        # For a path we take OntoEnv's parsed copy; for a graph the caller
-        # already handed us the triples.
+        # For a path without inference, stream OntoEnv's read-only graph view
+        # straight into the ShapeCollection. This avoids materializing an
+        # intermediate rdflib copy for every imported ontology. Inference may
+        # mutate its input, so it retains a mutable copy.
         graph = (
-            bm.ontology_environment.graph_copy(ontology_name) if is_path else ontology
+            (
+                bm.ontology_environment.graph_view(ontology_name)
+                if not run_shacl_inference
+                else bm.ontology_environment.graph_copy(ontology_name)
+            )
+            if is_path
+            else ontology
         )
 
         closure_names = [ontology_name]
@@ -407,7 +415,10 @@ class Library:
                 continue
             if cls._library_exists(ontology_name):
                 continue
-            graph = bm.ontology_environment.graph_copy(ontology_name)
+            # Imported ontology libraries are always loaded without inference,
+            # so a read-only OntoEnv view is sufficient and avoids a transient
+            # rdflib materialization before the graph is stored here.
+            graph = bm.ontology_environment.graph_view(ontology_name)
             cls._load_from_ontology(
                 graph,
                 overwrite=False,

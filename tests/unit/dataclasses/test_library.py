@@ -87,7 +87,7 @@ def test_load_library_from_ontology(bm: BuildingMOTIF):
 
 
 def test_load_library_creates_imported_ontology_libraries(
-    bm: BuildingMOTIF, tmp_path: Path
+    bm: BuildingMOTIF, tmp_path: Path, monkeypatch
 ):
     dependency = tmp_path / "dependency.ttl"
     dependency_iri = dependency.as_uri()
@@ -108,7 +108,20 @@ def test_load_library_creates_imported_ontology_libraries(
 """
     )
 
+    # Loading is read-only with respect to OntoEnv's source graph. Template
+    # inference later makes the one expected mutable copy of the dependency.
+    original_graph_copy = bm.ontology_environment.graph_copy
+    copied = []
+
+    def record_copy(ontology):
+        copied.append(ontology)
+        return original_graph_copy(ontology)
+
+    monkeypatch.setattr(bm.ontology_environment, "graph_copy", record_copy)
+
     Library.from_ontology(str(root), run_shacl_inference=False)
+
+    assert copied == [dependency_iri]
 
     imported = Library.by_name(dependency_iri)
     assert imported is not None
