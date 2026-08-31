@@ -99,7 +99,10 @@ class GraphConnection:
         self.store.add_graph(g)
         for prefix, namespace in graph.namespaces():
             g.bind(prefix, namespace, override=False)
-        new_triples = [(s, p, o, g) for (s, p, o) in graph]
+        # Keep source graphs lazy: OntoEnv's read-only views can stream a large
+        # ontology directly into Oxigraph, whereas building a Python list here
+        # materializes every triple before the store sees the first one.
+        new_triples = ((s, p, o, g) for (s, p, o) in graph)
         g.addN(new_triples)
 
         return g

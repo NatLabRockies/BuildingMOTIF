@@ -143,7 +143,16 @@ class Library:
                 )
                 if not overwrite and cls._library_exists(ontology_name):
                     return cls.load(name=ontology_name)
-                ontology_graph = bm.ontology_environment.graph_copy(ontology_name)
+                # Loading a library without SHACL inference only reads the
+                # source graph before copying it into the ShapeCollection.
+                # OntoEnv can provide that graph as a read-only view, avoiding
+                # one complete rdflib materialization per imported ontology.
+                # Inference may mutate its input, so it retains a mutable copy.
+                ontology_graph = (
+                    bm.ontology_environment.graph_view(ontology_name)
+                    if not run_shacl_inference
+                    else bm.ontology_environment.graph_copy(ontology_name)
+                )
                 closure_names = [ontology_name]
                 if fetch_imports:
                     closure_names = bm.ontology_environment.closure_names(ontology_name)
@@ -235,7 +244,10 @@ class Library:
                 continue
             if cls._library_exists(ontology_name):
                 continue
-            graph = bm.ontology_environment.graph_copy(ontology_name)
+            # Imported ontology libraries are always loaded without inference,
+            # so stream OntoEnv's read-only view straight into our graph store
+            # rather than first copying it through rdflib's memory store.
+            graph = bm.ontology_environment.graph_view(ontology_name)
             cls._load_from_ontology(
                 graph,
                 overwrite=False,

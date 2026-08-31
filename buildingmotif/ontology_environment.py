@@ -139,6 +139,15 @@ class OntologyEnvironment:
     def graph_copy(self, ontology: str) -> rdflib.Graph:
         return self.env.copy_graph(ontology)
 
+    def graph_view(self, ontology: str) -> rdflib.Graph:
+        """Return OntoEnv's read-only view of one ontology graph.
+
+        This avoids materializing an intermediate rdflib copy when a caller
+        only needs to stream the graph into another store. Callers must not
+        mutate the result; use :meth:`graph_copy` when mutation is required.
+        """
+        return self.env.get_graph(ontology)
+
     def closure_copy(
         self, ontology: str, recursion_depth: int = -1
     ) -> Tuple[rdflib.Graph, list[str]]:
