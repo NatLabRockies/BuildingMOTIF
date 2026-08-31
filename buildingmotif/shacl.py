@@ -88,10 +88,19 @@ def _shifty_shapes_input(shape_graph: Graph) -> bytes:
     covers a constraint written against one of BuildingMOTIF's own ontologies
     -- the realistic case, and the same mechanism
     :meth:`buildingmotif.dataclasses.library.Library.load` already applies for
-    the same reason. It does **not** cover a fully custom, downstream-defined
-    namespace: that prefix binding is gone the moment its shape collection is
-    persisted, and restoring it would mean capturing/round-tripping namespace
-    bindings through the storage layer, well beyond this function.
+    the same reason. A fully custom, downstream-defined namespace is not in
+    that list and so is not restored here.
+
+    **A shapes author can sidestep all of this with ``sh:declare``.** SHACL's
+    own prefix mechanism -- ``sh:prefixes`` pointing at a node carrying
+    ``sh:declare [ sh:prefix "..." ; sh:namespace "..."^^xsd:anyURI ]`` -- is
+    *triples*, not syntax, so it survives the storage layer untouched and needs
+    no re-declaration at all. Verified end-to-end: a custom-prefixed
+    ``sh:construct`` rule loaded through ``Library.from_ontology``, read back
+    from the store with its ``@prefix`` bindings gone, still fires. Prefer
+    ``sh:declare`` when authoring shapes with SPARQL bodies; the re-binding
+    above is the fallback for graphs that only ever declared prefixes in Turtle
+    syntax (Brick among them -- see :func:`_shifty_data_input`).
 
     Returns ``bytes``, not ``str``: shifty's ``_to_rdf_input`` treats a bare
     ``str`` as a filesystem path first (``pathlib.Path(s).is_file()``) and
@@ -138,6 +147,14 @@ def _shifty_data_input(data_graph: Graph):
     constraints use ``ref:hasExternalReference``. Under pyshifty < 0.4.1 those
     queries were **silently skipped** -- the rules never fired and nothing said
     so; 0.4.1 raises ``Prefix not found`` instead, which is what surfaced it.
+
+    ``sh:declare`` would make this unnecessary -- it is triples, so it survives
+    storage (see :func:`_shifty_shapes_input`) -- but Brick cannot currently be
+    rescued that way. Of its 80 SPARQL bodies, 79 point ``sh:prefixes`` at bare
+    namespace IRIs that carry no ``sh:declare``; its five real ``sh:declare``
+    triples hang off ``<https://brickschema.org/schema/1.3/Brick>``, which no
+    ``sh:prefixes`` references; and one rule has no ``sh:prefixes`` at all, so
+    nothing but document prefixes can resolve it. Hence the re-binding here.
 
     Re-binding costs a copy and a serialization (~1.3s on Brick, against ~3.3s
     for the inference itself), so it is only paid for a graph that actually
