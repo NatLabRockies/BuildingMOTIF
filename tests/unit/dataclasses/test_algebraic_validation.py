@@ -992,3 +992,105 @@ def test_preview_reports_the_run_a_repair_would_produce(bm: BuildingMOTIF):
     # preview is pure: the context it came from is unchanged
     assert not ctx.conforms
     assert ctx.witnesses
+
+
+def _vav_shapes() -> Graph:
+    """A VAV shape with two slots on the *same* path, named."""
+    return Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix brick: <https://brickschema.org/schema/Brick#> .
+        @prefix : <urn:app/> .
+        : a owl:Ontology .
+        :VAVShape a sh:NodeShape, owl:Class ;
+            sh:targetClass brick:VAV ;
+            sh:property [ sh:path brick:hasPoint ; sh:name "air flow sensor" ;
+                sh:qualifiedValueShape [ sh:class brick:Air_Flow_Sensor ] ;
+                sh:qualifiedMinCount 1 ] ;
+            sh:property [ sh:path brick:hasPoint ; sh:name "damper position" ;
+                sh:qualifiedValueShape [ sh:class brick:Damper_Position_Command ] ;
+                sh:qualifiedMinCount 1 ] .
+        """,
+        format="turtle",
+    )
+
+
+def _vav_data() -> Graph:
+    """vav1 has points but one is mislabelled; vav2 has nothing at all."""
+    return Graph().parse(
+        data="""
+        @prefix brick: <https://brickschema.org/schema/Brick#> .
+        @prefix : <urn:bldg/> .
+        :vav1 a brick:VAV ; brick:hasPoint :sen_a, :cmd_b .
+        :sen_a a brick:Temperature_Sensor .
+        :cmd_b a brick:Damper_Position_Command .
+        :vav2 a brick:VAV .
+        """,
+        format="turtle",
+    )
+
+
+def _slot_edges(ctx, focus):
+    """The named slot-level edges for one focus."""
+    return [
+        e for rw in ctx.diffset[focus] for e in rw.missing_edges if e.slot is not None
+    ]
+
+
+def test_near_misses_name_the_reusable_nodes(bm: BuildingMOTIF):
+    """A failing slot reports the nodes already on its path that don't qualify.
+
+    ``vav1`` has ``sen_a`` wired up by the right predicate but typed wrong -- one
+    triple from conforming. That is a categorically different repair from
+    ``vav2``, which has nothing on the path at all and needs a new node. The
+    report has to be able to tell them apart.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    (airflow,) = _slot_edges(ctx, BLDG["vav1"])
+    assert airflow.slot == "air flow sensor"
+    assert airflow.needs.iri == str(BRICK.Air_Flow_Sensor)
+    assert airflow.near_misses == (BLDG["sen_a"],)
+
+    # vav2 has nothing to reuse -- both slots fail, neither has a candidate
+    vav2 = _slot_edges(ctx, BLDG["vav2"])
+    assert {e.slot for e in vav2} == {"air flow sensor", "damper position"}
+    assert all(e.near_misses == () for e in vav2)
+
+
+def test_near_misses_exclude_nodes_serving_another_slot(bm: BuildingMOTIF):
+    """``cmd_b`` satisfies the damper slot, so it is not an air-flow candidate.
+
+    The engine reports it as a rejected value for the air flow slot -- the path
+    reached it, the class test failed -- but proposing to retype it would fix
+    one slot by breaking the other.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    (airflow,) = _slot_edges(ctx, BLDG["vav1"])
+    assert BLDG["cmd_b"] not in airflow.near_misses
+
+    # ...and the slot cmd_b satisfies is not reported as a failure at all
+    assert "damper position" not in {e.slot for e in _slot_edges(ctx, BLDG["vav1"])}
+
+
+def test_missing_edge_renders_prefixed_names(bm: BuildingMOTIF):
+    """A report is read by people: ``brick:hasPoint`` beats the full IRI."""
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    (airflow,) = _slot_edges(ctx, BLDG["vav1"])
+    text = str(airflow)
+    assert "brick:hasPoint" in text
+    assert "brick:Air_Flow_Sensor" in text
+    assert "https://brickschema.org/schema/Brick#" not in text
+    assert "[air flow sensor]" in text
