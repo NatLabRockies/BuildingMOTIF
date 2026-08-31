@@ -76,6 +76,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 39 | (see below) | `gtf-new-pyshifty` (prefix docstring correction) | `a84d0286` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 40 | `424b7b4e` | `gtf-new-pyshifty` (near-miss reporting) | `18182df4` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 41 | `592c7b5f` | `gtf-new-pyshifty` (amendment repairs, pyshifty 0.4.2) | `fbd2d3a1` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 42 | `1d85a36a` | `gtf-ontoenv` (stream read-only ontology graphs) | `9693d416` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -1248,6 +1249,22 @@ Both branches are pushed as fast-forwards and their local and tracking refs are 
 |---|---|
 | `gtf-new-pyshifty` | `770073ab..fbd2d3a1` |
 | `gtf-buildingmotif` | `2f57e4c6..18b5a483` |
+
+### Merge #42 — stream OntoEnv graph views into libraries (2026-08-31)
+
+The slow `tests/library` setup was materializing ontology imports before a test body reached
+pyshifty: `Library.from_ontology` loaded the import closure, then copied each graph through
+rdflib's in-memory store.  OntoEnv's `get_graph` supplies a read-only view, so path-backed
+libraries now use that view whenever SHACL inference is disabled.  The mutable `graph_copy`
+path is retained when inference may write to the graph; imported ontology libraries always use
+the read-only path because their loading disables inference.  `GraphConnection.create_graph`
+also streams quads into Oxigraph instead of building an intermediate Python list.
+
+This is deliberately a copy-elision improvement, not a claim that it removes every library-test
+cost: template inference and later pyshifty validation still run where a test requests them.
+The focused library tests pass (**2 passed**), including a spy that proves loading the root and
+its imported dependency does not request a mutable OntoEnv copy; the only remaining copy in that
+test is the later, intentional template-inference copy.
 
 ## Verification status
 
