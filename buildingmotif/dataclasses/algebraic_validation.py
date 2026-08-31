@@ -35,6 +35,7 @@ from itertools import product
 from typing import (
     TYPE_CHECKING,
     Dict,
+    Iterator,
     List,
     Optional,
     Protocol,
@@ -302,6 +303,33 @@ def _engine_term_to_node(term: object) -> Optional[Node]:
         return URIRef(term)
 
 
+def _obligation_path(term: object) -> Tuple[Optional[Node], Optional[str]]:
+    """Split an obligation's ``path`` into an RDF term and a display label.
+
+    A cardinality deficit on a plain predicate reports an N-Triples IRI. A
+    *nested* deficit -- one about a value the focus already reaches, rather than
+    about the focus -- reports pyshifty's rendering of a SHACL property path
+    instead, e.g. ``rdf:type/rdfs:subClassOf*``. That is not an RDF term, and
+    :func:`_engine_term_to_node` would happily mint the nonsense IRI
+    ``http://www.w3.org/1999/02/22-rdf-syntax-ns#type/rdfs:subClassOf*`` out of
+    it, which a caller would then use against the model graph and find nothing.
+
+    Returns ``(term, None)`` for a real IRI and ``(None, rendering)`` otherwise,
+    so a path that is not a term stays unusable-by-construction while still
+    being reportable.
+    """
+    if isinstance(term, Node):
+        return term, None
+    if not isinstance(term, str) or not term:
+        return None, None
+    text = term.strip()
+    if text.startswith("<") and text.endswith(">"):
+        node = _engine_term_to_node(text)
+        if node is not None:
+            return node, None
+    return None, text
+
+
 def _triples_to_graph(triples) -> Graph:
     """Build a graph from pyshifty (s, p, o) N-Triples-string tuples."""
     g = Graph()
@@ -560,7 +588,9 @@ class MissingEdge:
 
     #: the node the deficit is about
     node: Optional[Node]
-    #: the path its values were counted along
+    #: the path its values were counted along, when it is a plain predicate.
+    #: ``None`` for a nested deficit, whose path is a SHACL property path that
+    #: has no single-term spelling -- see :attr:`path_label`.
     path: Optional[Node]
     #: the native algebraic constraint each counted value must satisfy. Left as
     #: pyshifty's own ``Constraint`` -- it is an algebra node, not an RDF term,
@@ -589,6 +619,15 @@ class MissingEdge:
     #: Nodes already bound to a *satisfied* slot of the same focus are excluded:
     #: amending one of those would fix this obligation by breaking that one.
     near_misses: Tuple[Node, ...] = ()
+    #: pyshifty's rendering of :attr:`path` when it is not a single term --
+    #: ``"rdf:type/rdfs:subClassOf*"`` for the type path a nested deficit is
+    #: counted along. Reportable, but deliberately not an RDF term.
+    path_label: Optional[str] = None
+    #: the focus this deficit is nested under, when it is not about the focus
+    #: itself but about a value the focus *already reaches* -- an amendment:
+    #: "sen_a is already wired to VAV1, it just isn't an Air_Flow_Sensor".
+    #: ``None`` for a top-level deficit, which is about the focus.
+    nested_under: Optional[Node] = None
 
     def _render(self, term: Optional[Node], fallback: str) -> str:
         if term is None:
@@ -600,9 +639,24 @@ class MissingEdge:
 
     def __str__(self) -> str:
         node = self._render(self.node, "the focus")
-        path = self._render(self.path, "an unnamed path")
         slot = f"[{self.slot}] " if self.slot else ""
         needs = getattr(self.needs, "iri", None)
+
+        if self.nested_under is not None:
+            # An amendment, not a missing edge: the node is already wired to the
+            # focus and only fails the slot's own constraint. Saying "needs 1
+            # more value along rdf:type/rdfs:subClassOf*" is the engine's way of
+            # putting that, and it reads as gibberish to a building modeller.
+            focus = self._render(self.nested_under, "the focus")
+            want = (
+                self._render(URIRef(needs), "") if needs else "what the slot asks for"
+            )
+            return (
+                f"{slot}{node} is already wired to {focus} but is not {want}; "
+                f"typing it {want} would fill the slot"
+            )
+
+        path = self.path_label or self._render(self.path, "an unnamed path")
         of_class = f" of class {self._render(URIRef(needs), '')}" if needs else ""
         text = (
             f"{slot}{node} needs {self.missing} more value(s) along {path}"
@@ -632,7 +686,8 @@ class RepairProposal:
     deletions: Graph
     # the gate's verdict (None for a blocked, non-actionable proposal)
     outcome: Optional[GateOutcome]
-    # provenance: "template:<name>", "pyshifty-candidate", "hand", or "blocked"
+    # provenance: "template:<name>", "pyshifty-candidate", "amend", "hand",
+    # or "blocked"
     origin: str
     # existing model nodes this proposal reuses rather than mints
     reused_nodes: Set[Node] = field(default_factory=set)
@@ -670,7 +725,10 @@ class RepairProposal:
         stable preference for template-derived proposals."""
         origin_pref = (
             0
-            if (self.origin.startswith("template:") or self.origin == "synthesized")
+            if (
+                self.origin.startswith("template:")
+                or self.origin in ("synthesized", "amend")
+            )
             else 1
         )
         return (
@@ -803,6 +861,16 @@ class RepairWitness:
         Empty for a failure that is not a cardinality deficit (a datatype or
         node-kind violation, say): those have a wrong value rather than a
         missing one, and are described by :attr:`validation_reasons`.
+
+        pyshifty reports two kinds of obligation and this returns both. A
+        *top-level* one is about the focus ("VAV1 needs an air flow sensor"). A
+        *nested* one is about a value the focus already reaches ("sen_a would
+        have to be an Air_Flow_Sensor"), and carries
+        :attr:`MissingEdge.nested_under`. It is attributed to the top-level
+        deficit whose near misses contain its node, which is what supplies its
+        slot name and required class; one that cannot be attributed is dropped.
+        That drop is the point rather than a shortcut -- see the note in the
+        loop below.
         """
         try:
             obligations = self.witness.missing_obligations()
@@ -812,14 +880,19 @@ class RepairWitness:
             )
             return ()
         index = self.context._near_miss_index
-        edges = []
+
+        top_level: List[MissingEdge] = []
+        nested: List[Tuple[object, Optional[Node], Optional[str]]] = []
         for obligation in obligations:
             node = _engine_term_to_node(getattr(obligation, "node", None))
-            path = _engine_term_to_node(getattr(obligation, "path", None))
+            path, path_label = _obligation_path(getattr(obligation, "path", None))
+            if node != self.focus or path is None:
+                nested.append((obligation, node, path_label))
+                continue
             slot, needs, near_misses = _match_slot(
                 index.get((node, path), ()), obligation
             )
-            edges.append(
+            top_level.append(
                 MissingEdge(
                     node=node,
                     path=path,
@@ -832,7 +905,72 @@ class RepairWitness:
                     near_misses=near_misses,
                 )
             )
+
+        # A nested obligation inherits its meaning from the deficit it sits
+        # under, so it is reported only when exactly one top-level deficit calls
+        # its node a near miss. Anything else is dropped, and both cases matter:
+        #
+        # - The node is *spoken for* -- it already satisfies a sibling slot, so
+        #   `_near_miss_index` excluded it. The engine still emits the
+        #   obligation, and it is a genuinely bad suggestion: typing a damper
+        #   command as an air flow sensor gates *sound* (rdf:type is additive,
+        #   so nothing it currently satisfies breaks) and would still be wrong.
+        #   The soundness gate cannot catch this; the exclusion has to.
+        # - Two deficits claim it, so the required class is ambiguous. Reporting
+        #   a deficit plainly is always correct; labelling it wrongly is not.
+        by_node: Dict[Optional[Node], List[MissingEdge]] = defaultdict(list)
+        for edge in top_level:
+            for near_miss in edge.near_misses:
+                by_node[near_miss].append(edge)
+
+        edges = list(top_level)
+        for nested_obligation, node, path_label in nested:
+            parents = by_node.get(node, [])
+            if len(parents) != 1:
+                continue
+            parent = parents[0]
+            edges.append(
+                MissingEdge(
+                    node=node,
+                    path=None,
+                    qualifier=getattr(nested_obligation, "qualifier", None),
+                    missing=getattr(nested_obligation, "missing", 0),
+                    observed_count=getattr(nested_obligation, "observed_count", 0),
+                    required_count=getattr(nested_obligation, "required_count", 0),
+                    slot=parent.slot,
+                    needs=parent.needs,
+                    path_label=path_label,
+                    nested_under=parent.node,
+                )
+            )
         return tuple(edges)
+
+    @cached_property
+    def has_amendable_values(self) -> bool:
+        """Whether any value on the focus's paths could be amended into place.
+
+        A cheap pre-check over the repair session's own obligations, which are
+        already computed. It is true exactly when pyshifty emitted a *nested*
+        obligation -- one about a value the focus reaches rather than about the
+        focus -- which is the only case an amendment can come from.
+
+        Kept separate from :attr:`missing_edges` because that property reads the
+        context's shape map, and building one is a second validation run. A
+        model with nothing to amend should not pay for it.
+        """
+        try:
+            obligations = self.witness.missing_obligations()
+        except Exception:
+            logger.debug(
+                "missing_obligations() raised for focus %s", self.focus, exc_info=True
+            )
+            return False
+        for obligation in obligations:
+            node = _engine_term_to_node(getattr(obligation, "node", None))
+            path, _ = _obligation_path(getattr(obligation, "path", None))
+            if node != self.focus or path is None:
+                return True
+        return False
 
     @cached_property
     def repair_summary(self) -> Tuple:
@@ -1594,6 +1732,51 @@ class TemplateGuidedRepair:
             if ok:
                 yield (bindings, Graph(), "pyshifty-candidate", set())
 
+    def _amend_candidates(
+        self, witness: "RepairWitness"
+    ) -> Iterator[Tuple[Graph, Node, Optional[str]]]:
+        """Yield ``(additions, amended_node, slot)`` for each near miss.
+
+        The repair tree cannot express this. For a deficit like "VAV1 needs a
+        value along ``brick:hasPoint`` that is a ``brick:Air_Flow_Sensor``" the
+        tree offers exactly one shape of edit -- ``add VAV1 hasPoint ?0`` with
+        ``?0 : instance of Air_Flow_Sensor`` -- so every hole filler is either a
+        newly minted node or an existing node that *already* conforms. When the
+        real point is already wired to the VAV and merely mislabelled, neither
+        branch reaches it: the edge the tree wants to add is already there, and
+        the edit that actually fixes the model is a type on the *value*, which
+        the tree never names as a hole.
+
+        :attr:`RepairWitness.missing_edges` does name it, via the shape map's
+        rejected values, so the delta is built here directly and handed to the
+        same soundness gate as every other proposal.
+
+        Only class slots qualify. ``needs`` is also populated for datatype and
+        shape-reference slots, and ``<node> rdf:type xsd:string`` would be
+        nonsense; those have no one-triple amendment.
+        """
+        shifty = require_shifty()
+
+        if not witness.has_amendable_values:
+            # Reading missing_edges builds the context's shape map, which is a
+            # second validation run. Repair itself never needed one, so keep it
+            # lazy for the common case: no near miss, no amendment, no cost.
+            return
+
+        for edge in witness.missing_edges:
+            if edge.nested_under is not None:
+                # already an amendment; its parent supplies the candidates
+                continue
+            if not isinstance(edge.needs, shifty.Cls):
+                continue
+            cls = getattr(edge.needs, "iri", None)
+            if not cls:
+                continue
+            for near_miss in edge.near_misses:
+                additions = Graph()
+                additions.add((near_miss, RDF.type, URIRef(cls)))
+                yield additions, near_miss, edge.slot
+
     # -- the gate + assembly ---------------------------------------------
 
     def _gate(
@@ -1695,6 +1878,18 @@ class TemplateGuidedRepair:
                 p = self._gate(focus, additions, deletions, origin, reused)
                 if p is not None:
                     proposals.append(p)
+
+        # Amending a near miss is not reachable through the repair tree, so it
+        # is proposed alongside rather than as another hole-filling strategy.
+        for additions, amended, slot in self._amend_candidates(witness):
+            p = self._gate(focus, additions, Graph(), "amend", {amended})
+            if p is not None:
+                p.note = (
+                    f"{amended.n3(_report_namespaces())} is already wired up"
+                    + (f" for [{slot}]" if slot else "")
+                    + "; this labels it rather than adding a second one"
+                )
+                proposals.append(p)
 
         proposals.sort(key=lambda p: p._rank_key, reverse=True)
         # de-duplicate by (additions, deletions) signature
@@ -2022,6 +2217,29 @@ class AlgebraicValidationContext:
                 grouped[key].append(violation)
         return dict(grouped)
 
+    @staticmethod
+    def _shapes_agree(witness: ShiftyFailure, violation: AlgebraicViolation) -> bool:
+        """Cross-check a candidate join against the shape each side names.
+
+        The join key is a triple of session-local integers, so if the two runs
+        ever numbered statements or constraints differently the join would
+        attach the wrong reasons to a real finding and *nothing would raise* --
+        the same silent-mislabelling shape as the ``constraint_id`` trap that
+        near-miss enrichment had to avoid. The shape IRI is derived
+        independently on each side, so comparing it is a cheap check on an
+        assumption that is otherwise only ever implicitly trusted.
+
+        Verified to hold across ``validate_algebra`` and ``RepairSession`` on
+        pyshifty 0.4.1; this guards the assumption rather than working around a
+        known break. Disagreement means *definite* disagreement -- a side that
+        names no shape is not evidence against the join.
+        """
+        left = _engine_term_to_node(getattr(witness, "shape_iri", None))
+        right = _engine_term_to_node(getattr(violation, "shape_name", None))
+        if left is None or right is None:
+            return True
+        return left == right
+
     def _violation_for(
         self,
         witness: ShiftyFailure,
@@ -2029,14 +2247,27 @@ class AlgebraicValidationContext:
         """Pair a repair witness with its validation violation.
 
         The independently computed APIs are joined only by their shared native
-        algebraic identity. A missing, unmatched, or non-unique key is never
-        silently downgraded to positional correlation.
+        algebraic identity, and the match is then cross-checked against the
+        shape each side names. A missing, unmatched, non-unique, or
+        shape-inconsistent key is never silently downgraded to positional
+        correlation: the witness keeps its repair information and reports
+        ``violation_alignment == "unavailable"`` instead of borrowing another
+        finding's reasons.
         """
         key = self._correlation_key(witness, "focus")
         if key is not None:
             matches = self._violations_by_key.get(key, [])
-            if len(matches) == 1:
+            if len(matches) == 1 and self._shapes_agree(witness, matches[0]):
                 return matches[0], "stable-id"
+            if len(matches) == 1:
+                logger.debug(
+                    "_violation_for: stable-id join for focus %s matched a "
+                    "violation on a different shape (%s vs %s); reporting the "
+                    "witness unaligned rather than mislabelling it",
+                    getattr(witness, "focus", None),
+                    getattr(witness, "shape_iri", None),
+                    getattr(matches[0], "shape_name", None),
+                )
         return None, "unavailable"
 
     @cached_property

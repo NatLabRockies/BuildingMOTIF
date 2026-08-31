@@ -1032,9 +1032,26 @@ def _vav_data() -> Graph:
 
 
 def _slot_edges(ctx, focus):
-    """The named slot-level edges for one focus."""
+    """The named *top-level* slot edges for one focus.
+
+    Nested edges (amendments of a near miss) carry the same slot name and are
+    excluded here; :func:`_amend_edges` returns those.
+    """
     return [
-        e for rw in ctx.diffset[focus] for e in rw.missing_edges if e.slot is not None
+        e
+        for rw in ctx.diffset[focus]
+        for e in rw.missing_edges
+        if e.slot is not None and e.nested_under is None
+    ]
+
+
+def _amend_edges(ctx, focus):
+    """The nested edges for one focus: "this value is one type away"."""
+    return [
+        e
+        for rw in ctx.diffset[focus]
+        for e in rw.missing_edges
+        if e.nested_under is not None
     ]
 
 
@@ -1094,3 +1111,198 @@ def test_missing_edge_renders_prefixed_names(bm: BuildingMOTIF):
     assert "brick:Air_Flow_Sensor" in text
     assert "https://brickschema.org/schema/Brick#" not in text
     assert "[air flow sensor]" in text
+
+
+def test_nested_obligation_reads_as_an_amendment(bm: BuildingMOTIF):
+    """A nested deficit says "retype sen_a", not "walk rdf:type/rdfs:subClassOf*".
+
+    pyshifty emits an obligation per candidate value beneath a failing slot,
+    counted along a SHACL property path rather than a predicate. Reported raw it
+    reads as ``sen_a needs 1 more value(s) along
+    rdf:type/rdfs:subClassOf*`` -- true, and useless to a building modeller. It
+    is attributed to the top-level deficit whose near misses name ``sen_a``, so
+    it inherits that slot's name and required class.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    (amend,) = _amend_edges(ctx, BLDG["vav1"])
+    assert amend.node == BLDG["sen_a"]
+    assert amend.nested_under == BLDG["vav1"]
+    assert amend.slot == "air flow sensor"
+    assert amend.needs.iri == str(BRICK.Air_Flow_Sensor)
+
+    text = str(amend)
+    assert "brick:Air_Flow_Sensor" in text
+    assert "already wired to" in text
+    assert "rdfs:subClassOf*" not in text
+
+
+def test_nested_obligation_path_is_not_forced_into_a_term(bm: BuildingMOTIF):
+    """The type path is reported as a label, never as a minted IRI.
+
+    ``rdf:type/rdfs:subClassOf*`` is a property path. Parsing it as an
+    N-Triples term yields the nonsense IRI
+    ``...22-rdf-syntax-ns#type/rdfs:subClassOf*``, which a caller would then use
+    against the model graph and silently match nothing.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    (amend,) = _amend_edges(ctx, BLDG["vav1"])
+    assert amend.path is None
+    assert amend.path_label is not None
+    assert "subClassOf" in amend.path_label
+
+
+def test_nested_obligation_dropped_for_a_node_serving_another_slot(
+    bm: BuildingMOTIF,
+):
+    """``cmd_b`` gets no amendment, and the soundness gate cannot say so.
+
+    The engine emits a nested obligation for ``cmd_b`` too -- the air flow slot
+    rejected it, so retyping it would discharge the deficit. Worse, that edit
+    *gates sound*: ``rdf:type`` is additive, so ``cmd_b`` stays a
+    ``Damper_Position_Command`` and the damper slot never breaks. Only the
+    near-miss exclusion keeps it out of the report.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    amended = {e.node for e in _amend_edges(ctx, BLDG["vav1"])}
+    assert amended == {BLDG["sen_a"]}
+
+    # the gate really would accept it -- this is a domain judgement, not a
+    # soundness one
+    delta = shifty.delta_from_graph(
+        add=_graph_with((BLDG["cmd_b"], RDF.type, BRICK.Air_Flow_Sensor))
+    )
+    outcome = ctx.session.gate(delta)
+    assert outcome.is_sound and outcome.is_progress
+
+
+def test_repair_amends_a_near_miss_instead_of_minting(bm: BuildingMOTIF):
+    """``sen_a`` is wired to ``vav1`` and mislabelled: label it, don't mint.
+
+    The repair tree cannot express this. It offers ``add vav1 hasPoint ?0`` with
+    ``?0 : instance of Air_Flow_Sensor``, so every filler either conforms
+    already or is newly minted -- and the edge to ``sen_a`` is already in the
+    graph. Left to the tree the engine proposes a phantom second sensor and
+    leaves the real, already-wired point mislabelled.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    (witness,) = [rw for rw in ctx.witnesses if rw.focus == BLDG["vav1"]]
+    proposals = witness.proposals()
+
+    best = proposals[0]
+    assert best.origin == "amend"
+    assert best.is_sound and best.is_progress
+    assert set(best.additions) == {(BLDG["sen_a"], RDF.type, BRICK.Air_Flow_Sensor)}
+    assert best.reused_nodes == {BLDG["sen_a"]}
+    assert best.deletions is not None and len(best.deletions) == 0
+    assert "already wired up" in best.note
+
+    # it really does fix vav1, on the engine's own account. The model as a
+    # whole still fails -- vav2 has no points at all -- so the check is scoped
+    # to the focus this proposal is for.
+    before = ctx.session.witnesses()
+    after = ctx.preview(best).failures_for(BLDG["vav1"].n3())
+    assert any(_focus_of(w) == BLDG["vav1"] for w in before)
+    assert list(after) == []
+
+    # vav2 has nothing on the path, so nothing to amend -- it still mints, and
+    # it does not build a shape map to find that out
+    (other,) = [rw for rw in ctx.witnesses if rw.focus == BLDG["vav2"]]
+    assert not other.has_amendable_values
+    assert all(p.origin != "amend" for p in other.proposals())
+    assert witness.has_amendable_values
+
+
+def test_amendment_is_skipped_for_a_non_class_slot(bm: BuildingMOTIF):
+    """A datatype slot has no one-triple amendment, so none is proposed.
+
+    ``needs`` is populated for datatype slots too, and
+    ``<node> rdf:type xsd:string`` would be nonsense.
+    """
+    shapes = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <http://ex/> .
+        ex:S a sh:NodeShape ; sh:targetClass ex:T ;
+            sh:property [ sh:path ex:label ; sh:name "label" ;
+                sh:datatype <http://www.w3.org/2001/XMLSchema#string> ;
+                sh:minCount 1 ] .
+        """,
+        format="turtle",
+    )
+    data = Graph().parse(
+        data="""
+        @prefix ex: <http://ex/> .
+        @prefix : <urn:bldg/> .
+        :x a ex:T ; ex:label 7 .
+        """,
+        format="turtle",
+    )
+    model = Model.create(BLDG)
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], shapes, data, model)
+
+    assert not ctx.conforms
+    for witness in ctx.witnesses:
+        assert all(p.origin != "amend" for p in witness.proposals())
+
+
+def test_join_is_refused_when_the_two_runs_name_different_shapes(
+    bm: BuildingMOTIF,
+):
+    """A stable-id match on a different shape is dropped, not trusted.
+
+    The join key is three session-local integers computed by two independent
+    runs. It holds on pyshifty 0.4.1 -- every other test here relies on it --
+    but if it ever stopped holding the failure would be a *mislabelling*: real
+    findings wearing another finding's reasons, with nothing raised. The shape
+    IRI is derived separately on each side, so it can check the assumption.
+    """
+    model = Model.create(BLDG)
+    data = _vav_data()
+    model.add_graph(data)
+    ctx = AlgebraicValidationContext.from_compiled([], _vav_shapes(), data, model)
+
+    assert all(rw.violation_alignment == "stable-id" for rw in ctx.witnesses)
+    witness = ctx.witnesses[0]
+    assert witness.violation is not None
+
+    agree = AlgebraicValidationContext._shapes_agree
+    assert agree(witness.witness, witness.violation)
+
+    class _OtherShape:
+        shape_name = "urn:app/SomeOtherShape"
+
+    assert not agree(witness.witness, _OtherShape())
+
+    # a side that names no shape is not evidence against the join
+    class _Anonymous:
+        shape_name = None
+
+    assert agree(witness.witness, _Anonymous())
+
+
+def _focus_of(witness):
+    return rdflib.util.from_n3(witness.focus)
+
+
+def _graph_with(*triples) -> Graph:
+    graph = Graph()
+    for triple in triples:
+        graph.add(triple)
+    return graph

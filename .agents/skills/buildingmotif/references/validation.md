@@ -188,6 +188,64 @@ Each `MissingEdge` carries `.node`, `.path`, `.missing`, `.observed_count`,
 It is empty for a failure that is not a cardinality deficit — a wrong datatype or node
 kind has a *wrong* value rather than a missing one, so read `.reason()` for those.
 
+> **Shape-authoring note.** `sh:qualifiedValueShape` + `sh:qualifiedMinCount` and
+> `sh:class` + `sh:minCount` are both supported by pyshifty 0.4.2. Use the qualified form
+> when its distinct qualified-count semantics are what the shape means; do not select it
+> merely to work around the pre-0.4.2 shape-map defect.
+
+### "Nothing is there" vs. "it's there but mislabelled"
+
+Two more fields separate the cases that matter operationally:
+
+- `.slot` — the shape author's `sh:name` for this slot, so a report reads
+  `[air flow sensor]` rather than a blank-node property shape.
+- `.needs` — what a qualifying value has to *be*, as a typed pyshifty term
+  (`Cls(iri=...)` for a class, `Datatype`/`ShapeRef` otherwise). Branch on the kind
+  rather than assuming a class.
+- `.near_misses` — existing nodes the path already reaches that failed `.needs`. A
+  non-empty tuple means the point is wired up and one triple from conforming; an empty
+  one means nothing is there and a new node is genuinely required.
+
+A node already satisfying a *different* slot of the same focus is excluded from
+`.near_misses`: retyping a damper command as an air flow sensor would fix one slot by
+breaking another. (That edit passes the soundness gate — `rdf:type` is additive, so
+nothing it currently satisfies breaks — so the exclusion is a domain judgement the gate
+cannot make for you.)
+
+Alongside a top-level edge you may get a **nested** one, carrying `.nested_under` (the
+focus it sits beneath) and no `.path`. It is the amendment view of a near miss:
+
+```python
+for edge in rw.missing_edges:
+    if edge.nested_under is not None:
+        print(edge)
+# [air flow sensor] bldg:sen_a is already wired to bldg:vav1 but is not
+# brick:Air_Flow_Sensor; typing it brick:Air_Flow_Sensor would fill the slot
+```
+
+Its `.path` is `None` on purpose — it is counted along a SHACL property path
+(`rdf:type/rdfs:subClassOf*`), not a predicate, so there is no term to use against the
+model graph. `.path_label` has the engine's rendering if you want to show it.
+
+### Repairs that label rather than mint
+
+Where a near miss exists, `rw.proposals()` includes a proposal with
+`origin == "amend"`: a single `rdf:type` triple on the existing node, gated for soundness
+like every other proposal. It normally ranks first — one addition and one reused node
+beats minting a new individual and wiring it up:
+
+```python
+best = rw.proposals()[0]
+best.origin            # "amend"
+set(best.additions)    # {(bldg:sen_a, rdf:type, brick:Air_Flow_Sensor)}
+best.reused_nodes      # {bldg:sen_a}
+best.note              # "... is already wired up for [air flow sensor]; ..."
+```
+
+Only class slots get one — there is no one-triple amendment for a datatype slot. A focus
+with nothing on the path (no near misses) still gets a minting proposal, which is the
+right answer there.
+
 ### Previewing a repair before taking it
 
 `ctx.preview(proposal)` returns the validation run the model *would* have if that proposal

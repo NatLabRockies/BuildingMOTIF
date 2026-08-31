@@ -406,10 +406,8 @@ def test_shape_map_reports_conformance_and_cardinality(clean_building_motif):
 def test_shape_to_df_names_a_single_slot_shape(clean_building_motif):
     """Column names survive a shape with exactly one property shape.
 
-    pyshifty 0.4.0's ``shape_map`` resolves ``sh:name`` only when a node shape
-    has two or more property shapes; with exactly one it returns ``None``. The
-    names are read from the shapes graph so the column set does not depend on
-    that.
+    pyshifty 0.4.2 resolves this qualified-value slot directly. The companion
+    test covers the direct value-constraint plus cardinality spelling.
     """
     shape_graph = Graph().parse(
         data="""
@@ -444,3 +442,97 @@ def test_shape_to_df_names_a_single_slot_shape(clean_building_motif):
     df = compiled_model.shape_to_df(URIRef("urn:ex/shape"))
     assert set(df.columns) == {"target", "thing"}
     assert df.loc[df["target"] == "urn:model/b", "thing"].values[0] == "urn:model/t"
+
+
+def test_shape_to_df_preserves_a_single_class_cardinality_slot(clean_building_motif):
+    """pyshifty 0.4.2 preserves a lone class-and-cardinality slot intact."""
+    shape_graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <urn:ex/> .
+        ex:shape a sh:NodeShape ;
+            sh:targetClass ex:Box ;
+            sh:property [
+                sh:path ex:hasThing ;
+                sh:name "thing" ;
+                sh:class ex:Thing ;
+                sh:minCount 1
+            ] .
+        """,
+        format="turtle",
+    )
+    shape_collection = Library.from_ontology(shape_graph).get_shape_collection()
+    model = Model.create("urn:model/")
+    model.add_graph(
+        Graph().parse(
+            data="""
+            @prefix ex: <urn:ex/> .
+            @prefix m: <urn:model/> .
+            m:b a ex:Box ; ex:hasThing m:t .
+            m:t a ex:Thing .
+            """,
+            format="turtle",
+        )
+    )
+    compiled_model = model.compile([shape_collection])
+
+    mapping = next(iter(compiled_model.shape_map(URIRef("urn:ex/shape"))))
+    bindings = list(mapping.values())
+    assert len(bindings) == 1
+    assert bindings[0].name == "thing"
+    assert [value.to_rdflib() for value in bindings[0].values] == [
+        URIRef("urn:model/t")
+    ]
+
+    df = compiled_model.shape_to_df(URIRef("urn:ex/shape"))
+    assert set(df.columns) == {"target", "thing"}
+    assert df.loc[df["target"] == "urn:model/b", "thing"].values[0] == "urn:model/t"
+
+
+def test_class_cardinality_slot_reports_rejected_values(clean_building_motif):
+    """pyshifty 0.4.2 keeps rejected values out of an unfilled slot."""
+    shape_graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix ex: <urn:ex/> .
+        ex:shape a sh:NodeShape ;
+            sh:targetClass ex:Box ;
+            sh:property [
+                sh:path ex:hasThing ;
+                sh:name "thing" ;
+                sh:class ex:Thing ;
+                sh:minCount 1
+            ] .
+        """,
+        format="turtle",
+    )
+    shape_collection = Library.from_ontology(shape_graph).get_shape_collection()
+    model = Model.create("urn:model/")
+    model.add_graph(
+        Graph().parse(
+            data="""
+            @prefix ex: <urn:ex/> .
+            @prefix m: <urn:model/> .
+            m:b a ex:Box ; ex:hasThing m:t .
+            m:t a ex:Other .
+            """,
+            format="turtle",
+        )
+    )
+    compiled_model = model.compile([shape_collection])
+
+    mapping = next(iter(compiled_model.shape_map(URIRef("urn:ex/shape"))))
+    bindings = list(mapping.values())
+    assert len(bindings) == 1
+    assert bindings[0].name == "thing"
+    assert not bindings[0].ok
+    assert bindings[0].values == []
+    assert [value.to_rdflib() for value in bindings[0].rejected_values] == [
+        URIRef("urn:model/t")
+    ]
+
+    df = compiled_model.shape_to_df(URIRef("urn:ex/shape"), include_nonconforming=True)
+    assert set(df.columns) == {"target", "thing"}
+    row = df[df["target"] == "urn:model/b"]
+    assert len(row) == 1
+    assert pd.isna(row["thing"].values[0])

@@ -419,8 +419,9 @@ class CompiledModel:
                 continue
             named: Dict[str, Any] = {}
             for binding in mapping.values():
-                # prefer the name the engine resolved; fall back to the shapes
-                # graph, which pyshifty 0.4.0 needs for a single-slot shape
+                # prefer the name the engine resolved; fall back to the
+                # shapes graph, which is still needed to name columns for a
+                # shape that selected no focus nodes (see _slot_index)
                 name = binding.name or slot_index.get(self._slot_key(binding))
                 if name is not None:
                     named[name] = binding
@@ -450,12 +451,12 @@ class CompiledModel:
         shape map's :class:`Key` carries -- so a binding can be matched back to
         the property shape it came from.
 
-        This exists because ``shape_map(name_path=...)`` does not always
-        resolve the name itself: **pyshifty 0.4.0 drops ``sh:name`` when a node
-        shape has exactly one property shape**, and returns it correctly when
-        there are two or more. Reading the names out of the shapes graph here
-        makes the column set independent of that, and independent of whether the
-        model happens to have any data for the shape at all.
+        pyshifty 0.4.2 resolves a slot's ``sh:name`` on every binding, but a
+        shape that selects no focus nodes yields no bindings at all. A shape
+        map has no independent slot vocabulary (``shape_names()`` gives shape
+        IRIs, ``to_dict()`` gives an empty list per shape), so the column set
+        must come from the shapes graph. This also remains a conservative
+        fallback should an engine fail to resolve a name.
         """
         defining_sc = self.defining_shape_collection(shape)
         if defining_sc is None:
