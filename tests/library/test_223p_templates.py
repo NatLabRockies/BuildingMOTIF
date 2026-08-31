@@ -52,6 +52,9 @@ def _setup_building_motif_s223() -> Tuple[BuildingMOTIF, Library]:
     bm.setup_tables()
     s223 = Library.load(
         ontology_graph="libraries/ashrae/223p/ontology/223p.ttl",
+        # These tests validate against 223P's shapes; they never consume
+        # templates inferred from this ontology.
+        infer_templates=False,
         run_shacl_inference=False,
     )
     bm.session.commit()
