@@ -1251,7 +1251,7 @@ local and tracking refs are **0/0**:
 | Branch | Range pushed |
 |---|---|
 | `gtf-new-pyshifty` | `fbd2d3a1..073b06d3` |
-| `gtf-ontoenv` | `c3185156..1d0a2b6f` |
+| `gtf-ontoenv` | `d481d8cf..1d0a2b6f` |
 | `gtf-buildingmotif` | `18b5a483..1aa2a76f`, plus this tracking update |
 
 ### Merge #42 — stream OntoEnv graph views into libraries (2026-08-31)
