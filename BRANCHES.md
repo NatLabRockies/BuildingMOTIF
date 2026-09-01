@@ -78,6 +78,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 41 | `592c7b5f` | `gtf-new-pyshifty` (amendment repairs, pyshifty 0.4.2) | `fbd2d3a1` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 | 42 | `1d85a36a` | `gtf-ontoenv` (stream read-only ontology graphs) | `9693d416` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
 | 43 | `0f1e1842` | `gtf-ontoenv` (skip unused 223P template inference) | `1d0a2b6f` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
+| 44 | `fd0add63` | `gtf-new-pyshifty` (pyshifty 0.4.3) | `073b06d3` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -1242,14 +1243,16 @@ no binding-derived slot vocabulary. The direct binding assertions now guard the 
 engine contract. Focused regression coverage: **10 passed**, covering named and rejected
 class/cardinality values, nested obligations, amendment repairs, and the join guard.
 
-#### Push status (2026-08-31)
+#### Push status (2026-09-01)
 
-Both branches are pushed as fast-forwards and their local and tracking refs are **0/0**:
+All three branches are pushed as fast-forwards after a fresh `git fetch origin --prune`; their
+local and tracking refs are **0/0**:
 
 | Branch | Range pushed |
 |---|---|
-| `gtf-new-pyshifty` | `770073ab..fbd2d3a1` |
-| `gtf-buildingmotif` | `2f57e4c6..18b5a483` |
+| `gtf-new-pyshifty` | `fbd2d3a1..073b06d3` |
+| `gtf-ontoenv` | `c3185156..1d0a2b6f` |
+| `gtf-buildingmotif` | `18b5a483..1aa2a76f`, plus this tracking update |
 
 ### Merge #42 — stream OntoEnv graph views into libraries (2026-08-31)
 
@@ -1276,6 +1279,20 @@ The profiled setup fell from **22.25s** to **17.17s**. The remaining dominant wo
 intentional materialization of imported ontologies as queryable Library/ShapeCollection rows;
 that needs a separate opt-in API to omit those rows without changing normal library-loading
 semantics.
+
+### Merge #44 — pyshifty 0.4.3 (2026-09-01)
+
+`gtf-new-pyshifty` now requires `pyshifty>=0.4.3,<0.5`; its uv lock entry was updated to the
+released 0.4.3 artifacts. The focused `chiller-plant-pump` template regression passes on 0.4.3,
+and the saved full import closure containing DASH's `NonRecursiveConstraintComponent` is accepted.
+
+### Direct integration exception — xdist-safe template generation (2026-09-01)
+
+`1aa2a76f` is deliberately only on `gtf-buildingmotif`. The test's fragile exact comparison of
+`metafunc.fixturenames` predated the feature branches and would normally belong on `develop`, but
+there is no authority to push there. It now checks for the three generated parameters as a subset,
+so xdist's additional worker fixture cannot suppress parametrization. Focused verification:
+`tests/unit/dataclasses/test_template_generation.py` — **16 passed**.
 
 ## Verification status
 
