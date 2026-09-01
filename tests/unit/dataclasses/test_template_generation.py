@@ -36,12 +36,12 @@ def _add_csv_row(params, tempfile, bindings):
 
 
 def pytest_generate_tests(metafunc):
-    if metafunc.fixturenames == [
-        "clean_building_motif",
+    required_fixtures = {
         "template_name",
         "include_optional",
         "inline_dependencies",
-    ]:
+    }
+    if required_fixtures.issubset(metafunc.fixturenames):
         test_cases = {
             "NOdep-NOoptional-NOinline": ("supply-fan", False, False),
             "NOdep-WITHoptional-NOinline": ("outside-air-damper", True, False),
