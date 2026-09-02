@@ -33,7 +33,7 @@ dependencies = [
     # Pinned to the 0.4.x line -- the algebra/repair API is not yet stable across
     # minor releases, and 0.4 is the first release with the shape-map interface
     # that ``ShapeCollection.shape_map`` and ``CompiledModel.shape_to_df`` rely on.
-    "pyshifty>=0.4.3,<0.5",
+    "pyshifty>=0.4.4,<0.5",
     "alembic>=1.8.0,<2",
     "Flask>=2.1.2,<3",
     "Flask-API>=3.0.post1,<4",
