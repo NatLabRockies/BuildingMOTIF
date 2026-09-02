@@ -1,14 +1,53 @@
 import logging
+import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional, Set, Tuple, Union
+from urllib.parse import quote, unquote
 
+from pyoxigraph import NamedNode, RdfFormat
 from rdflib.graph import Graph, Store, URIRef, plugin
-from rdflib.namespace import NamespaceManager
-
-if TYPE_CHECKING:
-    from buildingmotif.building_motif.building_motif import BuildingMotifEngine
+from rdflib.term import Node
 
 PROJECT_DIR = Path(__file__).resolve().parent
+GRAPH_IDENTIFIER_PREFIX = "urn:buildingmotif:graph:"
+INVALID_URIREF_PREFIX = "urn:buildingmotif:invalid-uri:"
+
+
+class BuildingMOTIFOxigraphGraph(Graph):
+    """RDFLib Graph wrapper that keeps invalid URIRefs round-trippable.
+
+    RDFLib can carry URIRefs with spaces or other invalid IRI code points, but
+    Oxigraph correctly rejects them. BuildingMOTIF has historically allowed
+    those terms for generated template parameters, so encode them only at the
+    storage boundary and decode them when reading triples back through RDFLib.
+    """
+
+    def add(self, triple):  # type: ignore[no-untyped-def]
+        return super().add(tuple(_encode_term(term) for term in triple))
+
+    def addN(self, quads):  # type: ignore[no-untyped-def]
+        encoded_quads = (
+            (
+                _encode_term(subject),
+                _encode_term(predicate),
+                _encode_term(object_),
+                context,
+            )
+            for subject, predicate, object_, context in quads
+        )
+        return super().addN(encoded_quads)
+
+    def remove(self, triple):  # type: ignore[no-untyped-def]
+        return super().remove(tuple(_encode_term(term) for term in triple))
+
+    def triples(self, triple):  # type: ignore[no-untyped-def]
+        encoded_triple = tuple(_encode_term(term) for term in triple)
+        for subject, predicate, object_ in super().triples(encoded_triple):
+            yield (
+                _decode_term(subject),
+                _decode_term(predicate),
+                _decode_term(object_),
+            )
 
 
 class GraphConnection:
@@ -16,31 +55,30 @@ class GraphConnection:
 
     def __init__(
         self,
-        engine: "BuildingMotifEngine",
-        db_identifier: Optional[str] = "buildingmotif_store",
+        graph_store_path: Optional[Union[str, Path]] = None,
     ) -> None:
         """Constructor for the database and datastore.
 
-        :param engine: database engine
-        :type engine: Engine
-        :param db_identifier: defaults to "buildingmotif_store"
-        :type db_identifier: Optional[str], optional
+        :param graph_store_path: directory for a persistent Oxigraph store. If
+            omitted, an in-memory Oxigraph store is used.
         """
         self.logger = logging.getLogger(__name__)
+        self.graph_store_path = Path(graph_store_path) if graph_store_path else None
 
-        self.store = plugin.get("SQLAlchemy", Store)(
-            identifier=db_identifier, engine=engine
-        )
+        self.store = plugin.get("Oxigraph", Store)()
 
-        # avoids the warnings raised by the issue in https://github.com/RDFLib/rdflib/issues/1880
-        # Eventually will require rdflib-sqlalchemy to support the 'override' keyword
-        def fixed_bind(self, prefix: str, namespace: URIRef, override: bool):
-            self.store.bind(prefix, namespace)
+        if self.graph_store_path is not None:
+            self.logger.debug("Opening Oxigraph store at %s", self.graph_store_path)
+            self.graph_store_path.parent.mkdir(parents=True, exist_ok=True)
+            self.store.open(str(self.graph_store_path), create=False)
+        else:
+            self.logger.debug("Opening in-memory Oxigraph store")
 
-        setattr(NamespaceManager, "_store_bind", fixed_bind)
-
-        self.logger.debug("Creating tables for graph storage")
-        self.store.create_all()
+    @property
+    def _oxigraph_store(self):
+        """The underlying pyoxigraph ``Store`` backing the rdflib plugin, used
+        for native bulk operations that bypass rdflib."""
+        return getattr(self.store, "_inner")
 
     def create_graph(self, identifier: str, graph: Graph) -> Graph:
         """Create a graph in the database.
@@ -55,8 +93,16 @@ class GraphConnection:
         self.logger.debug(
             f"Creating graph: '{identifier}' in database with: {len(graph)} triples"
         )
-        g = Graph(self.store, identifier=identifier)
-        new_triples = [(s, o, p, g) for (s, o, p) in graph]
+        g = BuildingMOTIFOxigraphGraph(
+            self.store, identifier=self._to_store_identifier(identifier)
+        )
+        self.store.add_graph(g)
+        for prefix, namespace in graph.namespaces():
+            g.bind(prefix, namespace, override=False)
+        # Keep source graphs lazy: OntoEnv's read-only views can stream a large
+        # ontology directly into Oxigraph, whereas building a Python list here
+        # materializes every triple before the store sees the first one.
+        new_triples = ((s, p, o, g) for (s, p, o) in graph)
         g.addN(new_triples)
 
         return g
@@ -67,7 +113,9 @@ class GraphConnection:
         :return: all graph identifiers
         :rtype: List[str]
         """
-        graph_identifiers = [str(c) for c in self.store.contexts()]
+        graph_identifiers = [
+            self._from_store_identifier(c.identifier) for c in self.store.contexts()
+        ]
         return graph_identifiers
 
     def get_graph(self, identifier: str) -> Graph:
@@ -78,11 +126,110 @@ class GraphConnection:
         :return: graph without context
         :rtype: Graph
         """
-        result = Graph(self.store, identifier=identifier)
+        result = BuildingMOTIFOxigraphGraph(
+            self.store, identifier=self._to_store_identifier(identifier)
+        )
         # we used to bind prefixes here but this is unnecessary because
         # the graph has prefixes bound when it is saved
 
         return result
+
+    def load_file_into_graph(
+        self,
+        identifier: str,
+        source: Union[str, Path],
+        rdflib_format: Optional[str] = None,
+    ) -> Graph:
+        """Parse an RDF file directly into the named graph using Oxigraph's
+        native loader, bypassing rdflib's per-triple Python path.
+
+        This is dramatically faster than ``Graph.parse`` for large files. It is
+        for trusted on-disk RDF only: the native loader requires syntactically
+        valid IRIs, so it must not be used for in-memory graphs that may carry
+        generated template parameters with invalid IRIs. Prefixes declared in
+        the file are not propagated to the rdflib namespace manager; callers
+        that need them should re-bind (e.g. with ``bind_prefixes``).
+
+        Triples are appended to the named graph (matching ``Graph.parse``
+        semantics). If the native loader cannot handle the file, this falls
+        back to ``Graph.parse`` so behavior is never worse than before.
+
+        :param identifier: identifier of the target graph
+        :type identifier: str
+        :param source: path to the RDF file to load
+        :type source: Union[str, Path]
+        :param rdflib_format: rdflib format name (e.g. from ``guess_format``);
+            used to select the Oxigraph parser, falling back to the file
+            extension
+        :type rdflib_format: Optional[str]
+        :return: the store-backed view of the target graph
+        :rtype: Graph
+        """
+        store_identifier = self._to_store_identifier(identifier)
+        g = BuildingMOTIFOxigraphGraph(self.store, identifier=store_identifier)
+        self.store.add_graph(g)
+        rdf_format = _to_oxigraph_format(source, rdflib_format)
+        if rdf_format is not None:
+            try:
+                with open(source, "rb") as handle:
+                    self._oxigraph_store.load(
+                        handle,
+                        format=rdf_format,
+                        to_graph=NamedNode(str(store_identifier)),
+                    )
+                return g
+            except (SyntaxError, ValueError) as exc:
+                self.logger.debug(
+                    "Native load failed for %s (%s); falling back to rdflib parse",
+                    source,
+                    exc,
+                )
+        g.parse(str(source), format=rdflib_format)
+        return g
+
+    def replace_graph_contents(self, graph: Graph) -> Tuple[str, Graph]:
+        """Write ``graph`` into a brand-new named graph (copy-on-write).
+
+        This never mutates an existing named graph. The caller atomically
+        adopts the new contents by flipping its stored ``graph_id`` pointer to
+        the returned identifier (a single SQL update that commits with the
+        session); on failure or rollback the previous graph is still intact.
+        The previously referenced graph becomes an orphan that
+        :py:meth:`collect_garbage` reclaims.
+
+        :param graph: the new contents to write
+        :type graph: Graph
+        :return: the new graph identifier and its store-backed view
+        :rtype: Tuple[str, Graph]
+        """
+        new_identifier = str(uuid.uuid4())
+        view = self.create_graph(new_identifier, graph)
+        return new_identifier, view
+
+    def collect_garbage(self, live_graph_ids: Set[str]) -> List[str]:
+        """Delete UUID-identified named graphs not present in ``live_graph_ids``.
+
+        Only graphs whose identifier is a UUID are considered for deletion:
+        those are the graphs BuildingMOTIF creates for models, shape
+        collections, and template bodies. OntoEnv-managed ontology graphs are
+        keyed by their ontology IRI, so they are excluded by construction and
+        never reclaimed here.
+
+        :param live_graph_ids: identifiers that are still referenced and must
+            be kept
+        :type live_graph_ids: Set[str]
+        :return: identifiers of the graphs that were reclaimed
+        :rtype: List[str]
+        """
+        reclaimed: List[str] = []
+        for identifier in self.get_all_graph_identifiers():
+            if not _is_uuid(identifier):
+                continue
+            if identifier in live_graph_ids:
+                continue
+            self.delete_graph(identifier)
+            reclaimed.append(identifier)
+        return reclaimed
 
     def delete_graph(self, identifier: str) -> None:
         """Delete graph.
@@ -91,5 +238,97 @@ class GraphConnection:
         :type identifier: str
         """
         self.logger.debug(f"Deleting graph: '{identifier}'")
-        g = Graph(self.store, identifier=identifier)
+        g = BuildingMOTIFOxigraphGraph(
+            self.store, identifier=self._to_store_identifier(identifier)
+        )
         self.store.remove((None, None, None), g)
+        self.store.remove_graph(g)
+
+    def close(self) -> None:
+        """Close the graph store."""
+        self.store.close()
+
+    @staticmethod
+    def _to_store_identifier(identifier: str) -> URIRef:
+        return URIRef(f"{GRAPH_IDENTIFIER_PREFIX}{quote(identifier, safe='')}")
+
+    @staticmethod
+    def _from_store_identifier(identifier: URIRef) -> str:
+        identifier_str = str(identifier)
+        if identifier_str.startswith(GRAPH_IDENTIFIER_PREFIX):
+            return unquote(identifier_str[len(GRAPH_IDENTIFIER_PREFIX) :])
+        return identifier_str
+
+
+def _encode_term(term: Optional[Node]) -> Optional[Node]:
+    if isinstance(term, URIRef) and not _is_valid_iri(term):
+        return URIRef(f"{INVALID_URIREF_PREFIX}{quote(str(term), safe='')}")
+    return term
+
+
+def _decode_term(term: Node) -> Node:
+    if isinstance(term, URIRef) and str(term).startswith(INVALID_URIREF_PREFIX):
+        return URIRef(unquote(str(term)[len(INVALID_URIREF_PREFIX) :]))
+    return term
+
+
+def _is_valid_iri(term: URIRef) -> bool:
+    try:
+        NamedNode(str(term))
+    except ValueError:
+        return False
+    return True
+
+
+_RDFLIB_FORMAT_TO_OXIGRAPH = {
+    "turtle": RdfFormat.TURTLE,
+    "ttl": RdfFormat.TURTLE,
+    "ntriples": RdfFormat.N_TRIPLES,
+    "nt": RdfFormat.N_TRIPLES,
+    "nquads": RdfFormat.N_QUADS,
+    "nq": RdfFormat.N_QUADS,
+    "trig": RdfFormat.TRIG,
+    "n3": RdfFormat.N3,
+    "xml": RdfFormat.RDF_XML,
+    "application/rdf+xml": RdfFormat.RDF_XML,
+    "json-ld": RdfFormat.JSON_LD,
+    "json": RdfFormat.JSON_LD,
+}
+
+_EXTENSION_TO_OXIGRAPH = {
+    ".ttl": RdfFormat.TURTLE,
+    ".turtle": RdfFormat.TURTLE,
+    ".nt": RdfFormat.N_TRIPLES,
+    ".ntriples": RdfFormat.N_TRIPLES,
+    ".nq": RdfFormat.N_QUADS,
+    ".nquads": RdfFormat.N_QUADS,
+    ".trig": RdfFormat.TRIG,
+    ".n3": RdfFormat.N3,
+    ".rdf": RdfFormat.RDF_XML,
+    ".xml": RdfFormat.RDF_XML,
+    ".owl": RdfFormat.RDF_XML,
+    ".jsonld": RdfFormat.JSON_LD,
+    ".json": RdfFormat.JSON_LD,
+}
+
+
+def _to_oxigraph_format(
+    source: Union[str, Path], rdflib_format: Optional[str]
+) -> Optional[RdfFormat]:
+    """Map an rdflib format name (or the file extension) to an Oxigraph
+    :class:`RdfFormat`, or ``None`` if there is no native equivalent."""
+    if rdflib_format is not None:
+        fmt = _RDFLIB_FORMAT_TO_OXIGRAPH.get(rdflib_format.lower())
+        if fmt is not None:
+            return fmt
+    return _EXTENSION_TO_OXIGRAPH.get(Path(source).suffix.lower())
+
+
+def _is_uuid(value: str) -> bool:
+    """Return True if ``value`` is a UUID string, as generated for the graph
+    identifiers of models, shape collections, and template bodies."""
+    try:
+        uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True

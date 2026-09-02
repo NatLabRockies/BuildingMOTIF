@@ -1,7 +1,7 @@
 import logging
 import uuid
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
@@ -125,6 +125,20 @@ class TableConnection:
         )
         db_model.description = description
 
+    def update_db_model_graph_id(self, id: int, graph_id: str) -> None:
+        """Point a database model at a new graph identifier (copy-on-write).
+
+        :param id: id of DBModel
+        :type id: int
+        :param graph_id: the new graph identifier
+        :type graph_id: str
+        """
+        db_model = self.get_db_model(id)
+        self.logger.debug(
+            f"Updating model graph id from: '{db_model.graph_id}' to: '{graph_id}'"
+        )
+        db_model.graph_id = graph_id
+
     def delete_db_model(self, id: int) -> None:
         """Delete database model.
 
@@ -174,6 +188,21 @@ class TableConnection:
             )
         except NoResultFound:
             raise ShapeCollectionNotFound(idnum=id)
+
+    def update_db_shape_collection_graph_id(self, id: int, graph_id: str) -> None:
+        """Point a shape collection at a new graph identifier (copy-on-write).
+
+        :param id: id of DBShapeCollection
+        :type id: int
+        :param graph_id: the new graph identifier
+        :type graph_id: str
+        """
+        db_shape_collection = self.get_db_shape_collection(id)
+        self.logger.debug(
+            f"Updating shape collection graph id from: "
+            f"'{db_shape_collection.graph_id}' to: '{graph_id}'"
+        )
+        db_shape_collection.graph_id = graph_id
 
     def delete_db_shape_collection(self, id: int) -> None:
         """Delete database shape collection.
@@ -581,3 +610,27 @@ class TableConnection:
         self.logger.debug(f"Deleting template: '{db_template.name}'")
 
         self.bm.session.delete(db_template)
+
+    # graph reference functions
+
+    def get_all_graph_ids(self) -> Set[str]:
+        """Return every graph identifier referenced by a table row.
+
+        This is the set of named graphs that must be kept: model graphs, shape
+        collection graphs (including model manifests), and template bodies.
+        Anything else with a UUID identifier in the graph store is an orphan
+        eligible for garbage collection.
+
+        :return: referenced graph identifiers
+        :rtype: Set[str]
+        """
+        model_ids = self.bm.session.query(DBModel.graph_id)
+        shape_collection_ids = self.bm.session.query(DBShapeCollection.graph_id)
+        template_body_ids = self.bm.session.query(DBTemplate.body_id)
+        return {
+            graph_id
+            for (graph_id,) in model_ids.union(
+                shape_collection_ids, template_body_ids
+            ).all()
+            if graph_id is not None
+        }
