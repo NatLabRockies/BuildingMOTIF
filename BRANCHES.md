@@ -79,6 +79,9 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 42 | `1d85a36a` | `gtf-ontoenv` (stream read-only ontology graphs) | `9693d416` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
 | 43 | `0f1e1842` | `gtf-ontoenv` (skip unused 223P template inference) | `1d0a2b6f` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
 | 44 | `fd0add63` | `gtf-new-pyshifty` (pyshifty 0.4.3) | `073b06d3` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 45 | `68e2304c` | `gtf-new-pyshifty` (0.4.3 tutorials and notebooks) | `2b527d8a` | 2 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 46 | `1dcdd53d` | `gtf-ontoenv` (clear closure copy/view guidance) | `4f1cd31e` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
+| 47 | `bc92dd75` | `gtf-buildingmotif-skill` (repair and closure workflow guidance) | `61febb53` | 1 | not opened |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -88,10 +91,11 @@ either way. **All four feature branches are rooted at `develop`; none is stacked
 One commit remains only on this branch: `a60bf48f`. Its content is duplicated by `b757c342`
 on `gtf-new-pyshifty`, so nothing is lost if this branch is rebuilt.
 
-**As of 2026-07-25 every feature-branch tip is an ancestor of `gtf-buildingmotif`** — verified
-with `git merge-base --is-ancestor` for all six. There is nothing outstanding to merge forward;
-`gtf-buildingmotif` is the union of every branch above at its current tip. Re-check this before
-assuming it still holds, since any new commit on a feature branch breaks it silently.
+**As of 2026-09-02, the tips recorded through merge #47 are included in
+`gtf-buildingmotif`.** The two documentation conflicts in merge #45 were resolved by taking the
+reviewed `gtf-new-pyshifty` versions, so there is no integration-only content to carry back.
+Re-check with `git merge-base --is-ancestor` before assuming this still holds: any later feature
+branch commit breaks it silently.
 
 ## History rewrite: removed Claude/Anthropic co-author trailers (2026-07-23)
 
