@@ -44,15 +44,15 @@ We create an in-memory BuildingMOTIF instance, load the model from the previous 
 The `constraints.ttl` library we load is a special library with some custom constraints defined that are helpful for writing manifests.
 
 ```{margin}
-```{warning}
-Currently, libraries in `../../buildingmotif/libraries/` are *included* and libraries in `../../libraries/` are *excluded* from the [BuildingMOTIF Python package](https://pypi.org/project/buildingmotif/) (available by cloning, downloading, or forking the repository). See https://github.com/NREL/BuildingMOTIF/issues/133. 
+```{note}
+`brick/`, `constraints/`, and `bacnet/` are packaged libraries. Guideline 36
+is repository-only, so this tutorial expects a checkout for that directory.
 ```
 
 ```{code-cell}
 from rdflib import Namespace
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model, Library
-from buildingmotif.namespaces import BRICK # import this to make writing URIs easier
 
 # in-memory instance
 bm = BuildingMOTIF("sqlite://")
@@ -66,11 +66,11 @@ model = Model.create(BLDG, description="This is a test model for a simple buildi
 # load tutorial 1 model
 model.graph.parse("tutorial1_model.ttl", format="ttl")
 
-# load libraries included with the python package
-constraints = Library.from_ontology("../../buildingmotif/libraries/constraints/constraints.ttl")
+# load libraries included with the Python package
+constraints = Library.from_ontology("constraints/constraints.ttl")
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 
-# load libraries excluded from the python package (available from the repository)
-brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
+# Guideline 36 is repository-only.
 g36 = Library.from_directory("../../libraries/ashrae/guideline36")
 ```
 
@@ -92,11 +92,11 @@ Success! The model is valid according to the Brick ontology.
 
 ```{margin}
 ```{note}
-A `manifest` is an RDF graph with a set of `Shapes` inside, which place constraints and requirements on what metadata must be contained within a metadata model. 
+A manifest names the libraries whose shapes define the model's requirements. The shapes remain in those libraries; the manifest records which libraries the model claims to satisfy.
 ```
 
-For now, we will write a `manifest` file directly; in the future, BuildingMOTIF will contain features that make manifests easier to write.
-Here is the header of a manifest file. This should also suffice for most of your own manifests.
+Here is the header of a manifest library. Declaring it as an ontology gives it
+the stable name that the model manifest records.
 
 ```ttl
 @prefix brick: <https://brickschema.org/schema/Brick#> .
@@ -223,23 +223,26 @@ with open("tutorial1_manifest.ttl", "w") as f:
 ### Adding the Manifest to the Model
 
 We associate the manifest with our model so that BuildingMOTIF knows that we want validate the model against these specific shapes.
-We can always update this manifest, or validate our model against other shapes; however, validating a model against its manifest is
-the most common use case, so this is treated specially in BuildingMOTIF.
+A model's manifest is the *set of libraries* it claims to satisfy: we add libraries to it and remove them again, and validating a model
+against its manifest is the most common use case, so this is treated specially in BuildingMOTIF.
 
 
 ```{code-cell}
 # load manifest into BuildingMOTIF as its own library!
 manifest = Library.from_ontology("tutorial1_manifest.ttl")
-# set it as the manifest for the model
-model.add_to_manifest(manifest.get_shape_collection())
+# add that library to the model's manifest
+model.manifest.add(manifest)
+# it is a set of libraries, so we can always see what is in it
+print(model.manifest.library_names)
 ```
 
 ### Validating the Model
 
 We can now ask BuildingMOTIF to validate the model against the manifest and ask BuildingMOTIF for some details if it fails.
-By default, BuildingMOTIF will include all shape collections imported by the manifest (`owl:imports`). BuildingMOTIF will
-complain if the manifest requires ontologies that have not yet been loaded into BuildingMOTIF; this is why we are careful
-to load in the Brick and Guideline36 libraries at the top of this tutorial.
+The manifest is validated against exactly the libraries it lists — which is why the list printed above includes Brick and
+Guideline36 even though we only added one library: adding a library also adds what it `owl:imports`, so the manifest ends
+up naming everything the model is checked against. Loading those libraries at the top of this tutorial is what lets that
+expansion find them locally instead of fetching them.
 
 
 ```{code-cell}
