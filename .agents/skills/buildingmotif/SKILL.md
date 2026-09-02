@@ -101,10 +101,11 @@ For every build from repeated records:
 Validation is read-only; repair changes the model. For repair requests:
 
 1. Validate and read `ctx.diffset` in domain terms.
-2. Choose one failure/witness.
-3. Find evidence and obtain user confirmation when needed.
-4. Apply one repair and re-validate immediately.
-5. Repeat until the model conforms or the evidence shows the requirement is inappropriate.
+2. Choose one failure/witness and inspect its useful proposals.
+3. Preview the proposal with `ctx.preview(proposal)`; this does not change the model.
+4. Find evidence and obtain user confirmation when needed.
+5. Apply one confirmed repair and re-validate immediately.
+6. Repeat until the model conforms or the evidence shows the requirement is inappropriate.
 
 Do not batch unrelated repairs before validation. Fixing one failure can activate shapes on
 new nodes and reveal additional requirements.
@@ -122,9 +123,11 @@ with BuildingMOTIF("sqlite:///buildingmotif.db") as bm:
     ...
 ```
 
-The default `pyshifty` engine provides algebraic validation and repair witnesses. Report
-results in domain language—“VAV-1 has no temperature sensor” is more useful than only
-reporting a raw SHACL path—while retaining technical diagnostics for inspection.
+The default `pyshifty` engine (0.4.3 on this integration branch) provides algebraic
+validation and repair witnesses. A proposal is a candidate graph change, not evidence
+that equipment exists. Report results in domain language—“VAV-1 has no temperature
+sensor” is more useful than only reporting a raw SHACL path—while retaining technical
+diagnostics for inspection.
 
 ## Authoritative material
 
