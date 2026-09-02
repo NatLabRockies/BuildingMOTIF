@@ -340,16 +340,26 @@ The model represents the Small Office Commercial Prototype Building model, which
 
 Let's update our manifest to include the requirement that AHUs must match the "single zone AHU" shape from G36:
 
+Shapes reach a manifest by being part of a library, so we write the new shape into a graph, load that graph as a
+library (its name is the URI of its `owl:Ontology` declaration), and add the library to the manifest:
+
 ```{code-cell}
-model.get_manifest().graph.parse(data="""
+import rdflib
+
+site_constraints = Library.from_ontology(rdflib.Graph().parse(data="""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix brick: <https://brickschema.org/schema/Brick#> .
 @prefix : <urn:my_site_constraints/> .
+: a owl:Ontology .
 :sz-vav-ahu-control-sequences a sh:NodeShape ;
     sh:message "AHUs must match the single-zone VAV AHU shape" ;
     sh:targetClass brick:AHU ;
     sh:node <urn:ashrae/g36/4.8/sz-vav-ahu/sz-vav-ahu> .
-""")
+"""))
+
+model.manifest.add(site_constraints)
+print(model.manifest.library_names)
 ```
 
 
