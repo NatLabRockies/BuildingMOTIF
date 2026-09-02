@@ -44,15 +44,15 @@ We create an in-memory BuildingMOTIF instance, load the model from the previous 
 The `constraints.ttl` library we load is a special library with some custom constraints defined that are helpful for writing manifests.
 
 ```{margin}
-```{warning}
-Currently, libraries in `../../buildingmotif/libraries/` are *included* and libraries in `../../libraries/` are *excluded* from the [BuildingMOTIF Python package](https://pypi.org/project/buildingmotif/) (available by cloning, downloading, or forking the repository). See https://github.com/NREL/BuildingMOTIF/issues/133. 
+```{note}
+`brick/`, `constraints/`, and `bacnet/` are packaged libraries. Guideline 36
+is repository-only, so this tutorial expects a checkout for that directory.
 ```
 
 ```{code-cell}
 from rdflib import Namespace
 from buildingmotif import BuildingMOTIF
 from buildingmotif.dataclasses import Model, Library
-from buildingmotif.namespaces import BRICK # import this to make writing URIs easier
 
 # in-memory instance
 bm = BuildingMOTIF("sqlite://")
@@ -66,11 +66,11 @@ model = Model.create(BLDG, description="This is a test model for a simple buildi
 # load tutorial 1 model
 model.graph.parse("tutorial1_model.ttl", format="ttl")
 
-# load libraries included with the python package
-constraints = Library.from_ontology("../../buildingmotif/libraries/constraints/constraints.ttl")
+# load libraries included with the Python package
+constraints = Library.from_ontology("constraints/constraints.ttl")
+brick = Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
 
-# load libraries excluded from the python package (available from the repository)
-brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
+# Guideline 36 is repository-only.
 g36 = Library.from_directory("../../libraries/ashrae/guideline36")
 ```
 
@@ -92,11 +92,11 @@ Success! The model is valid according to the Brick ontology.
 
 ```{margin}
 ```{note}
-A `manifest` is an RDF graph with a set of `Shapes` inside, which place constraints and requirements on what metadata must be contained within a metadata model. 
+A manifest names the libraries whose shapes define the model's requirements. The shapes remain in those libraries; the manifest records which libraries the model claims to satisfy.
 ```
 
-For now, we will write a `manifest` file directly; in the future, BuildingMOTIF will contain features that make manifests easier to write.
-Here is the header of a manifest file. This should also suffice for most of your own manifests.
+Here is the header of a manifest library. Declaring it as an ontology gives it
+the stable name that the model manifest records.
 
 ```ttl
 @prefix brick: <https://brickschema.org/schema/Brick#> .
@@ -340,26 +340,16 @@ The model represents the Small Office Commercial Prototype Building model, which
 
 Let's update our manifest to include the requirement that AHUs must match the "single zone AHU" shape from G36:
 
-Shapes reach a manifest by being part of a library, so we write the new shape into a graph, load that graph as a
-library (its name is the URI of its `owl:Ontology` declaration), and add the library to the manifest:
-
 ```{code-cell}
-import rdflib
-
-site_constraints = Library.from_ontology(rdflib.Graph().parse(data="""
-@prefix owl: <http://www.w3.org/2002/07/owl#> .
+model.get_manifest().graph.parse(data="""
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix brick: <https://brickschema.org/schema/Brick#> .
 @prefix : <urn:my_site_constraints/> .
-: a owl:Ontology .
 :sz-vav-ahu-control-sequences a sh:NodeShape ;
     sh:message "AHUs must match the single-zone VAV AHU shape" ;
     sh:targetClass brick:AHU ;
     sh:node <urn:ashrae/g36/4.8/sz-vav-ahu/sz-vav-ahu> .
-"""))
-
-model.manifest.add(site_constraints)
-print(model.manifest.library_names)
+""")
 ```
 
 

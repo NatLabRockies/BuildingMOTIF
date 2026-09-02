@@ -1,8 +1,9 @@
 # Validating and Repairing with pyshifty
 
-BuildingMOTIF includes a notebook tutorial for algebraic validation reports and
-template-guided graph repair with the `pyshifty` SHACL engine.
+BuildingMOTIF uses `pyshifty` as its default SHACL engine. It provides algebraic
+validation results and can propose template-guided repairs; proposals remain
+suggestions for a user to review before changing a model.
 
-BuildingMOTIF installs pyshifty 0.4.x by default. Run the notebook:
+This branch requires pyshifty 0.4.3. For a complete, runnable walkthrough, use:
 
-[`notebooks/Existing-model-repair-with-pyshifty.ipynb`](https://github.com/NREL/BuildingMOTIF/blob/main/notebooks/Existing-model-repair-with-pyshifty.ipynb)
+[`notebooks/Existing-model-repair-with-pyshifty.ipynb`](https://github.com/NatLabRockies/BuildingMOTIF/blob/gtf-buildingmotif/notebooks/Existing-model-repair-with-pyshifty.ipynb)
