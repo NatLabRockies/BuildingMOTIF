@@ -1249,6 +1249,16 @@ no binding-derived slot vocabulary. The direct binding assertions now guard the 
 engine contract. Focused regression coverage: **10 passed**, covering named and rejected
 class/cardinality values, nested obligations, amendment repairs, and the join guard.
 
+#### Push status (2026-09-02 — algebraic type check)
+
+The mypy fix and merge #49 are pushed as fast-forwards. The CI command
+`uv run mypy --ignore-missing-imports` is clean on the merged tree.
+
+| Branch | Range pushed |
+|---|---|
+| `gtf-new-pyshifty` | `505892fd..6392b7af` |
+| `gtf-buildingmotif` | `85e45b4d..d8c8a125` |
+
 #### Push status (2026-09-02)
 
 The documentation and skill updates are pushed as fast-forwards after merges #45–#48.
