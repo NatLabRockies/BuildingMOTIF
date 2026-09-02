@@ -43,6 +43,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
@@ -76,6 +77,46 @@ class GateOutcome(Protocol):
     @property
     def is_progress(self) -> bool:
         """True iff the candidate ΔG removes at least one violation."""
+        ...
+
+
+@runtime_checkable
+class AlgebraicConstraint(Protocol):
+    """The native constraint fields exposed in algebraic provenance."""
+
+    @property
+    def id(self) -> int:
+        """Stable identity of this algebraic constraint."""
+        ...
+
+    @property
+    def kind(self) -> object:
+        """The constraint's algebraic discriminant."""
+        ...
+
+    @property
+    def definition(self) -> str:
+        """The rendered constraint definition."""
+        ...
+
+
+@runtime_checkable
+class ShapeNamed(Protocol):
+    """A native result that may identify its source shape."""
+
+    @property
+    def shape_name(self) -> object:
+        """The named source shape, when one exists."""
+        ...
+
+
+@runtime_checkable
+class AlgebraicSelector(Protocol):
+    """The native selector field exposed on an algebraic witness."""
+
+    @property
+    def kind(self) -> object:
+        """The selector's algebraic discriminant."""
         ...
 
 
@@ -215,12 +256,12 @@ class ShiftyFailure(Protocol):
         ...
 
     @property
-    def constraint(self) -> object:
+    def constraint(self) -> AlgebraicConstraint:
         """The complete top-level algebraic constraint."""
         ...
 
     @property
-    def selector(self) -> object:
+    def selector(self) -> AlgebraicSelector:
         """How the focus was selected for the failed statement."""
         ...
 
@@ -234,17 +275,12 @@ class ShiftyFailure(Protocol):
 
 
 @runtime_checkable
-class AlgebraicViolation(Protocol):
+class AlgebraicViolation(ShapeNamed, Protocol):
     """The native pyshifty violation paired with a repair witness."""
 
     @property
     def focus_node(self) -> object:
         """The node at which the algebra statement failed."""
-        ...
-
-    @property
-    def shape_name(self) -> object:
-        """The named shape/statement, when pyshifty has one."""
         ...
 
     @property
@@ -453,15 +489,16 @@ class AlgebraicReason:
         return getattr(self.raw, name)
 
     @property
-    def source_constraint(self) -> Optional[object]:
+    def source_constraint(self) -> Optional[AlgebraicConstraint]:
         """The native algebraic constraint that produced this reason.
 
         This is algebraic provenance, not a W3C SHACL source component.
         """
-        return getattr(self.raw, "constraint", None)
+        constraint = getattr(self.raw, "constraint", None)
+        return cast(Optional[AlgebraicConstraint], constraint)
 
     @property
-    def constraint(self) -> Optional[object]:
+    def constraint(self) -> Optional[AlgebraicConstraint]:
         """The complete native algebra node that produced this reason."""
         return self.source_constraint
 
@@ -1055,14 +1092,15 @@ class RepairWitness:
         return getattr(self.witness, "constraint_kind", None)
 
     @property
-    def constraint(self) -> Optional[object]:
+    def constraint(self) -> Optional[AlgebraicConstraint]:
         """The complete top-level algebraic constraint for this witness."""
         return getattr(self.witness, "constraint", None)
 
     @property
-    def selector(self) -> Optional[object]:
+    def selector(self) -> Optional[AlgebraicSelector]:
         """The native algebra selector describing how the focus was chosen."""
-        return getattr(self.witness, "selector", None)
+        selector = getattr(self.witness, "selector", None)
+        return cast(Optional[AlgebraicSelector], selector)
 
     @property
     def target(self) -> Optional[object]:
@@ -1094,9 +1132,9 @@ class RepairWitness:
         return self.context.shapes_graph
 
     @property
-    def source_constraints(self) -> Tuple[object, ...]:
+    def source_constraints(self) -> Tuple[AlgebraicConstraint, ...]:
         """Native algebraic source constraints exposed by pyshifty, if any."""
-        sources: List[object] = []
+        sources: List[AlgebraicConstraint] = []
         for reason in self.validation_reasons:
             source = reason.source_constraint
             if source is not None and not any(source == seen for seen in sources):
@@ -2218,7 +2256,7 @@ class AlgebraicValidationContext:
         return dict(grouped)
 
     @staticmethod
-    def _shapes_agree(witness: ShiftyFailure, violation: AlgebraicViolation) -> bool:
+    def _shapes_agree(witness: ShiftyFailure, violation: ShapeNamed) -> bool:
         """Cross-check a candidate join against the shape each side names.
 
         The join key is a triple of session-local integers, so if the two runs

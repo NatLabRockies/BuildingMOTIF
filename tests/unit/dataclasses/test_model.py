@@ -9,6 +9,7 @@ from buildingmotif.dataclasses import (
     AlgebraicValidationContext,
     Library,
     Model,
+    RepairWitness,
     ValidationContext,
 )
 from buildingmotif.namespaces import BRICK, OWL, RDF, RDFS, SH, A
@@ -257,6 +258,7 @@ def test_validate_model_with_failure(bm: BuildingMOTIF, shacl_engine):
     assert len(diffs) == 1
     diff = diffs[0]
     if isinstance(ctx, AlgebraicValidationContext):
+        assert isinstance(diff, RepairWitness)
         # pyshifty exposes the native algebraic cardinality constraint, not a
         # reconstructed W3C SHACL source-component name.
         assert diff.failed_component is None
