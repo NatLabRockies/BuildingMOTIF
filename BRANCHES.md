@@ -1251,6 +1251,18 @@ no binding-derived slot vocabulary. The direct binding assertions now guard the 
 engine contract. Focused regression coverage: **10 passed**, covering named and rejected
 class/cardinality values, nested obligations, amendment repairs, and the join guard.
 
+#### Push status (2026-09-02 — pyshifty 0.4.4)
+
+PyShifty 0.4.4, including its shipped `_shifty.pyi` native-extension stub, is pushed after
+merges #50–#51. The lock check, CI mypy command, and 35 focused algebraic-validation tests
+pass on the merged tree.
+
+| Branch | Range pushed |
+|---|---|
+| `gtf-new-pyshifty` | `6392b7af..57fec386` |
+| `gtf-buildingmotif-skill` | `61febb53..f06536af` |
+| `gtf-buildingmotif` | `0d32a0a0..37835f59` |
+
 #### Push status (2026-09-02 — algebraic type check)
 
 The mypy fix and merge #49 are pushed as fast-forwards. The CI command
