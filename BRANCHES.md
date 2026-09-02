@@ -83,6 +83,7 @@ all surfaced in the `gtf-new-pyshifty` merge.
 | 46 | `1dcdd53d` | `gtf-ontoenv` (clear closure copy/view guidance) | `4f1cd31e` | 1 | [#396](https://github.com/NatLabRockies/BuildingMOTIF/pull/396) open |
 | 47 | `bc92dd75` | `gtf-buildingmotif-skill` (repair and closure workflow guidance) | `61febb53` | 1 | not opened |
 | 48 | `d7b82e45` | `gtf-new-pyshifty` (library-backed manifest tutorial) | `505892fd` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
+| 49 | `90035b32` | `gtf-new-pyshifty` (native algebraic type narrowing) | `6392b7af` | 1 | [#399](https://github.com/NatLabRockies/BuildingMOTIF/pull/399) open |
 
 Merges 4 and 5 were made while the source-triples fix briefly lived on its own branch
 (`gtf-compile-source-triples`); that branch has since been folded into `gtf-new-pyshifty` by
@@ -92,7 +93,7 @@ either way. **All four feature branches are rooted at `develop`; none is stacked
 One commit remains only on this branch: `a60bf48f`. Its content is duplicated by `b757c342`
 on `gtf-new-pyshifty`, so nothing is lost if this branch is rebuilt.
 
-**As of 2026-09-02, the tips recorded through merge #48 are included in
+**As of 2026-09-02, the tips recorded through merge #49 are included in
 `gtf-buildingmotif`.** The two documentation conflicts in merge #45 were resolved by taking the
 reviewed `gtf-new-pyshifty` versions, so there is no integration-only content to carry back.
 Re-check with `git merge-base --is-ancestor` before assuming this still holds: any later feature
