@@ -123,7 +123,7 @@ with BuildingMOTIF("sqlite:///buildingmotif.db") as bm:
     ...
 ```
 
-The default `pyshifty` engine (0.4.3 on this integration branch) provides algebraic
+The default `pyshifty` engine (0.4.4 on this integration branch) provides algebraic
 validation and repair witnesses. A proposal is a candidate graph change, not evidence
 that equipment exists. Report results in domain language—“VAV-1 has no temperature
 sensor” is more useful than only reporting a raw SHACL path—while retaining technical

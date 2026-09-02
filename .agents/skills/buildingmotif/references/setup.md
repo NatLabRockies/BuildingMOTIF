@@ -74,7 +74,7 @@ uv pip install \
   "buildingmotif @ git+https://github.com/NatLabRockies/BuildingMOTIF.git@gtf-buildingmotif"
 ```
 
-`pyshifty` 0.4.3 is a required dependency on this branch and is the default validation
+`pyshifty` 0.4.4 is a required dependency on this branch and is the default validation
 engine. Pin `@<commit-sha>` instead of the branch name in CI or shared requirements.
 
 ## Manage database lifecycle
