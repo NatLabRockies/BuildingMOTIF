@@ -1248,6 +1248,19 @@ no binding-derived slot vocabulary. The direct binding assertions now guard the 
 engine contract. Focused regression coverage: **10 passed**, covering named and rejected
 class/cardinality values, nested obligations, amendment repairs, and the join guard.
 
+#### Push status (2026-09-02)
+
+The documentation and skill updates are pushed as fast-forwards after merges #45–#48.
+The feature branches and integration branch were all verified against their tracking refs
+immediately before this record was added:
+
+| Branch | Range pushed |
+|---|---|
+| `gtf-new-pyshifty` | `073b06d3..505892fd` |
+| `gtf-ontoenv` | `1d0a2b6f..4f1cd31e` |
+| `gtf-buildingmotif-skill` | `fcf33833..61febb53` |
+| `gtf-buildingmotif` | `8a408c34..2e5745cf` |
+
 #### Push status (2026-09-01)
 
 All three branches are pushed as fast-forwards after a fresh `git fetch origin --prune`; their
