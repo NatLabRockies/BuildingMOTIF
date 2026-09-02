@@ -28,7 +28,7 @@ class BACnetToBrickIngress(GraphIngressHandler):
         """
         super().__init__(bm)
         self.upstream = upstream
-        self.bacnet_lib = Library.load(directory="bacnet")
+        self.bacnet_lib = Library.from_directory("bacnet")
         self.device_template = self.bacnet_lib.get_template_by_name("brick-device")
         self.object_template = self.bacnet_lib.get_template_by_name("brick-point")
 
@@ -52,27 +52,23 @@ class BACnetToBrickIngress(GraphIngressHandler):
                 dev = record.fields
                 device_id = dev["device_id"]
                 name = _clean_uri(device_id) or _clean_uri(dev["address"])
-                dev_graph = self.device_template.evaluate(
+                g += self.device_template.substitute(
                     {
                         "name": ns[name],
                         "instance-number": Literal(device_id),
                         "address": Literal(dev["address"]),
                     }
-                )
-                assert isinstance(dev_graph, Graph)
-                g += dev_graph
+                ).to_graph()
             elif record.rtype == "Object":
                 point = record.fields
                 device_id = point["device_id"]
-                obj_graph = self.object_template.evaluate(
+                g += self.object_template.substitute(
                     {
                         "name": ns[f"{_clean_uri(point['name'])}-{point['address']}"],
                         "identifier": Literal(f"{point['type']},{point['address']}"),
                         "obj-name": Literal(point["name"]),
                         "device": ns[_clean_uri(device_id)],
                     }
-                )
-                assert isinstance(obj_graph, Graph)
-                g += obj_graph
+                ).to_graph()
 
         return g

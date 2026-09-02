@@ -1,4 +1,4 @@
-from rdflib import RDF, URIRef
+from rdflib import RDF, Graph, URIRef
 from rdflib.compare import isomorphic
 from rdflib.namespace import FOAF
 
@@ -22,13 +22,19 @@ def test_database_persistence(tmpdir):
     template.body.add(EXAMPLE_TRIPLE)
     shape = library.get_shape_collection()
     shape.graph.add(EXAMPLE_TRIPLE)
-    model = Model.create(name="https://example.com")
+    model = Model.create(uri="https://example.com")
     model.graph.add(EXAMPLE_TRIPLE)
+
+    # snapshot graph contents before closing (store-backed views become
+    # inaccessible once the Oxigraph store is closed)
+    template_body_snapshot = Graph() + template.body
+    shape_graph_snapshot = Graph() + shape.graph
+    model_graph_snapshot = Graph() + model.graph
 
     # close bm
     bm.session.commit()
     bm.close()
-    del bm
+    BuildingMOTIF.clean()
 
     # reopen bm and ensure the object are preserved
     BuildingMOTIF(db_path)
@@ -39,8 +45,8 @@ def test_database_persistence(tmpdir):
 
     assert reloaded_library == library
     assert reloaded_template == template
-    assert isomorphic(reloaded_template.body, template.body)
+    assert isomorphic(reloaded_template.body, template_body_snapshot)
     assert reloaded_shape == shape
-    assert isomorphic(reloaded_shape.graph, shape.graph)
+    assert isomorphic(reloaded_shape.graph, shape_graph_snapshot)
     assert reloaded_model == model
-    assert isomorphic(reloaded_model.graph, model.graph)
+    assert isomorphic(reloaded_model.graph, model_graph_snapshot)

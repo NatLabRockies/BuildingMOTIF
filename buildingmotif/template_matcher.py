@@ -193,10 +193,24 @@ class _VF2SemanticMatcher(DiGraphMatcher):
     :param T: template graph
     :param G: building graph
     :param ontology: ontology that contains the information about node semantics
+    :param T_digraph: ``T`` already converted to a ``nx.DiGraph``. Callers that
+        build many matchers against the *same* ``T`` should convert once and
+        pass it here; the conversion is O(len(T)) and is otherwise repeated per
+        matcher. The matcher only reads the graph, so one instance is safely
+        shared.
     """
 
-    def __init__(self, T: Graph, G: Graph, ontology: Graph):
-        super().__init__(rdflib_to_networkx_digraph(T), rdflib_to_networkx_digraph(G))
+    def __init__(
+        self,
+        T: Graph,
+        G: Graph,
+        ontology: Graph,
+        T_digraph: Optional[nx.DiGraph] = None,
+    ):
+        super().__init__(
+            rdflib_to_networkx_digraph(T) if T_digraph is None else T_digraph,
+            rdflib_to_networkx_digraph(G),
+        )
         self.ontology = ontology
         self._cache = _ontology_lookup_cache()
         self._semantic_feasibility = get_semantic_feasibility(
@@ -222,11 +236,15 @@ def generate_all_subgraphs(T: Graph) -> Generator[Graph, None, None]:
     :yield: subgraphs
     :rtype: Generator[Graph, None, None]
     """
+    # Both the node set and the DiGraph conversion are loop-invariant, but were
+    # recomputed for every one of the 2^|nodes| subsets -- and `.subgraph()`
+    # returns a read-only view, so a single conversion serves them all.
+    nodes = list(T.all_nodes())
+    digraph = rdflib_to_networkx_digraph(T)
     # no monomorphism will be larger than the number of distinct nodes in the graph
-    largest_sg_size = len(T.all_nodes())
-    for nodecount in range(largest_sg_size, 1, -1):
-        for nodelist in combinations(T.all_nodes(), nodecount):
-            yield digraph_to_rdflib(rdflib_to_networkx_digraph(T).subgraph(nodelist))
+    for nodecount in range(len(nodes), 1, -1):
+        for nodelist in combinations(nodes, nodecount):
+            yield digraph_to_rdflib(digraph.subgraph(nodelist))
 
 
 def digraph_to_rdflib(digraph: nx.DiGraph) -> Graph:
@@ -279,9 +297,16 @@ class TemplateMatcher:
         self._generate_mappings()
 
     def _generate_mappings(self):
+        # `self.building` is fixed across every candidate subgraph, so convert it
+        # once rather than once per subgraph: the loop runs 2^|template nodes|
+        # times and the building graph is the large one of the pair.
+        building_digraph = rdflib_to_networkx_digraph(self.building)
         for template_subgraph in generate_all_subgraphs(self.template_graph):
             matching = _VF2SemanticMatcher(
-                self.building, template_subgraph, self.ontology
+                self.building,
+                template_subgraph,
+                self.ontology,
+                T_digraph=building_digraph,
             )
             if matching.subgraph_is_monomorphic():
                 for sg in matching.subgraph_monomorphisms_iter():
@@ -377,11 +402,7 @@ class TemplateMatcher:
         for building_node, param in mapping.items():
             if param is not None:
                 bindings[str(param)[len(PARAM) :]] = building_node
-        # this *should* be a template because we don't have bindings for all of
-        # the template's parameters
-        res = self.template.evaluate(bindings)
-        assert not isinstance(res, Graph)
-        return res
+        return self.template.substitute(bindings)
 
     def mappings_iter(self, size=None) -> Generator[Mapping, None, None]:
         """Returns an iterator over all of the mappings of the given size.

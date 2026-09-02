@@ -49,6 +49,16 @@ def test_get_templates(clean_building_motif):
     assert [r.id for r in results] == [t1.id, t2.id]
 
 
+def test_get_template_by_name_is_scoped_to_library(clean_building_motif):
+    lib = Library.create("my_library")
+    other_lib = Library.create("your_library")
+    templ = lib.create_template("shared_template")
+    other_templ = other_lib.create_template("shared_template")
+
+    assert lib.get_template_by_name("shared_template").id == templ.id
+    assert other_lib.get_template_by_name("shared_template").id == other_templ.id
+
+
 def test_get_shape_collection(clean_building_motif):
     lib = Library.create("my_library")
     shape_collection = lib.get_shape_collection()
@@ -63,7 +73,7 @@ def test_get_shape_collection(clean_building_motif):
 
 
 def test_load_library_from_ontology(bm: BuildingMOTIF):
-    lib = Library.load(ontology_graph="tests/unit/fixtures/Brick1.3rc1-equip-only.ttl")
+    lib = Library.from_ontology("tests/unit/fixtures/Brick1.3rc1-equip-only.ttl")
     assert lib is not None
     assert len(lib.get_templates()) == 5
     # spot check a certain template
@@ -76,19 +86,112 @@ def test_load_library_from_ontology(bm: BuildingMOTIF):
     assert len(shapeg.graph) > 1
 
 
+def test_load_library_creates_imported_ontology_libraries(
+    bm: BuildingMOTIF, tmp_path: Path
+):
+    dependency = tmp_path / "dependency.ttl"
+    dependency_iri = dependency.as_uri()
+    dependency.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+<{dependency_iri}> a owl:Ontology .
+<urn:DependencyShape> a owl:Class, sh:NodeShape .
+"""
+    )
+    root = tmp_path / "root.ttl"
+    root.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<urn:root> a owl:Ontology ;
+    owl:imports <{dependency_iri}> .
+"""
+    )
+
+    Library.from_ontology(str(root), run_shacl_inference=False)
+
+    imported = Library.by_name(dependency_iri)
+    assert imported is not None
+    assert len(imported.get_shape_collection().graph) > 0
+    assert len(imported.get_templates()) == 1
+
+
+def test_load_library_can_skip_import_fetch(bm: BuildingMOTIF, tmp_path: Path):
+    dependency = tmp_path / "dependency.ttl"
+    dependency_iri = dependency.as_uri()
+    dependency.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<{dependency_iri}> a owl:Ontology .
+"""
+    )
+    root = tmp_path / "root.ttl"
+    root.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<urn:root> a owl:Ontology ;
+    owl:imports <{dependency_iri}> .
+"""
+    )
+
+    Library.from_ontology(
+        str(root),
+        fetch_imports=False,
+        run_shacl_inference=False,
+    )
+
+    with pytest.raises(Exception):
+        Library.by_name(dependency_iri)
+
+
+def test_ontology_environment_uses_buildingmotif_graph_store(
+    bm: BuildingMOTIF, tmp_path: Path
+):
+    dependency = tmp_path / "dependency.ttl"
+    dependency_iri = dependency.as_uri()
+    dependency.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+<{dependency_iri}> a owl:Ontology .
+<urn:DependencyShape> a owl:Class, sh:NodeShape .
+"""
+    )
+    root = tmp_path / "root.ttl"
+    root.write_text(
+        f"""
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+<urn:root> a owl:Ontology ;
+    owl:imports <{dependency_iri}> .
+"""
+    )
+
+    ontology_name = bm.ontology_environment.add(str(root), fetch_imports=True)
+
+    graph_ids = bm.graph_connection.get_all_graph_identifiers()
+    assert ontology_name in graph_ids
+    assert dependency_iri in graph_ids
+    assert len(bm.ontology_environment.graph_copy(ontology_name)) > 0
+
+    closure, closure_names = bm.ontology_environment.closure_copy(ontology_name)
+    assert dependency_iri in closure_names
+    assert len(closure) > 0
+    assert len(list(bm.ontology_environment.iter_closure_triples(ontology_name))) > 0
+
+
 def test_load_library_from_ontology_with_error(bm: BuildingMOTIF):
     with pytest.raises(Exception):
-        Library.load(ontology_graph="tests/unit/fixtures/bad_shape_template.ttl")
+        Library.from_ontology("tests/unit/fixtures/bad_shape_template.ttl")
 
 
 def test_load_shapes_with_directory_library(bm: BuildingMOTIF):
-    lib = Library.load(directory="tests/unit/fixtures/library-shape-test")
+    lib = Library.from_directory("tests/unit/fixtures/library-shape-test")
     assert lib is not None
     assert len(lib.get_templates()) == 2
 
 
 def test_load_library_from_directory(bm: BuildingMOTIF):
-    lib = Library.load(directory="tests/unit/fixtures/templates")
+    lib = Library.from_directory("tests/unit/fixtures/templates")
     assert lib is not None
     assert len(lib.get_templates()) == 7
     # spot check a certain template
@@ -98,7 +201,7 @@ def test_load_library_from_directory(bm: BuildingMOTIF):
 
 
 def test_load_library_from_directory_with_shapes(bm: BuildingMOTIF):
-    lib = Library.load(directory="tests/unit/fixtures/matching")
+    lib = Library.from_directory("tests/unit/fixtures/matching")
     assert lib is not None
     shapeg = lib.get_shape_collection()
     assert shapeg is not None
@@ -114,7 +217,7 @@ def test_load_library_overwrite_graph(bm: BuildingMOTIF):
     """
     g = Graph()
     g.parse(data=g1, format="ttl")
-    lib = Library.load(ontology_graph=g)
+    lib = Library.from_ontology(g)
     assert lib is not None
     assert len(lib.get_templates()) == 1
 
@@ -127,12 +230,12 @@ def test_load_library_overwrite_graph(bm: BuildingMOTIF):
     """
     g = Graph()
     g.parse(data=g1, format="ttl")
-    lib = Library.load(ontology_graph=g, overwrite=False)
+    lib = Library.from_ontology(g, overwrite=False)
     assert (
         len(lib.get_templates()) == 1
     ), "Library is overwritten when it shouldn't have been"
 
-    lib = Library.load(ontology_graph=g, overwrite=True)
+    lib = Library.from_ontology(g, overwrite=True)
     bm.session.commit()
     assert lib is not None
     assert len(lib.get_templates()) == 2, "Library is overwritten improperly"
@@ -142,22 +245,22 @@ def test_load_library_overwrite_directory(bm: BuildingMOTIF):
     first = "tests/unit/fixtures/overwrite-test/1/A"
     second = "tests/unit/fixtures/overwrite-test/2/A"
 
-    lib = Library.load(directory=first)
+    lib = Library.from_directory(first)
     assert lib is not None
     assert len(lib.get_templates()) == 1
 
-    lib = Library.load(directory=second, overwrite=False)
+    lib = Library.from_directory(second, overwrite=False)
     assert lib is not None
     assert len(lib.get_templates()) == 1, "Library overwritten when overwrite=False"
 
-    lib = Library.load(directory=second, overwrite=True)
+    lib = Library.from_directory(second, overwrite=True)
     bm.session.commit()
     assert lib is not None
     assert len(lib.get_templates()) == 2, "Library overwritten improperly"
 
 
 def test_load_library_no_ipynb_checkpoints(bm: BuildingMOTIF):
-    lib = Library.load(directory="tests/unit/fixtures/ipynb_checkpoint_test")
+    lib = Library.from_directory("tests/unit/fixtures/ipynb_checkpoint_test")
     assert lib is not None
     assert len(lib.get_templates()) == 1
     # if the checkpoint file was loaded, BuildingMOTIF would complain about
@@ -193,10 +296,10 @@ def test_libraries(monkeypatch, bm: BuildingMOTIF, library: str):
 
 
 def test_builtin_ontologies(bm: BuildingMOTIF, builtin_ontology):
-    lib = Library.load(ontology_graph=builtin_ontology)
+    lib = Library.from_ontology(builtin_ontology)
     assert lib is not None
 
 
 def test_builtin_libraries(bm: BuildingMOTIF, builtin_library):
-    lib = Library.load(directory=builtin_library)
+    lib = Library.from_directory(builtin_library)
     assert lib is not None

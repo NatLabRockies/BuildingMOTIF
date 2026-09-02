@@ -13,215 +13,117 @@ kernelspec:
 
 # Model Correction
 
-```{margin}
-```{important}
-This tutorial assumes that `BuildingMOTIF` has already been installed in the local environment.
-```
+Validation identifies gaps; it does not prove which real-world fact should be
+added. Use repair proposals to understand the smallest possible change, check
+that change against your source evidence, then apply it and validate again.
 
-The purpose of this tutorial is to learn how to fix a model that fails validation using BuildingMOTIF Templates to automate the correction process.
+This tutorial continues from the model-validation tutorial. It uses the default
+`pyshifty` engine, whose validation result contains structured failures and
+soundness-gated repair proposals.
 
 ## Setup
 
-Like the previous tutorial, we'll create an in-memory BuildingMOTIF instance, load the model, and load some libraries. We'll also load the manifest from the previous tutorial.
-
-```{margin}
-```{warning}
-Currently, libraries in `../../buildingmotif/libraries/` are *included* and libraries in `../../libraries/` are *excluded* from the [BuildingMOTIF Python package](https://pypi.org/project/buildingmotif/) (available by cloning, downloading, or forking the repository). See https://github.com/NREL/BuildingMOTIF/issues/133.
-```
-
 ```{code-cell}
-from rdflib import Namespace, URIRef
+from rdflib import Namespace
+
 from buildingmotif import BuildingMOTIF
-from buildingmotif.dataclasses import Model, Library, Template
-from buildingmotif.namespaces import BRICK, RDF # import this to make writing URIs easier
+from buildingmotif.dataclasses import Library, Model
 
-# in-memory instance
 bm = BuildingMOTIF("sqlite://")
+BLDG = Namespace("urn:bldg/")
+model = Model.create(BLDG, description="A simple building model")
 
-# create the namespace for the building
-BLDG = Namespace('urn:bldg/')
+# `constraints` and Brick ship with BuildingMOTIF. Guideline 36 is a
+# repository library, so this tutorial expects a checkout for that directory.
+Library.from_ontology("constraints/constraints.ttl")
+Library.from_ontology("brick/Brick.ttl", run_shacl_inference=False)
+Library.from_directory("../../libraries/ashrae/guideline36")
 
-# create the building model
-model = Model.create(BLDG, description="This is a test model for a simple building")
-
-# load libraries included with the python package
-constraints = Library.load(ontology_graph="constraints/constraints.ttl")
-
-# load libraries excluded from the python package (available from the repository)
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
-g36 = Library.load(directory="../../libraries/ashrae/guideline36")
-
-# load tutorial 2 model and manifest
-model.graph.parse("tutorial2_model.ttl", format="ttl")
-manifest = Library.load(ontology_graph="tutorial2_manifest.ttl")
-
-# assign the manifest to our model
-model.update_manifest(manifest.get_shape_collection())
+model.graph.parse("tutorial2_model.ttl", format="turtle")
+manifest = Library.from_ontology("tutorial2_manifest.ttl")
+model.manifest.add(manifest)
 ```
 
-## Model Validation
-
-Let's validate the model again to see what's causing the failure.
+## Read the current failures
 
 ```{code-cell}
-validation_result = model.validate()
-print(f"Model is valid? {validation_result.valid}")
+ctx = model.validate()
+print("Conforms?", ctx.conforms)
 
-# print reasons
-for uri, diffset in validation_result.diffset.items():
-    for diff in diffset:
-        print(f" - {diff.reason()}")
+for focus, failures in ctx.diffset.items():
+    print(focus or "the whole model")
+    for failure in failures:
+        print(" -", failure.reason())
 ```
 
-We can get this information in a few different ways, too.
-For example, asking for all the entities which have failed validation:
+Each failure concerns one focus node and one requirement. Fix one at a time:
+adding a missing part can activate requirements on that new part, while another
+repair can make later failures disappear.
+
+## Review proposals before changing data
+
+The default engine exposes proposals on each failure. A proposal may reuse an
+existing node, add a small graph, or (for constraints such as `sh:not`) delete
+a graph. `is_sound` means it introduces no new SHACL violation; it is not
+evidence that the proposed equipment or point exists in the building.
 
 ```{code-cell}
-for e in validation_result.get_broken_entities():
-    print(e)
+ahu = BLDG["Core_ZN-PSC_AC"]
+failure = next(iter(ctx.get_diffs_for_entity(ahu)))
+
+for proposal in failure.proposals():
+    print(
+        proposal.origin,
+        "sound=", proposal.is_sound,
+        "progress=", proposal.is_progress,
+        "reuses=", sorted(map(str, proposal.reused_nodes)),
+        "adds=", len(proposal.additions),
+        "deletes=", len(proposal.deletions),
+    )
 ```
 
-We can also get all reasons a particular entity has failed validation:
+Use the proposal as a question for the source documents: for example, “Does
+this AHU really have this supply fan, and what is its identifier?” Do not use a
+generated identifier merely to make validation pass.
+
+## Preview, confirm, apply, re-validate
+
+Previewing is read-only. It shows the validation run that would result from a
+proposal without changing the model.
 
 ```{code-cell}
-for diff in validation_result.get_diffs_for_entity(BLDG["Core_ZN-PSC_AC"]):
-    print(diff.reason())
+selected = failure.proposals()[0]
+preview = ctx.preview(selected)
+print("Would conform?", preview.conforms)
 ```
 
-## Model Correction with Templates
-
-The model is failing because the AHU doesn't have the minimum number of supply fans associated with it. We *could* add the fan explicitly by adding those triples to the model like we've done previously, but we can also ask BuildingMOTIF to generate new templates that explicitly prompt us for the missing information. We can also take a closer look at the first autogenerated template
+After confirming the assertion from project evidence, apply its delta to the
+model and immediately validate again. The explicit loop makes the state change
+visible, including deletions.
 
 ```{code-cell}
-# create a new library to hold these generated templates
-generated_templates = Library.create("my-autogenerated-templates")
+# Only run this after checking the proposal against source evidence.
+for triple in selected.deletions:
+    model.graph.remove(triple)
+model.add_graph(selected.additions)
 
-# loop through all results for the AHU
-for diff in validation_result.get_diffs_for_entity(BLDG["Core_ZN-PSC_AC"]):
-    diff.resolve(generated_templates)
-
-# print some of the autogenerated template
-for templ in generated_templates.get_templates():
-    templ = templ.inline_dependencies()
-    print(f"Name (autogenerated): {templ.name}")
-    print(f"Parameters (autogenerated): {templ.parameters}")
-    print("Template body (autogenerated):")
-    print(templ.body.serialize())
-    print('-' * 79)
+ctx = model.validate()
+print("Conforms after the confirmed change?", ctx.conforms)
 ```
 
-In this case, the generated templates are fairly simple. They require an input for the name of the supply fan and the names of several missing points. We can loop through each of these generated templates and create the names. Here, we are creating arbitrary names for the points but in a real setting you would likely pull the equipment or point names from an external source like a Building Information Model or BACnet network[^1] (see future tutorials for how to do this!) Another challenge is the fact that we already have a supply fan in the model. Here, we can take advantage of the fact that the name of the fan in the existing model are just the name of the AHU wtih the `-Fan` postfix. The name of the AHU is in the generated templates (see above) so we can just pull out the name of the AHU, add the postfix, and use that as the value for the `name` parameter.
+## Turn a chosen addition into a template
 
-If we just add the generated templates to the building model, we will probably pass validation *but* the entity names will have no significance to the building. It is highly recommended to use the template evaluation features (demonstrated below) to fill in the parameters with the "real" names of the entities as they appear in the building and/or building management system.
-
-[^1]: https://bacnet.org/
+For a reusable correction pattern, lift a selected addition into a template.
+Freshly minted repair nodes become template parameters; the original focus and
+reused nodes stay concrete. A deletion-only proposal has no template body and
+returns `None`.
 
 ```{code-cell}
-# use the name of the AHU from above as the base of our template names
-ahu_name = "Core_ZN-PSC_AC"
-
-# lookup for the name of the template to the name of the point or part
-points_and_parts = {
-    "resolveCore_ZN-PSC_ACMixed_Air_Temperature_Sensor": "-MAT",
-    "resolveCore_ZN-PSC_ACFilter_Differential_Pressure_Sensor": "-FilterDPS",
-    "resolveCore_ZN-PSC_ACCooling_Command": "-CCmd",
-    "resolveCore_ZN-PSC_ACHeating_Command": "-HCmd",
-    "resolveCore_ZN-PSC_ACOutside_Air_Temperature_Sensor": "-OAT",
-    "resolveCore_ZN-PSC_ACSupply_Air_Temperature_Sensor": "-SAT",
-    "resolveCore_ZN-PSC_ACReturn_Air_Temperature_Sensor": "-RAT",
-    "resolveCore_ZN-PSC_ACsa-fan": "-Fan", # this is an existing fan in the model!
-}
-
-for templ in generated_templates.get_templates():
-    templ = templ.inline_dependencies()
-
-    suffix = points_and_parts[templ.name]
-
-    # we know from the exploration above that each template has
-    # 1 parameter which is the name of the missing item
-    param = list(templ.parameters)[0]
-    bindings = {
-        param: BLDG[ahu_name + suffix],
-    }
-    thing = templ.evaluate(bindings)
-    if isinstance(thing, Template):
-        # there might be other parameters on a template. Invent names for them
-        _, thing = thing.fill(BLDG)
-    model.add_graph(thing)
+repair_template = selected.as_template()
+if repair_template is not None:
+    print(repair_template.name)
+    print(sorted(repair_template.parameters))
 ```
 
-We use the same code as before to ask BuildingMOTIF if the model is now valid:
-
-```{code-cell}
-validation_result = model.validate()
-print(f"Model is valid? {validation_result.valid}")
-# print reasons
-for uri, diffset in validation_result.diffset.items():
-    for diff in diffset:
-        print(f" - {diff.reason()}")
-```
-
-We are still not finished. The `sa-fan` shape has its own requirements for necessary points.
-Let's use the same process above to get templates we can fill out to repair the model
-
-```{code-cell}
-generated_templates_sf = Library.create("my-autogenerated-templates-sf")
-for diff in validation_result.get_diffs_for_entity(BLDG["Core_ZN-PSC_AC-Fan"]):
-    diff.resolve(generated_templates_sf)
-
-# print some of the autogenerated template
-for templ in generated_templates_sf.get_templates():
-    templ = templ.inline_dependencies()
-    print(f"Name (autogenerated): {templ.name}")
-    print(f"Parameters (autogenerated): {templ.parameters}")
-    print("Template body (autogenerated):")
-    print(templ.body.serialize())
-    print('-' * 79)
-```
-
-Use the names of these templates to build a lookup table for the point and part names.
-
-```{code-cell}
-sf_name = "Core_ZN-PSC_AC-Fan"
-
-# lookup for the name of the template to the name of the point or part
-points_and_parts = {
-    "resolve_Core_ZN-PSC_AC-FanFrequency_Command": "-Freq",
-    "resolve_Core_ZN-PSC_AC-FanStart_Stop_Command": "-StartStop",
-    "resolve_Core_ZN-PSC_AC-FanFan_Status": "-Sts",
-}
-for templ in generated_templates_sf.get_templates():
-    templ = templ.inline_dependencies()
-
-    suffix = points_and_parts[templ.name]
-
-    param = list(templ.parameters)[0]
-    bindings = {
-        param: BLDG[sf_name + suffix],
-    }
-    thing = templ.evaluate(bindings)
-    model.add_graph(thing)
-```
-
-We can re-check the validation of the model now:
-
-```{code-cell}
-validation_result = model.validate()
-print(f"Model is valid? {validation_result.valid}")
-print(validation_result.report.serialize())
-
-# print reasons
-for uri, diffset in validation_result.diffset.items():
-    for diff in diffset:
-        print(f" - {diff.reason()}")
-```
-
-Success! The model is valid with respect to the targeted use case, i.e. the model can support the high-performance sequences of operation for single zone VAV AHUs from ASHRAE Guideline 36. Let's take a look at the validated model and save it for use in future tutorials.
-
-```{code-cell}
-# print model
-print(model.graph.serialize())
-
-#save model
-model.graph.serialize(destination="tutorial3_model.ttl")
-```
+Templates make a repeated, evidence-backed pattern easier to fill. They do not
+replace the need to confirm every building-specific identifier and relationship.

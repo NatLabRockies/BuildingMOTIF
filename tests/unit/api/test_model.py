@@ -33,8 +33,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[3]
 
 def test_get_all_models(client, building_motif):
     # Setup
-    Model.create(name="urn:my_model", description="the best model")
-    Model.create(name="https://example.com")
+    Model.create(uri="urn:my_model", description="the best model")
+    Model.create(uri="https://example.com")
 
     # Act
     results = client.get("/models")
@@ -56,7 +56,7 @@ def test_get_all_models(client, building_motif):
 
 def test_get_model(client, building_motif):
     # Setup
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
 
     # Act
     results = client.get(f"/models/{model.id}")
@@ -84,7 +84,7 @@ def test_get_model_not_found(client):
 
 def test_get_model_graph(client, building_motif):
     # Setup
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     model.add_graph(Graph().parse(data=graph_data, format="ttl"))
     excepted_graph = to_isomorphic(model.graph)
     building_motif.session.commit()
@@ -109,7 +109,7 @@ def test_get_model_graph_not_found(client):
 
 def test_update_model_graph_overwrite(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -130,7 +130,7 @@ def test_update_model_graph_overwrite(client, building_motif):
 
 def test_update_model_graph_append(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -165,7 +165,7 @@ def test_update_model_graph_not_found(client, building_motif):
 
 def test_update_model_graph_no_header(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -177,7 +177,7 @@ def test_update_model_graph_no_header(client, building_motif):
 
 def test_update_model_graph_bad_graph_value(client, building_motif):
     # Set up
-    model = Model.create(name="urn:my_model")
+    model = Model.create(uri="urn:my_model")
     assert isomorphic(model.graph, default_graph)
 
     # Action
@@ -256,19 +256,17 @@ def test_create_model_bad_name(client, building_motif):
 def test_validate_model(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
-    brick = Library.load(ontology_graph="tests/unit/fixtures/Brick.ttl")
+    brick = Library.from_ontology("tests/unit/fixtures/Brick.ttl")
     assert brick is not None
-    library_1 = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    library_1 = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library_1 is not None
-    library_2 = Library.load(directory="tests/unit/fixtures/templates")
+    library_2 = Library.from_directory("tests/unit/fixtures/templates")
     assert library_2 is not None
-    brick = Library.load(
-        ontology_graph="tests/unit/fixtures/Brick.ttl", overwrite=False
-    )
+    brick = Library.from_ontology("tests/unit/fixtures/Brick.ttl", overwrite=False)
     assert brick is not None
 
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
     model.add_triples((BLDG["vav1"], A, BRICK.VAV))
 
     # Action
@@ -285,10 +283,18 @@ def test_validate_model(client, building_motif, shacl_engine):
     assert isinstance(results.get_json()["message"], str)
     response = results.get_json()
     assert "urn:building/vav1" in response["reasons"], "vav1 should be in the response"
-    assert set(response["reasons"]["urn:building/vav1"]) == {
-        "urn:building/vav1 expected at least 1 instance(s) of brick:Temperature_Sensor on path brick:hasPoint",
-        "urn:building/vav1 expected at least 1 instance(s) of brick:Air_Flow_Sensor on path brick:hasPoint",
-    }
+    if shacl_engine == "pyshifty":
+        # the pyshifty engine returns an AlgebraicValidationContext whose reasons
+        # are derived from the algebra (witness atoms) rather than the legacy
+        # GraphDiff messages, so assert on structure rather than exact strings
+        vav1_reasons = response["reasons"]["urn:building/vav1"]
+        assert len(vav1_reasons) >= 1
+        assert all(isinstance(r, str) and r for r in vav1_reasons)
+    else:
+        assert set(response["reasons"]["urn:building/vav1"]) == {
+            "urn:building/vav1 expected at least 1 instance(s) of brick:Temperature_Sensor on path brick:hasPoint",
+            "urn:building/vav1 expected at least 1 instance(s) of brick:Air_Flow_Sensor on path brick:hasPoint",
+        }
     assert not results.get_json()["valid"]
 
     # Set up
@@ -317,7 +323,7 @@ def test_validate_model(client, building_motif, shacl_engine):
 def test_validate_model_bad_model_id(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
-    library = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    library = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library is not None
 
     # Action
@@ -331,11 +337,25 @@ def test_validate_model_bad_model_id(client, building_motif, shacl_engine):
     assert results.status_code == 404
 
 
+def test_validate_model_bad_shacl_engine(client):
+    BLDG = Namespace("urn:building/")
+    model = Model.create(uri=BLDG)
+
+    results = client.post(
+        f"/models/{model.id}/validate?shacl_engine=bad-engine",
+        headers={"Content-Type": "application/json"},
+        json={},
+    )
+
+    assert results.status_code == 400
+    assert "Unsupported SHACL engine 'bad-engine'" in results.get_json()["message"]
+
+
 def test_validate_model_no_args(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action
     results = client.post(
@@ -355,7 +375,7 @@ def test_validate_model_no_library_ids(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Set up
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action
     results = client.post(
@@ -375,7 +395,7 @@ def test_validate_model_no_library_ids(client, building_motif, shacl_engine):
 def test_validate_model_bad_library_ids(client, building_motif):
     # Set up
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action
     results = client.post(
@@ -390,10 +410,10 @@ def test_validate_model_bad_library_ids(client, building_motif):
 
 def test_validate_model_bad_args(client, building_motif):
     # Set up
-    library = Library.load(ontology_graph="tests/unit/fixtures/shapes/shape1.ttl")
+    library = Library.from_ontology("tests/unit/fixtures/shapes/shape1.ttl")
     assert library is not None
     BLDG = Namespace("urn:building/")
-    model = Model.create(name=BLDG)
+    model = Model.create(uri=BLDG)
 
     # Action 1
     results = client.post(
@@ -424,9 +444,9 @@ def test_validate_model_bad_args(client, building_motif):
 def test_validate_model_against_shapes(client, building_motif, shacl_engine):
     building_motif.shacl_engine = shacl_engine
     # Load libraries
-    Library.load(ontology_graph=str(PROJECT_DIR / "libraries/brick/Brick.ttl"))
-    ashrae_g36 = Library.load(
-        directory=str(PROJECT_DIR / "libraries/ashrae/guideline36/")
+    Library.from_ontology(str(PROJECT_DIR / "libraries/brick/Brick.ttl"))
+    ashrae_g36 = Library.from_directory(
+        str(PROJECT_DIR / "libraries/ashrae/guideline36/")
     )
 
     # build model

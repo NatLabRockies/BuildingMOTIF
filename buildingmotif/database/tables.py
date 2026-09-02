@@ -96,7 +96,7 @@ class DBTemplate(Base):
     )
     library: Mapped[DBLibrary] = relationship("DBLibrary", back_populates="templates")
 
-    dependencies: Mapped["DBTemplateDependency"] = relationship(
+    dependencies: Mapped[List["DBTemplateDependency"]] = relationship(
         "DBTemplateDependency", back_populates="template", cascade="all,delete-orphan"
     )
 

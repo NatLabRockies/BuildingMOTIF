@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
 
@@ -14,6 +17,7 @@ from buildingmotif.utils import (
     graph_hash,
     replace_nodes,
     rewrite_shape_graph,
+    shacl_inference,
     shacl_validate,
     skip_uri,
 )
@@ -331,6 +335,160 @@ def test_param_name():
         _param_name(bad_p)
 
 
+def test_shacl_helpers_validate_engine_choice():
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        shacl_validate(Graph(), engine="bad-engine")
+
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        shacl_inference(Graph(), engine="bad-engine")
+
+
+def test_building_motif_validates_shacl_engine():
+    assert BuildingMOTIF("sqlite://").shacl_engine == "pyshifty"
+    BuildingMOTIF.clean()
+
+    assert (
+        BuildingMOTIF("sqlite://", shacl_engine="pyshifty").shacl_engine == "pyshifty"
+    )
+    BuildingMOTIF.clean()
+
+    assert BuildingMOTIF("sqlite://", shacl_engine="shifty").shacl_engine == "pyshifty"
+    BuildingMOTIF.clean()
+
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        BuildingMOTIF("sqlite://", shacl_engine="bad-engine")
+    BuildingMOTIF.clean()
+
+    bm = BuildingMOTIF("sqlite://")
+    with pytest.raises(ValueError, match="Unsupported SHACL engine"):
+        bm.shacl_engine = "bad-engine"
+    BuildingMOTIF.clean()
+
+
+def test_pyshifty_validate_dispatches_to_shifty_module(monkeypatch):
+    data_graph = Graph()
+    shape_graph = Graph()
+    shape_graph.add((URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class")))
+    report_graph = Graph()
+    calls = []
+
+    def validate(*args, **kwargs):
+        calls.append(("validate", args, kwargs))
+        return True, report_graph, "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "shifty",
+        SimpleNamespace(validate=validate),
+    )
+
+    assert shacl_validate(data_graph, shape_graph, engine="pyshifty") == (
+        True,
+        report_graph,
+        "ok",
+    )
+    # the shapes graph is handed to shifty as Turtle text (not the bare Graph)
+    # so its embedded sh:sparql/sh:rule bodies can resolve sh:prefixes -- see
+    # buildingmotif.shacl._shifty_shapes_input
+    assert len(calls) == 1
+    name, args, kwargs = calls[0]
+    called_data, called_shapes = args
+    assert name == "validate"
+    assert called_data == data_graph
+    assert isinstance(called_shapes, bytes)
+    assert set(Graph().parse(data=called_shapes, format="turtle")) == set(shape_graph)
+    assert kwargs == {"minimum_severity": "violation"}
+
+
+def test_pyshifty_validate_omits_empty_shape_graph(monkeypatch):
+    data_graph = Graph()
+    empty_shape_graph = Graph()
+    report_graph = Graph()
+    calls = []
+
+    def validate(*args, **kwargs):
+        calls.append(("validate", args, kwargs))
+        return True, report_graph, "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "shifty",
+        SimpleNamespace(validate=validate),
+    )
+
+    assert shacl_validate(data_graph, empty_shape_graph, engine="pyshifty") == (
+        True,
+        report_graph,
+        "ok",
+    )
+    assert calls == [
+        (
+            "validate",
+            (data_graph,),
+            {"minimum_severity": "violation"},
+        ),
+    ]
+
+
+def test_pyshifty_inference_removes_shape_graph(monkeypatch):
+    data_triple = (URIRef("urn:data"), SH.path, URIRef("urn:value"))
+    shape_triple = (URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class"))
+    data_graph = Graph()
+    data_graph.add(data_triple)
+    shape_graph = Graph()
+    shape_graph.add(shape_triple)
+    inferred_graph = data_graph + shape_graph
+
+    def infer(*args):
+        # the shapes graph is handed to shifty as Turtle text (not the bare
+        # Graph) -- see buildingmotif.shacl._shifty_shapes_input
+        called_data, called_shapes = args
+        assert called_data == data_graph
+        assert isinstance(called_shapes, bytes)
+        assert set(Graph().parse(data=called_shapes, format="turtle")) == set(
+            shape_graph
+        )
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
+
+    closure = shacl_inference(data_graph, shape_graph, engine="pyshifty")
+    assert data_triple in closure
+    assert shape_triple not in closure
+
+
+def test_pyshifty_inference_removes_redundant_is_point_of(monkeypatch):
+    equipment = URIRef("urn:equipment")
+    point = URIRef("urn:point")
+    has_point_triple = (equipment, BRICK.hasPoint, point)
+    inferred_inverse_triple = (point, BRICK.isPointOf, equipment)
+    shape_triple = (URIRef("urn:shape"), SH.targetClass, URIRef("urn:Class"))
+    data_graph = Graph()
+    data_graph.add(has_point_triple)
+    shape_graph = Graph()
+    shape_graph.add(shape_triple)
+    inferred_graph = data_graph + shape_graph
+    inferred_graph.add(inferred_inverse_triple)
+
+    def infer(*args):
+        # the shapes graph is handed to shifty as Turtle text (not the bare
+        # Graph) -- see buildingmotif.shacl._shifty_shapes_input
+        called_data, called_shapes = args
+        assert called_data == data_graph
+        assert isinstance(called_shapes, bytes)
+        assert set(Graph().parse(data=called_shapes, format="turtle")) == set(
+            shape_graph
+        )
+        return SimpleNamespace(graph=lambda: inferred_graph)
+
+    monkeypatch.setitem(sys.modules, "shifty", SimpleNamespace(infer=infer))
+
+    closure = shacl_inference(data_graph, shape_graph, engine="pyshifty")
+    assert has_point_triple in closure
+    assert shape_triple not in closure
+    assert inferred_inverse_triple not in closure
+
+
 def test_skip_uri():
     assert skip_uri(XSD.integer)
     assert skip_uri(SH.NodeShape)
@@ -384,8 +542,10 @@ def test_strip_param():
 def test_guarantee_unique_template_name(bm):
     # make new library
     lib = Library.create("test")
+    other_lib = Library.create("other_test")
     # add a template
     lib.create_template("test_template", None)
+    other_lib.create_template("other_template", None)
 
     # create a new template with the same name
     name = _guarantee_unique_template_name(lib, "test_template")
@@ -398,3 +558,55 @@ def test_guarantee_unique_template_name(bm):
     assert name == "test_template_2"
 
     lib.create_template(name, None)
+
+    # names in other libraries do not collide
+    name = _guarantee_unique_template_name(lib, "other_template")
+    assert name == "other_template"
+
+
+def test_pyshifty_inference_keeps_prefixes_when_data_is_also_shapes(
+    bm: BuildingMOTIF,
+):
+    """A SHACL-SPARQL rule inside the data graph still resolves its prefixes.
+
+    With no separate shapes argument the data graph is *also* the shapes graph,
+    so a ``sh:construct`` body inside it has to reach shifty with the prefix
+    declarations its query text needs. BuildingMOTIF's storage layer does not
+    persist those bindings, so they have to be re-applied on the way out --
+    otherwise the rule silently never fires (pyshifty < 0.4.1) or the call
+    raises ``Prefix not found`` (0.4.1+).
+
+    This is the shape of the bug that stopped Brick's own ``ref:`` rules from
+    running during ``Library.from_ontology``.
+    """
+    graph = Graph().parse(
+        data="""
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        @prefix brick: <https://brickschema.org/schema/Brick#> .
+        @prefix : <urn:rules/> .
+        : a owl:Ontology .
+        :S a sh:NodeShape ;
+            sh:targetClass brick:VAV ;
+            sh:rule [
+                a sh:SPARQLRule ;
+                sh:prefixes : ;
+                sh:construct \"\"\"
+                    CONSTRUCT { $this a brick:Terminal_Unit }
+                    WHERE { $this a brick:VAV }
+                \"\"\"
+            ] .
+        <urn:bldg/vav1> a brick:VAV .
+        """,
+        format="turtle",
+    )
+    # the binding the storage layer would have dropped
+    graph.namespace_manager.bind("brick", None, replace=True)
+
+    inferred = shacl_inference(graph, engine="pyshifty")
+
+    assert (
+        URIRef("urn:bldg/vav1"),
+        A,
+        BRICK.Terminal_Unit,
+    ) in inferred, "the sh:construct rule did not fire -- its prefixes were lost"

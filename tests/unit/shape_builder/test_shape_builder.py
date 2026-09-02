@@ -10,7 +10,7 @@ from buildingmotif.shape_builder import NodeShape, PropertyShape
 
 @pytest.fixture
 def constraints_library(bm: BuildingMOTIF):
-    return Library.load(ontology_graph="constraints/constraints.ttl")
+    return Library.from_ontology("constraints/constraints.ttl")
 
 
 # test #1
@@ -22,7 +22,7 @@ def constraints_library(bm: BuildingMOTIF):
 def test_node_shape(constraints_library: Library):
     model_namespace = Namespace("http://example.org/")
     shapes_namespace = Namespace("http://exampleshapes.org/")
-    model = Model.create(name=model_namespace)
+    model = Model.create(uri=model_namespace)
 
     # Make shape which looks for one brick:AHU
     ahu_shape = (
@@ -60,7 +60,7 @@ def test_node_shape(constraints_library: Library):
 def test_property_shape(constraints_library: Library):
     model_namespace = Namespace("http://example.org/")
     shapes_namespace = Namespace("http://exampleshapes.org/")
-    model = Model.create(name=model_namespace)
+    model = Model.create(uri=model_namespace)
 
     # Add AHU to graph
     model.add_triples((model_namespace["AHU_1"], A, BRICK["AHU"]))

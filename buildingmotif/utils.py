@@ -1,14 +1,11 @@
 import logging
 import secrets
-from collections import defaultdict
-from copy import copy
-from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-import pyshacl  # type: ignore
 from rdflib import BNode, Graph, Literal, URIRef
+from rdflib.collection import Collection as RDFCollection
 from rdflib.compare import _TripleCanonicalizer
 from rdflib.paths import ZeroOrOne
 from rdflib.term import Node
@@ -17,7 +14,7 @@ from buildingmotif.database.errors import TemplateNotFound
 from buildingmotif.namespaces import OWL, PARAM, RDF, SH, XSD, bind_prefixes
 
 if TYPE_CHECKING:
-    from buildingmotif.dataclasses import Library, Template
+    from buildingmotif.dataclasses import Library
 
 Triple = Tuple[Node, Node, Node]
 _gensym_counter = 0
@@ -52,26 +49,40 @@ def _param_name(param: URIRef) -> str:
 
 def _guarantee_unique_template_name(library: "Library", name: str) -> str:
     """
-    Ensure that the template name is unique in the library by appending an increasing
-    number. This is only called when we are generating templates from GraphDiffs and
-    the names are local to the Library. The Library is intended to be ephemeral so these
-    names will not be around for long.
+    Ensure that the template name is unique by appending an increasing number.
+
+    Used when generating templates whose names we derive rather than read: the
+    GraphDiff / repair-proposal path (where the Library is ephemeral, so the
+    names are short-lived), and the ``sh:or`` alternatives inferred by
+    ShapeCollection.infer_templates (where a shape could in principle already be
+    named like a generated alternative).
+
+    Template names are unique within a library, so names already taken by other
+    libraries do not need to be skipped. ``get_template_by_name`` raises
+    :class:`TemplateNotFound` when the name is free in the given library.
     """
     idx = 1
     original_name = name
-    try:
-        while library.get_template_by_name(name):
-            name = f"{original_name}_{idx}"
-            idx += 1
-    except TemplateNotFound:
-        # this means that the template does not exist and we can use the original name
-        pass
-    return name
+    while True:
+        try:
+            existing = library.get_template_by_name(name)
+        except TemplateNotFound:
+            # the name is free in this library -- use it
+            return name
+        if not existing:
+            return name
+        name = f"{original_name}_{idx}"
+        idx += 1
 
 
 def copy_graph(g: Graph, preserve_blank_nodes: bool = True) -> Graph:
     """
-    Copy a graph. Creates new blank nodes so that these remain unique to each Graph
+    Copy a graph. Creates new blank nodes so that these remain unique to each Graph.
+    Namespace bindings are copied too -- losing them would silently rename a
+    prefix on serialization (e.g. via ``graph.serialize(format="turtle")``),
+    which breaks anything that resolves a prefixed name against the
+    document's *declared* prefixes rather than the graph's triples (e.g. a
+    SHACL ``sh:sparql``/``sh:rule`` body's ``sh:prefixes``).
 
     :param g: the graph to copy
     :type g: Graph
@@ -81,6 +92,8 @@ def copy_graph(g: Graph, preserve_blank_nodes: bool = True) -> Graph:
     :rtype: Graph
     """
     c = Graph()
+    for prefix, namespace in g.namespaces():
+        c.bind(prefix, namespace, override=True)
     new_prefix = secrets.token_hex(4)
     for t in g.triples((None, None, None)):
         assert isinstance(t, tuple)
@@ -231,12 +244,14 @@ def get_template_parts_from_shape(
     :type shape_graph: Graph
     :param depedency_graphs: colleciton of graphs and which depdency library they came from
     :type depedency_graphs: dict[str, Graph]
-    :raises Exception: if more than one object type detected on shape
-    :raises Exception: if more than one min count detected on shape
+    :raises ValueError: if a property shape has no sh:path, or declares more
+        than one object type or min count
     :return: template parts
     :rtype: Tuple[Graph, List[Dict]]
     """
-    # TODO: sh:or?
+    # sh:or on the node shape is *not* folded in here: a disjunction has no
+    # single body. ShapeCollection.infer_templates decompiles each branch
+    # into its own alternative template via get_shape_or_branches().
     # the template body
     body = Graph()
     root_param = PARAM["name"]
@@ -247,7 +262,7 @@ def get_template_parts_from_shape(
     for pshape in pshapes:
         property_path = shape_graph.value(pshape, SH["path"])
         if property_path is None:
-            raise Exception(
+            raise ValueError(
                 f"no sh:path detected on {shape_name} property shape {pshape}"
             )
         # TODO: expand otypes to include sh:in, sh:or, or no datatype at all!
@@ -265,9 +280,9 @@ def get_template_parts_from_shape(
             )
         )
         if len(otypes) > 1:
-            raise Exception(f"more than one object type detected on {shape_name}")
+            raise ValueError(f"more than one object type detected on {shape_name}")
         if len(mincounts) > 1:
-            raise Exception(f"more than one min count detected on {shape_name}")
+            raise ValueError(f"more than one min count detected on {shape_name}")
         if len(mincounts) == 0 or len(otypes) == 0:
             # print(f"No useful information on {shape_name} - {pshape}")
             # print(shape_graph.cbd(pshape).serialize())
@@ -340,153 +355,35 @@ def get_template_parts_from_shape(
     return body, deps
 
 
-@dataclass
-class _TemplateIndex:
-    template: "Template"
-    param_types: Dict[Node, List[Node]]
-    prop_types: Dict[Node, List[Node]]
-    prop_values: Dict[Node, List[Node]]
-    prop_shapes: Dict[Node, List[Node]]
-    target: URIRef
+def get_shape_or_branches(shape_name: Node, shape_graph: Graph) -> List[Node]:
+    """The branches of a node shape's ``sh:or``, in declaration order.
 
-    @property
-    def target_type(self):
-        return self.param_types[self.target][0]
+    ``sh:or`` takes an ``rdf:List``, which *is* ordered, so this preserves the
+    order the shape author wrote. That ordering is the only ranking signal the
+    shape carries, and authors conventionally put the common or preferred
+    alternative first -- so callers that must present alternatives should
+    present them in this order rather than inventing a ranking.
 
+    Only ``sh:or`` directly on the node shape is returned: that is the
+    "alternative ways to be this thing" case. An ``sh:or`` nested inside a
+    property shape constrains one value's type instead, and is not handled here.
 
-def _prep_shape_graph() -> Graph:
-    shape = Graph()
-    bind_prefixes(shape)
-    shape.bind("mark", PARAM)
-    return shape
-
-
-def _index_properties(
-    templ: "Template", error_on_missing_dependency: bool = True
-) -> _TemplateIndex:
-    templ_graph = templ.evaluate(
-        {p: PARAM[p] for p in templ.parameters}, {"mark": PARAM}
-    )
-    assert isinstance(templ_graph, Graph)
-
-    # pick a random node to act as the 'target' of the shape
-    target = next(iter(templ_graph.subjects(RDF.type)))
-    print(f"Choosing {target} as the target of the shape")
-    assert isinstance(target, URIRef)
-
-    # store the classes for each parameter
-    param_types: Dict[Node, List[Node]] = defaultdict(list)
-    for (param, ptype) in templ_graph.subject_objects(RDF.type):
-        param_types[param].append(ptype)
-
-    # store the properties and their types for the target
-    prop_types: Dict[Node, List[Node]] = defaultdict(list)
-    prop_values: Dict[Node, List[Node]] = defaultdict(list)
-    prop_shapes: Dict[Node, List[Node]] = defaultdict(list)
-    # TODO: prop_shapes for all properties whose object corresponds to another shape
-    for p, o in templ_graph.predicate_objects(target):
-        if p == RDF.type:
-            continue
-        # maybe_param = str(o).removeprefix(PARAM) Python >=3.9
-        maybe_param = str(o)[len(PARAM) :]
-        if maybe_param in templ.dependency_parameters:
-            dep = templ.dependency_for_parameter(
-                maybe_param, error_on_missing_dependency
-            )
-            if dep is not None:
-                prop_shapes[p].append(URIRef(dep._name))
-        elif o in param_types:
-            prop_types[p].append(param_types[o][0])
-        elif str(o) not in PARAM:
-            prop_values[p].append(o)
-        elif str(o) in PARAM and o not in param_types:
-            logging.warn(
-                f"{o} is does not have a type and does not seem to be a literal"
-            )
-    return _TemplateIndex(
-        templ,
-        dict(param_types),
-        dict(prop_types),
-        dict(prop_values),
-        dict(prop_shapes),
-        target,
-    )
-
-
-def _add_property_shape(
-    graph: Graph, name: Node, constraint: Node, path: Node, value: Node
-):
-    pshape = BNode()
-    graph.add((name, SH.property, pshape))
-    graph.add((pshape, SH.path, path))
-    graph.add((pshape, constraint, value))
-    graph.add((pshape, SH["minCount"], Literal(1)))
-    graph.add((pshape, SH["maxCount"], Literal(1)))
-
-
-def _add_qualified_property_shape(
-    graph: Graph, name: Node, constraint: Node, path: Node, value: Node
-):
-    pshape = BNode()
-    graph.add((name, SH.property, pshape))
-    graph.add((pshape, SH.path, path))
-    qvc = BNode()
-    graph.add((pshape, SH["qualifiedValueShape"], qvc))
-    graph.add((qvc, constraint, value))
-    graph.add((pshape, SH["qualifiedMinCount"], Literal(1)))
-    graph.add((pshape, SH["qualifiedMaxCount"], Literal(1)))
-
-
-def template_to_shape(template: "Template") -> Graph:
-    """Turn this template into a SHACL shape.
-
-    :param template: template to convert
-    :type template: template
-    :return: graph of template
-    :rtype: Graph
+    :param shape_name: the node shape
+    :type shape_name: Node
+    :param shape_graph: the graph holding the shape
+    :type shape_graph: Graph
+    :return: the branch shapes, in order; empty if the shape has no ``sh:or``
+    :rtype: List[Node]
     """
-    # TODO If 'use_all' is True, this will create a shape that incorporates all
-    # Templates by the same name in the same Library.
-    templ = copy(template)
-    shape = _prep_shape_graph()
-
-    idx = _index_properties(templ)
-
-    shape.add((PARAM[templ.name], SH.targetClass, idx.target_type))
-    # create the shape
-    shape.add((PARAM[templ.name], RDF.type, SH.NodeShape))
-    shape.add((PARAM[templ.name], SH["class"], idx.target_type))
-    for prop, ptypes in idx.prop_types.items():
-        if len(ptypes) == 1:
-            _add_property_shape(shape, PARAM[templ.name], SH["class"], prop, ptypes[0])
-        else:  # more than one ptype
-            for ptype in ptypes:
-                _add_qualified_property_shape(
-                    shape, PARAM[templ.name], SH["class"], prop, ptype
-                )
-    for prop, values in idx.prop_values.items():
-        if len(values) == 1:
-            _add_property_shape(shape, PARAM[templ.name], SH.hasValue, prop, values[0])
-        else:  # more than one ptype
-            for value in values:
-                _add_qualified_property_shape(
-                    shape, PARAM[templ.name], SH.hasValue, prop, value
-                )
-    for prop, shapes in idx.prop_shapes.items():
-        if len(shapes) == 1:
-            _add_property_shape(shape, PARAM[templ.name], SH["node"], prop, shapes[0])
-        else:  # more than one ptype
-            for shp in shapes:
-                _add_qualified_property_shape(
-                    # TODO: fix this?
-                    shape,
-                    PARAM[templ.name],
-                    SH.node,
-                    prop,
-                    PARAM[str(shp)],
-                )
-
-    return shape
+    branches: List[Node] = []
+    for or_list in shape_graph.objects(subject=shape_name, predicate=SH["or"]):
+        try:
+            branches.extend(iter(RDFCollection(shape_graph, or_list)))
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "could not read the sh:or list on %s", shape_name, exc_info=True
+            )
+    return branches
 
 
 def new_temporary_graph(more_namespaces: Optional[dict] = None) -> Graph:
@@ -630,110 +527,49 @@ def skip_uri(uri: URIRef) -> bool:
 def shacl_validate(
     data_graph: Graph,
     shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
+    engine: Optional[str] = None,
 ) -> Tuple[bool, Graph, str]:
     """
     Validate the data graph against the shape graph.
-    Uses the fastest validation method available. Use the 'topquadrant' feature
-    to use TopQuadrant's SHACL engine. Defaults to using PySHACL.
+    Defaults to the ``pyshifty`` engine. Use the 'topquadrant'
+    feature to use TopQuadrant's SHACL engine.
 
     :param data_graph: the graph to validate
     :type data_graph: Graph
     :param shape_graph: the shape graph to validate against
     :type shape_graph: Graph, optional
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
+    :param engine: the SHACL engine to use, defaults to "pyshifty"
     :type engine: str, optional
     :return: a tuple containing the validation result, the validation report, and the validation report string
     :rtype: Tuple[bool, Graph, str]
     """
+    from buildingmotif.shacl import get_shacl_backend
 
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import (
-                validate as tq_validate,  # type: ignore
-            )
-
-            return tq_validate(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-
-    data_graph = data_graph + (shape_graph or Graph())
-    return pyshacl.validate(
-        data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        js=True,
-        allow_warnings=True,
-    )  # type: ignore
+    return get_shacl_backend(engine).validate(data_graph, shape_graph)
 
 
 def shacl_inference(
     data_graph: Graph,
     shape_graph: Optional[Graph] = None,
-    engine: Optional[str] = "topquadrant",
+    engine: Optional[str] = None,
 ) -> Graph:
     """
     Infer new triples in the data graph using the shape graph.
-    Edits the data graph in place. Uses the fastest inference method available.
-    Use the 'topquadrant' feature to use TopQuadrant's SHACL engine. Defaults to
-    using PySHACL.
+    Edits the data graph in place. Defaults to the ``pyshifty`` engine. Use the
+    'topquadrant' feature to use TopQuadrant's SHACL engine.
 
     :param data_graph: the graph to infer new triples in
     :type data_graph: Graph
     :param shape_graph: the shape graph to use for inference
     :type shape_graph: Optional[Graph]
-    :param engine: the SHACL engine to use, defaults to "topquadrant"
+    :param engine: the SHACL engine to use, defaults to "pyshifty"
     :type engine: str, optional
     :return: the data graph with inferred triples
     :rtype: Graph
     """
-    if engine == "topquadrant":
-        try:
-            from brick_tq_shacl.topquadrant_shacl import infer as tq_infer
+    from buildingmotif.shacl import get_shacl_backend
 
-            return tq_infer(data_graph, shape_graph or Graph())  # type: ignore
-        except ImportError:
-            logging.info(
-                "TopQuadrant SHACL engine not available. Using PySHACL instead."
-            )
-            pass
-
-    # We use a fixed-point computation approach to 'compiling' RDF models.
-    # We accomlish this by keeping track of the size of the graph before and after
-    # the inference step. If the size of the graph changes, then we know that the
-    # inference has had some effect. We do this at most 3 times to avoid looping
-    # forever.
-    pre_compile_length = len(data_graph)  # type: ignore
-    pyshacl.validate(
-        data_graph=data_graph,
-        shacl_graph=shape_graph,
-        ont_graph=shape_graph,
-        advanced=True,
-        inplace=True,
-        js=True,
-        allow_warnings=True,
-    )
-    post_compile_length = len(data_graph)  # type: ignore
-
-    attempts = 3
-    while attempts > 0 and post_compile_length != pre_compile_length:
-        pre_compile_length = len(data_graph)  # type: ignore
-        pyshacl.validate(
-            data_graph=data_graph,
-            shacl_graph=shape_graph,
-            ont_graph=shape_graph,
-            advanced=True,
-            inplace=True,
-            js=True,
-            allow_warnings=True,
-        )
-        post_compile_length = len(data_graph)  # type: ignore
-        attempts -= 1
-    return data_graph - (shape_graph or Graph())
+    return get_shacl_backend(engine).compile(data_graph, shape_graph)
 
 
 def skolemize_shapes(g: Graph) -> Graph:

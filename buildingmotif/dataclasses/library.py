@@ -1,7 +1,8 @@
 import logging
 import pathlib
 import tempfile
-from dataclasses import dataclass
+import warnings
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pygit2
@@ -17,6 +18,7 @@ from buildingmotif.database.errors import LibraryNotFound
 from buildingmotif.database.tables import DBLibrary, DBTemplate
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
 from buildingmotif.dataclasses.template import Template
+from buildingmotif.namespaces import bind_prefixes
 from buildingmotif.schemas import validate_libraries_yaml
 from buildingmotif.template_compilation import compile_template_spec
 from buildingmotif.utils import get_ontology_files, shacl_inference
@@ -31,7 +33,7 @@ class Library:
 
     _id: int
     _name: str
-    _bm: "BuildingMOTIF"
+    _bm: "BuildingMOTIF" = field(compare=False)
 
     @classmethod
     def create(cls, name: str, overwrite: Optional[bool] = True) -> "Library":
@@ -50,13 +52,22 @@ class Library:
             if overwrite:
                 cls._clear_library(db_library)
             else:
-                logging.warning(
-                    f'Library {name} already exists in database. To ovewrite load library with "overwrite=True"'  # noqa
+                logging.info(
+                    'Library "%s" already exists and overwrite=False; keeping '
+                    "its existing contents. Pass overwrite=True to replace them.",
+                    name,
                 )
         except LibraryNotFound:
             db_library = bm.table_connection.create_db_library(name)
 
-        return cls(_id=db_library.id, _name=db_library.name, _bm=bm)
+        # Normalize the name to a string so it matches the database type, as
+        # Model.from_graph does. Loading from an ontology passes an
+        # rdflib.URIRef here, and URIRef.__eq__ is type-strict -- so without
+        # this, `Library.from_ontology(g).name == "urn:ex/ont"` was False while
+        # `Library.by_name(...).name == "urn:ex/ont"` was True, and the
+        # root-skip guard in _load_imported_ontology_libraries (which compares
+        # against OntoEnv's plain-str closure names) could never match.
+        return cls(_id=db_library.id, _name=str(db_library.name), _bm=bm)
 
     @classmethod
     def _clear_library(cls, library: DBLibrary) -> None:
@@ -69,8 +80,180 @@ class Library:
         for template in library.templates:  # type: ignore
             bm.session.delete(template)
 
-    # TODO: load library from URI? Does the URI identify the library uniquely?
     # TODO: can we deduplicate shape graphs? use hash of graph?
+
+    @staticmethod
+    def _resolve_builtin(reference: str, expect_dir: bool = False) -> Optional[str]:
+        """Resolve ``reference`` against the libraries packaged inside
+        ``buildingmotif.libraries``, or None if it names no builtin.
+
+        Packaged builtins take precedence over the filesystem, which means a
+        local ``brick/`` directory is shadowed by the shipped one. That is
+        long-standing behavior; this logs at INFO when it actually happens so
+        the surprise is at least visible. Pass an absolute path to bypass it.
+
+        :param reference: the path as the caller wrote it
+        :type reference: str
+        :param expect_dir: whether the local candidate would be a directory
+        :type expect_dir: bool
+        :return: the resolved filesystem path of the builtin, or None
+        :rtype: Optional[str]
+        """
+        # An absolute path is never a builtin resource name, and asking
+        # pkg_resources about one raises a DeprecationWarning that is slated to
+        # become an error.
+        if pathlib.Path(reference).is_absolute():
+            return None
+        if not resource_exists("buildingmotif.libraries", reference):
+            return None
+        resolved = resource_filename("buildingmotif.libraries", reference)
+        local = pathlib.Path(reference)
+        if local.is_dir() if expect_dir else local.exists():
+            logging.info(
+                "Loading the *builtin* library %r from %s. A path of the same "
+                "name exists relative to the working directory and was NOT "
+                "used; pass an absolute path to load that one instead.",
+                reference,
+                resolved,
+            )
+        else:
+            logging.debug(f"Loading builtin library: {reference}")
+        return resolved
+
+    @classmethod
+    def by_name(cls, name: str) -> "Library":
+        """Get a library already in the database, by name.
+
+        This does *not* load anything from disk -- use :py:meth:`from_ontology`
+        or :py:meth:`from_directory` for that.
+
+        :param name: the name of the library inside the database
+        :type name: str
+        :raises LibraryNotFound: if no library has that name
+        :return: the library
+        :rtype: Library
+        """
+        bm = get_building_motif()
+        db_library = bm.table_connection.get_db_library_by_name(name)
+        return cls(_id=db_library.id, _name=db_library.name, _bm=bm)
+
+    @classmethod
+    def from_ontology(
+        cls,
+        ontology: Union[str, pathlib.Path, rdflib.Graph],
+        overwrite: bool = True,
+        infer_templates: bool = True,
+        run_shacl_inference: bool = True,
+        fetch_imports: Optional[bool] = None,
+    ) -> "Library":
+        """Load a library from an ontology.
+
+        :param ontology: an in-memory ``rdflib.Graph``, or a path/URL to a
+            serialized RDF graph. A relative path is resolved against the
+            libraries packaged inside ``buildingmotif.libraries`` first (e.g.
+            ``"brick/Brick.ttl"``) and the filesystem second; pass an absolute
+            path to skip the builtins.
+        :type ontology: Union[str, pathlib.Path, rdflib.Graph]
+        :param overwrite: if True (default), replace any existing copy of the
+            library. If False and a library of this name already exists, the
+            **existing library is returned unchanged** -- nothing is loaded.
+        :type overwrite: bool
+        :param infer_templates: if True (default), infer templates from the
+            class/NodeShape candidates in the graph
+        :type infer_templates: bool
+        :param run_shacl_inference: if True (default), run SHACL inference over
+            the ontology using the configured engine before storing it
+        :type run_shacl_inference: bool
+        :param fetch_imports: if True, use OntoEnv to fetch ``owl:imports``
+            dependencies and create Library rows for the resolved imports. If
+            None (default), use the active BuildingMOTIF's setting.
+        :type fetch_imports: Optional[bool]
+        :return: the loaded library
+        :rtype: Library
+        """
+        bm = get_building_motif()
+        if fetch_imports is None:
+            fetch_imports = bm.ontology_fetch_imports
+
+        if isinstance(ontology, pathlib.Path):
+            ontology = str(ontology)
+
+        is_path = isinstance(ontology, str)
+        source: Union[str, rdflib.Graph] = ontology
+        if is_path:
+            source = cls._resolve_builtin(ontology) or ontology  # type: ignore[arg-type]
+
+        ontology_name = bm.ontology_environment.add(
+            source,
+            fetch_imports=fetch_imports,
+            overwrite=overwrite is not False,
+        )
+        if not overwrite and cls._library_exists(ontology_name):
+            return cls.by_name(ontology_name)
+
+        # For a path we take OntoEnv's parsed copy; for a graph the caller
+        # already handed us the triples.
+        graph = (
+            bm.ontology_environment.graph_copy(ontology_name) if is_path else ontology
+        )
+
+        closure_names = [ontology_name]
+        if fetch_imports:
+            closure_names = bm.ontology_environment.closure_names(ontology_name)
+
+        return cls._load_from_ontology(
+            graph,  # type: ignore[arg-type]
+            overwrite=overwrite,
+            infer_templates=False,
+            run_shacl_inference=run_shacl_inference,
+        )._load_imports_and_return(
+            closure_names,
+            infer_templates=infer_templates,
+            run_shacl_inference=run_shacl_inference,
+        )
+
+    @classmethod
+    def from_directory(
+        cls,
+        directory: Union[str, pathlib.Path],
+        overwrite: bool = True,
+        infer_templates: bool = True,
+        run_shacl_inference: bool = True,
+    ) -> "Library":
+        """Load a library from a directory of ``.yml`` templates and ontology
+        files. The library is named after the directory.
+
+        :param directory: path to the directory. A relative path is resolved
+            against the libraries packaged inside ``buildingmotif.libraries``
+            first (e.g. ``"bacnet"``) and the filesystem second; pass an
+            absolute path to skip the builtins.
+        :type directory: Union[str, pathlib.Path]
+        :param overwrite: if True (default), replace any existing copy of the
+            library. If False and a library of this name already exists, the
+            **existing library is returned unchanged** -- nothing is loaded.
+        :type overwrite: bool
+        :param infer_templates: if True (default), infer templates from the
+            class/NodeShape candidates in the directory's graphs
+        :type infer_templates: bool
+        :param run_shacl_inference: if True (default), run SHACL inference over
+            the directory's graphs using the configured engine
+        :type run_shacl_inference: bool
+        :raises FileNotFoundError: if the directory does not exist
+        :return: the loaded library
+        :rtype: Library
+        """
+        reference = str(directory)
+        builtin = cls._resolve_builtin(reference, expect_dir=True)
+        src = pathlib.Path(builtin) if builtin else pathlib.Path(reference)
+        if not src.exists():
+            raise FileNotFoundError(f"Library directory {src} does not exist")
+        return cls._load_from_directory(
+            src,
+            overwrite=overwrite,
+            infer_templates=infer_templates,
+            run_shacl_inference=run_shacl_inference,
+        )
+
     @classmethod
     def load(
         cls,
@@ -81,79 +264,171 @@ class Library:
         overwrite: Optional[bool] = True,
         infer_templates: Optional[bool] = True,
         run_shacl_inference: Optional[bool] = True,
+        fetch_imports: Optional[bool] = None,
     ) -> "Library":
-        """Loads a library from the database or an external source.
-        When specifying a path to load a library or ontology_graph from,
-        paths within the buildingmotif.libraries module will be prioritized
-        if they resolve.
+        """Get a library from the database by its id.
 
-        :param db_id: the unique id of the library in the database,
-            defaults to None
-        :type db_id: Optional[int], optional
-        :param ontology_graph: a path to a serialized RDF graph.
-            Supports remote ontology URLs, defaults to None
+        This matches :py:meth:`buildingmotif.dataclasses.template.Template.load`
+        and :py:meth:`buildingmotif.dataclasses.shape_collection.ShapeCollection.load`,
+        which have always meant "load the row with this id"::
+
+            lib = Library.load(3)
+
+        .. deprecated::
+            Every other keyword. ``load()`` used to be four unrelated
+            operations behind one signature, selected by which of eight
+            optional keywords you happened to pass. They still work and still
+            behave identically, but each now warns and will be removed:
+
+            ==================================== ==========================================
+            deprecated keyword                   replacement
+            ==================================== ==========================================
+            ``ontology_graph=g`` / ``=path``     :py:meth:`from_ontology`
+            ``directory=path``                   :py:meth:`from_directory`
+            ``name=name``                        :py:meth:`by_name`
+            ==================================== ==========================================
+
+            ``overwrite``, ``infer_templates``, ``run_shacl_inference``, and
+            ``fetch_imports`` are meaningless for an id lookup; they exist here
+            only to forward to those replacements.
+
+        :param db_id: the unique id of the library in the database
+        :type db_id: Optional[int]
+        :param ontology_graph: **deprecated**, use :py:meth:`from_ontology`
         :type ontology_graph: Optional[str|rdflib.Graph], optional
-        :param directory: a path to a directory containing a library,
-            or an rdflib graph, defaults to None
+        :param directory: **deprecated**, use :py:meth:`from_directory`
         :type directory: Optional[str], optional
-        :param name: the name of the library inside the database,
-            defaults to None
+        :param name: **deprecated**, use :py:meth:`by_name`
         :type name: Optional[str], optional
-        :param overwrite: if true, replace any existing copy of the
-            library, defaults to True
-        :type overwrite: Optional[true], optional
-        :param infer_templates: if true, infer shapes from the ontology graph,
-            defaults to True
+        :param overwrite: forwarded to the deprecated loaders only
+        :type overwrite: Optional[bool], optional
+        :param infer_templates: forwarded to the deprecated loaders only
         :type infer_templates: Optional[bool], optional
-        :param run_shacl_inference: if true, run SHACL inference on the ontology graph,
-            using the BuildingMOTIF SHACL engine, defaults to True
+        :param run_shacl_inference: forwarded to the deprecated loaders only
         :type run_shacl_inference: Optional[bool], optional
-        :return: the loaded library
+        :param fetch_imports: forwarded to the deprecated loaders only
+        :type fetch_imports: Optional[bool], optional
+        :raises LibraryNotFound: if no library has that id
+        :raises ValueError: if given no arguments, or an id *and* a deprecated
+            source keyword (which of the two was meant is ambiguous)
+        :return: the library
         :rtype: Library
-        :raises Exception: if the library cannot be loaded
         """
+        sources = {
+            "ontology_graph": ontology_graph,
+            "directory": directory,
+            "name": name,
+        }
+        given = {k: v for k, v in sources.items() if v is not None}
+
         if db_id is not None:
+            if given:
+                raise ValueError(
+                    f"Library.load() got both db_id={db_id!r} and "
+                    f"{', '.join(given)}; it loads by id. Use "
+                    "Library.from_ontology()/from_directory()/by_name() for the "
+                    "others."
+                )
             return cls._load_from_db(db_id)
-        elif ontology_graph is not None:
-            if isinstance(ontology_graph, str):
-                ontology_graph_path = ontology_graph
-                if resource_exists("buildingmotif.libraries", ontology_graph_path):
-                    logging.debug(f"Loading builtin library: {ontology_graph_path}")
-                    ontology_graph_path = resource_filename(
-                        "buildingmotif.libraries", ontology_graph_path
-                    )
-                ontology_graph = rdflib.Graph()
-                ontology_graph.parse(
-                    ontology_graph_path, format=guess_format(ontology_graph_path)
-                )
-            return cls._load_from_ontology(
+
+        if not given:
+            raise ValueError(
+                "Library.load() takes the library's database id. To load from "
+                "disk use Library.from_ontology() or Library.from_directory(); "
+                "to look one up by name use Library.by_name()."
+            )
+
+        # NB: the flags are forwarded *uncoerced*. This signature has always
+        # accepted None for them, and None was not equivalent to False:
+        # `overwrite=None` reached OntoEnv as `overwrite is not False` -> True
+        # while still taking the `if not overwrite` branch. Coercing to bool
+        # here would silently change that.
+        if ontology_graph is not None:
+            warnings.warn(
+                "Library.load(ontology_graph=...) is deprecated; use "
+                "Library.from_ontology(...).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return cls.from_ontology(
                 ontology_graph,
-                overwrite=overwrite,
-                infer_templates=infer_templates,
-                run_shacl_inference=run_shacl_inference,
+                overwrite=overwrite,  # type: ignore[arg-type]
+                infer_templates=infer_templates,  # type: ignore[arg-type]
+                run_shacl_inference=run_shacl_inference,  # type: ignore[arg-type]
+                fetch_imports=fetch_imports,
             )
-        elif directory is not None:
-            if resource_exists("buildingmotif.libraries", directory):
-                logging.debug(f"Loading builtin library: {directory}")
-                src = pathlib.Path(
-                    resource_filename("buildingmotif.libraries", directory)
-                )
-            else:
-                src = pathlib.Path(directory)
-            if not src.exists():
-                raise Exception(f"Directory {src} does not exist")
-            return cls._load_from_directory(
-                src,
-                overwrite=overwrite,
-                infer_templates=infer_templates,
-                run_shacl_inference=run_shacl_inference,
+        if directory is not None:
+            warnings.warn(
+                "Library.load(directory=...) is deprecated; use "
+                "Library.from_directory(...).",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        elif name is not None:
-            bm = get_building_motif()
-            db_library = bm.table_connection.get_db_library_by_name(name)
-            return cls(_id=db_library.id, _name=db_library.name, _bm=bm)
-        else:
-            raise Exception("No library information provided")
+            return cls.from_directory(
+                directory,
+                overwrite=overwrite,  # type: ignore[arg-type]
+                infer_templates=infer_templates,  # type: ignore[arg-type]
+                run_shacl_inference=run_shacl_inference,  # type: ignore[arg-type]
+            )
+        warnings.warn(
+            "Library.load(name=...) is deprecated; use Library.by_name(...).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.by_name(name)  # type: ignore[arg-type]
+
+    def _load_imports_and_return(
+        self,
+        closure_names: List[str],
+        infer_templates: Optional[bool] = True,
+        run_shacl_inference: Optional[bool] = True,
+    ) -> "Library":
+        self._load_imported_ontology_libraries(
+            root_name=self.name,
+            closure_names=closure_names,
+            infer_templates=False,
+            run_shacl_inference=run_shacl_inference,
+        )
+        if infer_templates:
+            self._infer_templates_for_libraries(closure_names)
+        return self
+
+    @classmethod
+    def _load_imported_ontology_libraries(
+        cls,
+        root_name: str,
+        closure_names: List[str],
+        infer_templates: Optional[bool] = True,
+        run_shacl_inference: Optional[bool] = True,
+    ) -> None:
+        bm = get_building_motif()
+        for ontology_name in closure_names:
+            if ontology_name == root_name:
+                continue
+            if cls._library_exists(ontology_name):
+                continue
+            graph = bm.ontology_environment.graph_copy(ontology_name)
+            cls._load_from_ontology(
+                graph,
+                overwrite=False,
+                infer_templates=infer_templates,
+                run_shacl_inference=False,
+            )
+
+    @classmethod
+    def _infer_templates_for_libraries(cls, library_names: List[str]) -> None:
+        inferred_library_ids = set()
+        for library_name in reversed(library_names):
+            try:
+                lib = cls.by_name(library_name)
+            except LibraryNotFound:
+                continue
+            if lib.id in inferred_library_ids:
+                continue
+            inferred_library_ids.add(lib.id)
+            if lib.get_templates():
+                continue
+            lib.get_shape_collection().infer_templates(lib)
 
     @classmethod
     def _load_from_db(cls, id: int) -> "Library":
@@ -204,10 +479,15 @@ class Library:
 
         if not overwrite:
             if cls._library_exists(ontology_name):
-                logging.warning(
-                    f'Library "{ontology_name}" already exists in database and "overwrite=False". Returning existing library.'  # noqa
+                # Returning the existing library is what overwrite=False
+                # *means*, so this is an outcome, not an anomaly -- INFO, not a
+                # warning.
+                logging.info(
+                    'Library "%s" is already loaded and overwrite=False; '
+                    "returning the existing library without reloading.",
+                    ontology_name,
                 )
-                return Library.load(name=ontology_name)
+                return Library.by_name(ontology_name)
 
         # expand the ontology graph before we insert it into the database. This will ensure
         # that the output of compiled models will not contain triples that really belong to
@@ -223,7 +503,14 @@ class Library:
         shape_col_id = lib.get_shape_collection().id
         assert shape_col_id is not None  # should always pass
         shape_col = ShapeCollection.load(shape_col_id)
-        shape_col.add_graph(ontology)
+        try:
+            shape_col.replace_graph(ontology)
+        except Exception:
+            # Copy-on-write left the previous graph untouched, so rolling back
+            # the session reverts the library rows and the newly written graph
+            # becomes an orphan reclaimed by garbage collection.
+            get_building_motif().session.rollback()
+            raise
 
         if infer_templates:
             # infer shapes from any class/nodeshape candidates in the graph
@@ -247,17 +534,39 @@ class Library:
         :param run_shacl_inference: if true, run SHACL inference on the ontology graph
         :type run_shacl_inference: bool
         """
+        bm = get_building_motif()
         shape_col_id = self.get_shape_collection().id
         assert shape_col_id is not None  # this should always pass
         shape_col = ShapeCollection.load(shape_col_id)
+        graph_id = bm.table_connection.get_db_shape_collection(shape_col_id).graph_id
         for filename in get_ontology_files(directory):
             try:
-                shape_col.graph.parse(filename, format=guess_format(filename))
+                # Oxigraph's native loader is much faster than rdflib.parse for
+                # large ontologies; it falls back to rdflib internally if needed.
+                bm.graph_connection.load_file_into_graph(
+                    graph_id, filename, guess_format(str(filename))
+                )
             except (ParserError, BadSyntax) as e:
                 logging.getLogger(__name__).error(
                     f"Could not parse file {filename}: {e}"
                 )
                 raise e
+            # Register the file with OntoEnv under its own declared name (if
+            # any), independent of the bulk load above. Directory-loaded
+            # libraries often bundle several files that only make sense
+            # merged (e.g. guideline36's per-equipment fragments have no
+            # owl:Ontology header of their own), alongside files that
+            # declare a real ontology identity and import each other or
+            # ontologies outside the directory (e.g. Brick's imports/*.ttl).
+            # Without this, those names are never known to OntoEnv, so any
+            # owl:imports referencing them - from inside or outside this
+            # directory - fails to resolve instead of finding the
+            # already-loaded content.
+            bm.ontology_environment.add(filename, fetch_imports=False, overwrite=True)
+        # Native loading does not propagate file prefixes to the rdflib
+        # namespace manager; restore the standard BuildingMOTIF prefixes so
+        # serialization stays readable.
+        bind_prefixes(shape_col.graph)
         if run_shacl_inference:
             shape_col.graph = shacl_inference(
                 shape_col.graph, engine=get_building_motif().shacl_engine
@@ -296,10 +605,12 @@ class Library:
 
         if not overwrite:
             if cls._library_exists(directory.name):
-                logging.warning(
-                    f'Library "{directory.name}" already exists in database and "overwrite=False". Returning existing library.'  # noqa
+                logging.info(
+                    'Library "%s" is already loaded and overwrite=False; '
+                    "returning the existing library without reloading.",
+                    directory.name,
                 )
-                return Library.load(name=directory.name)
+                return Library.by_name(directory.name)
 
         lib = cls.create(directory.name, overwrite=overwrite)
 
@@ -310,27 +621,30 @@ class Library:
                 continue
             lib._read_yml_file(file)
         # load shape collections from all ontology files in the directory
-        lib._load_shapes_from_directory(directory)
+        lib._load_shapes_from_directory(
+            directory,
+            infer_templates=infer_templates,
+            run_shacl_inference=run_shacl_inference,
+        )
 
         return lib
 
     @classmethod
-    def load_from_libraries_yml(cls, filename: str):
+    def load_from_libraries_yml(cls, filename: str) -> List["Library"]:
         """
         Loads *multiple* libraries from a properly-formatted 'libraries.yml'
-        file. Does not return a Library! You will need to load the libraries by
-        name in order to get the dataclasses.Library object. We recommend loading
-        libraries directly, one-by-one, in most cases. This method is here to support
-        the commandline tool.
+        file. Mostly here to support the commandline tool; for a single library
+        prefer :py:meth:`from_ontology` or :py:meth:`from_directory` directly.
 
         :param filename: the filename of the YAML file to load library names from
         :type filename: str
-        :rtype: None
+        :return: the loaded libraries, in the order the file lists them
+        :rtype: List[Library]
         """
-        libraries = yaml.load(open(filename, "r"), Loader=yaml.FullLoader)
+        with open(filename, "r") as f:
+            libraries = yaml.load(f, Loader=yaml.FullLoader)
         validate_libraries_yaml(libraries)  # raises exception
-        for description in libraries:
-            _resolve_library_definition(description)
+        return [_resolve_library_definition(desc) for desc in libraries]
 
     @staticmethod
     def _library_exists(library_name: str) -> bool:
@@ -361,7 +675,14 @@ class Library:
                 raise e
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int:
+        """The library's database id.
+
+        Never None: ``_id`` is a required field and every constructor takes it
+        from a flushed row. It was annotated ``Optional[int]``, which forced
+        callers passing it straight back to :py:meth:`by_id` to placate the
+        type checker.
+        """
         return self._id
 
     @id.setter
@@ -474,28 +795,28 @@ class Library:
         :return: template
         :rtype: Template
         """
-        dbt = self._bm.table_connection.get_db_template_by_name(name)
-        if dbt.library_id != self._id:
-            raise ValueError(f"Template {name} not in library {self._name}")
+        dbt = self._bm.table_connection.get_db_template_by_name(name, self._id)
         return Template.load(dbt.id)
 
 
-def _resolve_library_definition(desc: Dict[str, Any]):
+def _resolve_library_definition(desc: Dict[str, Any]) -> "Library":
     """
     Loads a library from a description in libraries.yml
+
+    :return: the loaded library
+    :rtype: Library
     """
     if "directory" in desc:
         spath = pathlib.Path(desc["directory"]).absolute()
-        if spath.exists() and spath.is_dir():
-            logging.info(f"Load local library {spath} (directory)")
-            Library.load(directory=str(spath))
-        else:
-            raise Exception(f"{spath} is not an existing directory")
+        if not (spath.exists() and spath.is_dir()):
+            raise FileNotFoundError(f"{spath} is not an existing directory")
+        logging.info(f"Load local library {spath} (directory)")
+        return Library.from_directory(str(spath))
     elif "ontology" in desc:
         ont = desc["ontology"]
         g = rdflib.Graph().parse(ont, format=rdflib.util.guess_format(ont))
         logging.info(f"Load library {ont} as ontology graph")
-        Library.load(ontology_graph=g)
+        return Library.from_ontology(g)
     elif "git" in desc:
         repo = desc["git"]["repo"]
         branch = desc["git"]["branch"]
@@ -507,6 +828,9 @@ def _resolve_library_definition(desc: Dict[str, Any]):
             )  # , depth=1)
             new_path = pathlib.Path(temp_loc) / pathlib.Path(path)
             if new_path.is_dir():
-                _resolve_library_definition({"directory": new_path})
-            else:
-                _resolve_library_definition({"ontology": new_path})
+                return _resolve_library_definition({"directory": new_path})
+            return _resolve_library_definition({"ontology": new_path})
+    raise ValueError(
+        "a libraries.yml entry needs one of 'directory', 'ontology', or 'git'; "
+        f"got {sorted(desc)}"
+    )

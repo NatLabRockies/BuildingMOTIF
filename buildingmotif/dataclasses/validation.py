@@ -120,9 +120,74 @@ class OrShape(GraphDiff):
 
     shapes: Tuple[URIRef]
 
+    def _describe(self, shape: Node) -> str:
+        """A readable label for one branch of the ``sh:or``.
+
+        Branches are usually blank nodes -- an ``sh:or`` list is written inline
+        far more often than it references named shapes -- so printing the term
+        yields an opaque identifier. Fall back to describing what the branch
+        actually constrains.
+        """
+        if isinstance(shape, URIRef):
+            try:
+                return self.graph.qname(str(shape))
+            except Exception:
+                return str(shape)
+        constraints = []
+        for prop in self.graph.objects(shape, SH.property):
+            path = self.graph.value(prop, SH.path)
+            if path is not None:
+                try:
+                    constraints.append(self.graph.qname(str(path)))
+                except Exception:
+                    constraints.append(str(path))
+        for key in (SH["class"], SH.node, SH.datatype):
+            for value in self.graph.objects(shape, key):
+                try:
+                    constraints.append(self.graph.qname(str(value)))
+                except Exception:
+                    constraints.append(str(value))
+        if constraints:
+            return f"[{', '.join(sorted(constraints))}]"
+        return "an unnamed shape"
+
     def reason(self) -> str:
         """Human-readable explanation of this GraphDiff."""
-        return f"{self.focus} needs to match one of the following shapes: {', '.join(self.shapes)}"
+        described = ", ".join(self._describe(s) for s in self.shapes)
+        return f"{self.focus} needs to match one of the following shapes: {described}"
+
+    def resolve(self, lib: "Library") -> List["Template"]:
+        """No templates: a disjunction has no single repair.
+
+        This is deliberate, not an omission. The legacy repair contract is that
+        every template ``resolve()`` returns for a focus node gets **joined**
+        into one template by
+        :func:`merge_templates_for_focus` -- a conjunction. Emitting one
+        template per ``sh:or`` branch would therefore build a repair that
+        satisfies *every* alternative at once: for
+        ``sh:or ( ElectricMeterShape GasMeterShape )`` it would assert that the
+        meter is both, inventing metadata that is false of the building.
+        Picking one branch arbitrarily is no better -- nothing in the shape says
+        which one is true here.
+
+        Returning nothing keeps :meth:`ValidationContext.as_templates` working
+        for the *other* failures in the same report. Before this, an
+        unimplemented ``resolve()`` raised ``NotImplementedError`` and lost
+        every repair in the report, not just this one.
+
+        To actually repair a disjunction, use the ``pyshifty`` engine: it models
+        ``sh:or`` as an ``Any`` node in the repair tree and enumerates the
+        branches as *separate*, individually soundness-gated proposals -- the
+        menu of alternatives this API has no way to express. See
+        :meth:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext.all_repair_templates`
+        and :meth:`~buildingmotif.dataclasses.algebraic_validation.RepairWitness.proposals`.
+
+        :param lib: unused; kept for the :class:`GraphDiff` interface
+        :type lib: Library
+        :return: an empty list
+        :rtype: List[Template]
+        """
+        return []
 
     @classmethod
     def from_validation_report(cls, report: Graph) -> List["OrShape"]:
@@ -491,6 +556,13 @@ class ValidationContext:
     report_string: str
     model: "Model"
 
+    @property
+    def conforms(self) -> bool:
+        """Alias of :py:attr:`valid`, matching SHACL's own vocabulary and
+        :py:class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`.
+        """
+        return self.valid
+
     @cached_property
     def diffset(self) -> Dict[Optional[URIRef], Set[GraphDiff]]:
         """The unordered set of GraphDiffs produced from interpreting the input
@@ -507,19 +579,23 @@ class ValidationContext:
         """
         return diffset_to_templates(self.diffset)
 
-    def get_broken_entities(self) -> Set[URIRef]:
+    def get_broken_entities(self) -> Set[Union[URIRef, str]]:
         """Get the set of entities that are broken in the model.
 
+        Model-level failures (those with no focus node) are reported as the
+        string ``"Model"``.
+
         :return: set of entities that are broken
-        :rtype: Set[URIRef]
+        :rtype: Set[Union[URIRef, str]]
         """
         return {diff or "Model" for diff in self.diffset}
 
-    def get_diffs_for_entity(self, entity: URIRef) -> Set[GraphDiff]:
+    def get_diffs_for_entity(self, entity: Optional[URIRef]) -> Set[GraphDiff]:
         """Get the set of diffs for a specific entity.
 
-        :param entity: the entity to get diffs for
-        :type entity: URIRef
+        :param entity: the entity to get diffs for, or None for the model-level
+            failures (those with no focus node)
+        :type entity: Optional[URIRef]
         :return: set of diffs for the entity
         :rtype: Set[GraphDiff]
         """
@@ -713,31 +789,59 @@ def diffset_to_templates(
 
         templ_lists = (diff.resolve(lib) for diff in diffset)
         templs: List[Template] = list(filter(None, chain.from_iterable(templ_lists)))
-        if len(templs) <= 1:
-            templates.extend(templs)
-            continue
-        base = templs[0]
-        # treat all the other templates as dependencies of the first one.
-        # This allows us to do a "join" with inline_dependencies() which
-        # will ensure that there are no unintended overlaps in the choice
-        # of parameter name
-        for templ in templs[1:]:
-            # if there is a 'name' in the parameter list, join on that name.
-            # otherwise, just append the body
-            # (we don't need to use use to_inline() to ensure uniqueness of parameters
-            # because all params are created with _gensym() which ensures uniqueness)
-            if "name" in templ.parameters:
-                base.add_dependency(templ, {"name": "name"})
-            else:
-                base.body += templ.body
-        unified = base.inline_dependencies()
-        # only try to evaluate if there are parameters, else this will fail.
-        # We may not have parameters if the GraphDiffs have all the information
-        # they need to patch the graph and don't need user input
-        if len(unified.parameters) > 0:
-            unified_evaluated = unified.evaluate({"name": focus})
-        else:
-            unified_evaluated = unified
-        assert isinstance(unified_evaluated, Template)
-        templates.append(unified_evaluated)
+        templates.extend(merge_templates_for_focus(focus, templs))
     return templates
+
+
+def merge_templates_for_focus(
+    focus: Optional[URIRef], templs: List["Template"]
+) -> List["Template"]:
+    """Merge a list of templates that all target a single focus node into a
+    single template by joining them on the shared ``name`` parameter.
+
+    This is the per-focus "join" used both by :func:`diffset_to_templates` (the
+    legacy GraphDiff path) and by the algebraic repair path
+    (:mod:`buildingmotif.dataclasses.algebraic_validation`), so the merge
+    semantics stay in one place.
+
+    :param focus: the focus node the templates resolve, or None for graph-level
+        templates that should not be bound to a focus
+    :type focus: Optional[URIRef]
+    :param templs: the templates to merge
+    :type templs: List[Template]
+    :return: a list containing the merged template (or the originals if there is
+        nothing to merge)
+    :rtype: List[Template]
+    """
+    templs = list(filter(None, templs))
+    if len(templs) <= 1:
+        return templs
+    base = templs[0]
+    # treat all the other templates as dependencies of the first one.
+    # This allows us to do a "join" with inline_dependencies() which
+    # will ensure that there are no unintended overlaps in the choice
+    # of parameter name
+    for templ in templs[1:]:
+        # if there is a 'name' in the parameter list, join on that name.
+        # otherwise, just append the body
+        # (we don't need to use use to_inline() to ensure uniqueness of parameters
+        # because all params are created with _gensym() which ensures uniqueness)
+        if "name" in templ.parameters:
+            base.add_dependency(templ, {"name": "name"})
+        else:
+            base.body += templ.body
+    unified = base.inline_dependencies()
+    # Anchor the merged repair at the concrete focus node when we have one, by
+    # substituting the shared ``name`` parameter for it and leaving every other
+    # parameter free for the caller to fill. We do this with a node replacement
+    # rather than ``evaluate({"name": focus})`` so the result is *always* a
+    # Template: if ``name`` were the only parameter, ``evaluate`` would fully
+    # bind and hand back a bare Graph (which the old code then tripped over with
+    # ``assert isinstance(..., Template)``). When there is no focus (a
+    # graph-level repair) or no ``name`` parameter -- e.g. the algebraic repair
+    # path, which bakes the focus in as a concrete term already -- the template
+    # is returned unchanged.
+    if focus is not None and "name" in unified.parameters:
+        unified = unified.in_memory_copy()
+        replace_nodes(unified.body, {PARAM["name"]: focus})
+    return [unified]

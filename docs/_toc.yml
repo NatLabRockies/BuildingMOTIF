@@ -15,14 +15,17 @@ parts:
   - file: tutorials/model_creation.md
   - file: tutorials/model_validation.md
   - file: tutorials/model_correction.md
+  - file: tutorials/pyshifty_validation_repair.md
   - file: tutorials/template_writing.ipynb
 - caption: Guides
   chapters:
   - file: guides/csv-import.md
   - file: guides/ingress-bacnet-to-brick.md
   - file: guides/generating-queries.md
+  - file: guides/agent-skill.md
 - caption: Explainations
   chapters:
+  - file: explanations/storage-architecture.md
   - file: explanations/ingresses.md
   - file: explanations/templates.md
   - file: explanations/shapes-and-templates.md

@@ -1,6 +1,7 @@
 # Templates
 
-Templates are functions which generate RDF graphs.
+Templates are reusable RDF graph fragments with named parameters. Bind values
+with `substitute()` and call `to_graph()` once the required parameters are set.
 
 ## How to Define Templates
 
@@ -15,7 +16,7 @@ A YAML template has several components:
 - a template *may* have a **dependencies** key, whose value is a list of dependency dictionaries (see below for details on dependencies)
 
 The **body** of a template is an RDF graph. Parameters are nodes/edges in the graph which exist in the `urn:___param___#` namespace (this can be bound to any prefix, but is commonly bound to `P` or `p`).
-When a template is [evaluated](template-eval), the parameters are replaced with the provided bindings.
+When a template is filled, its parameters are replaced with the provided bindings.
 The parameters of a template are exactly those which appear in the RDF Graph body.
 
 The other elements of a template's definition -- `optional`, `dependencies`, etc -- refer to the name of a parameter *without* the `urn:___param___#` prefix.
@@ -62,11 +63,11 @@ damper:
 ### SHACL Shapes
 
 BuildingMOTIF can also infer a template from certain SHACL shape definitions.
-This happens when a Library is loaded into BuildingMOTIF that contains an RDF graph; this can happen by loading the RDF graph directly (via `Library.load(ontology_graph="path to graph")`)
-or by loading in a directory that contains RDF graphs (via `Library.load(directory="directory with .ttl files")`).
+This happens when a Library is loaded into BuildingMOTIF that contains an RDF graph; this can happen by loading the RDF graph directly (via `Library.from_ontology("path to graph")`)
+or by loading in a directory that contains RDF graphs (via `Library.from_directory("directory with .ttl files")`).
 
 Given an RDF graph, BuildingMOTIF will create a template for each instance of `sh:NodeShape` *provided* that it is also an instance of `owl:Class`.
-In the following RDF graph, BuildingMOTIF would create a tempalte for `vav_shape` but not `sensor_shape`:
+In the following RDF graph, BuildingMOTIF would create a template for `vav_shape` but not `sensor_shape`:
 
 ```ttl
 @prefix brick: <https://brickschema.org/schema/Brick#> .
@@ -95,15 +96,15 @@ In the following RDF graph, BuildingMOTIF would create a tempalte for `vav_shape
 
 BuildingMOTIF will create a `name` parameter for the shape automatically. It will create a parameter for each Property Shape on the input Node Shape if
 that Property Shape has one of `sh:class`, `sh:node` or `sh:datatype` inside; use of `sh:qualifiedValueShape` is permitted.
-Only Property Shapes with a `sh:minCount` or `sh:qualifiedMinCount` greater than 1 will be included.
+Only Property Shapes with a `sh:minCount` or `sh:qualifiedMinCount` greater than 0 will be included.
 If the Property Shape contains a `sh:name` parameter, the string value of `sh:name` will be used as the name of the parameter; otherwise, BuildingMOTIF 
-ll invent a new name (`P:pX` where *X* is an incrementing integer).
+will invent a new name (`P:pX` where *X* is an incrementing integer).
 
 The name of the template is the IRI of the SHACL Node Shape.
 
 ## Template Dependencies
 
-Dependencies between templates can be done explicitly (for YAML-based templates) or implicitly (for SHACL-based templates).
+Dependencies can be declared explicitly in YAML or inferred from SHACL shapes.
 
 **Remember to load libraries containing dependencies before loading in libraries containing the dependents**.
 For example, it is generally recommended to import your base ontologies (Brick, ASHRAE 223P, etc) before any application libraries, as the application libraries will depend on concepts defined in the ontologies.
@@ -113,7 +114,7 @@ For example, it is generally recommended to import your base ontologies (Brick, 
 A template dependency is a dictionary with the following keys:
 - `template` (required): the name of the template
 - `library` (optional): the name of the Library from which to load the template
-- `args` (required): a key-value dictionary mapping the dependency parameter names to this template's (the depndent's) parameter names. Values bound to the dependent's parameter will also be bound to the dependency's corresponding parameter; we call this "binding" the dependent's parameter to the dependency's parameter
+- `args` (required): a dictionary mapping a dependency's parameter names to this template's parameter names. A value bound to the local parameter is also bound to the matching dependency parameter.
 
 When depending on another template, it is not necessary to bind all of the parameters.
 This affects how [inlining](template-inline) works.

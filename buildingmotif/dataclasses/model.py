@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import warnings
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, List, Optional
 
@@ -8,12 +9,15 @@ import rfc3987
 
 from buildingmotif import get_building_motif
 from buildingmotif.dataclasses.shape_collection import ShapeCollection
-from buildingmotif.dataclasses.validation import ValidationContext
-from buildingmotif.utils import Triple, copy_graph, shacl_inference, skolemize_shapes
+from buildingmotif.dataclasses.validation_result import ValidationResult
+from buildingmotif.shacl import get_shacl_backend
+from buildingmotif.utils import Triple
 
 if TYPE_CHECKING:
     from buildingmotif import BuildingMOTIF
+    from buildingmotif.dataclasses.algebraic_validation import RepairConfig
     from buildingmotif.dataclasses.compiled_model import CompiledModel
+    from buildingmotif.dataclasses.library import Library
 
 
 def _validate_uri(uri: str):
@@ -31,27 +35,59 @@ class Model:
     _id: int
     _name: str
     _description: str
-    _graph: rdflib.Graph
-    _bm: "BuildingMOTIF"
+    _graph: rdflib.Graph = field(compare=False)
+    _bm: "BuildingMOTIF" = field(compare=False)
     _manifest_id: int
 
     @classmethod
-    def create(cls, name: str, description: str = "") -> "Model":
+    def create(
+        cls,
+        uri: Optional[str] = None,
+        description: str = "",
+        *,
+        name: Optional[str] = None,
+    ) -> "Model":
         """Create a new model.
 
-        :param name: new model name
-        :type name: str
+        :param uri: the model's URI. This becomes the subject of the model's
+            ``owl:Ontology`` declaration and the namespace its entities live in,
+            so it must be a syntactically valid URI -- typically an
+            ``rdflib.Namespace`` such as ``Namespace("urn:bldg/")``.
+        :type uri: str
         :param description: new model description
         :type description: str
+        :param name: **deprecated** spelling of ``uri``. The parameter was
+            called ``name`` even though it is validated as a URI, becomes the
+            ontology's subject, and is what every tutorial passes a Namespace
+            to -- which is why issue #339 asks for a constructor that already
+            exists (:py:meth:`from_file`).
+        :type name: Optional[str]
+        :raises TypeError: if both ``uri`` and ``name`` are given, or neither
         :return: new model
         :rtype: Model
         """
-        _validate_uri(name)
+        if name is not None:
+            if uri is not None:
+                raise TypeError(
+                    "Model.create() got both uri and name; they are the same "
+                    "argument -- use uri"
+                )
+            warnings.warn(
+                "Model.create(name=...) is deprecated; the argument is the "
+                "model's URI, so it is called uri now.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            uri = name
+        if uri is None:
+            raise TypeError("Model.create() missing required argument 'uri'")
+
+        _validate_uri(uri)
         g = rdflib.Graph()
-        g.add((rdflib.URIRef(name), rdflib.RDF.type, rdflib.OWL.Ontology))
+        g.add((rdflib.URIRef(uri), rdflib.RDF.type, rdflib.OWL.Ontology))
         if description:
             g.add(
-                (rdflib.URIRef(name), rdflib.RDFS.comment, rdflib.Literal(description))
+                (rdflib.URIRef(uri), rdflib.RDFS.comment, rdflib.Literal(description))
             )
         return cls.from_graph(g)
 
@@ -116,7 +152,7 @@ class Model:
         :type id: Optional[int], optional
         :param name: model name, defaults to None
         :type name: Optional[str], optional
-        :raises Exception: if neither id nor name provided
+        :raises ValueError: if neither id nor name provided
         :return: model
         :rtype: Model
         """
@@ -126,7 +162,7 @@ class Model:
         elif name is not None:
             db_model = bm.table_connection.get_db_model_by_name(name)
         else:
-            raise Exception("Neither id nor name provided to load Model")
+            raise ValueError("Model.load() needs either id or name")
         graph = bm.graph_connection.get_graph(db_model.graph_id)
 
         return cls(
@@ -185,12 +221,31 @@ class Model:
         """
         self.graph += graph
 
+    def replace_graph(self, graph: rdflib.Graph) -> None:
+        """Atomically replace this Model's contents with ``graph``.
+
+        Uses copy-on-write: ``graph`` is written to a fresh named graph and the
+        stored pointer is flipped to it, so a failure or session rollback
+        leaves the previous contents intact. The old graph becomes an orphan
+        reclaimed by :py:meth:`BuildingMOTIF.collect_graph_garbage`.
+
+        :param graph: the new contents of the model
+        :type graph: rdflib.Graph
+        """
+        new_id, view = self._bm.graph_connection.replace_graph_contents(graph)
+        self._bm.table_connection.update_db_model_graph_id(self._id, new_id)
+        self._graph = view
+        # invalidate the cached `graph` property so it returns the new view
+        self.__dict__.pop("graph", None)
+
     def validate(
         self,
         shape_collections: Optional[List[ShapeCollection]] = None,
         error_on_missing_imports: bool = True,
         shacl_engine: Optional[str] = None,
-    ) -> "ValidationContext":
+        repair_libraries: Optional[List["Library"]] = None,
+        repair_config: Optional["RepairConfig"] = None,
+    ) -> ValidationResult:
         """Validates this model against the given list of ShapeCollections.
         If no list is provided, the model will be validated against the model's "manifest".
         If a list of shape collections is provided, the manifest will *not* be automatically
@@ -211,14 +266,38 @@ class Model:
         :param shacl_engine: the SHACL engine to use for validation, defaults to whatever
             is set in the BuildingMOTIF object
         :type shacl_engine: str, optional
+        :param repair_libraries: libraries whose templates seed template-guided,
+            soundness-gated repair (only used by the ``pyshifty`` engine, which
+            returns an
+            :class:`~buildingmotif.dataclasses.algebraic_validation.AlgebraicValidationContext`).
+            Defaults to no template guidance.
+        :type repair_libraries: Optional[List[Library]]
+        :param repair_config: search budgets for template-guided repair -- how many
+            templates, ``Any`` branches, synthesis recursion, and per-hole candidates
+            to try (only used by the ``pyshifty`` engine). Defaults to
+            :class:`~buildingmotif.dataclasses.algebraic_validation.RepairConfig`.
+        :type repair_config: Optional[RepairConfig]
 
-        :rtype: ValidationContext
+        :return: An object containing useful properties/methods to deal with the
+            validation results. Both engines' return values satisfy
+            :class:`~buildingmotif.dataclasses.validation_result.ValidationResult`,
+            so code that only reads failures need not care which one it got.
+        :rtype: ValidationResult
         """
-        compiled_model = self.compile(shape_collections or [self.get_manifest()])
-        return compiled_model.validate(error_on_missing_imports)
+        compiled_model = self.compile(
+            shape_collections or [self.get_manifest()], shacl_engine=shacl_engine
+        )
+        return compiled_model.validate(
+            error_on_missing_imports,
+            shacl_engine,
+            repair_libraries=repair_libraries,
+            repair_config=repair_config,
+        )
 
     def compile(
-        self, shape_collections: Optional[List["ShapeCollection"]] = None
+        self,
+        shape_collections: Optional[List["ShapeCollection"]] = None,
+        shacl_engine: Optional[str] = None,
     ) -> "CompiledModel":
         """Compile the graph of a model against a set of ShapeCollections.
 
@@ -234,20 +313,16 @@ class Model:
         """
         from buildingmotif.dataclasses.compiled_model import CompiledModel
 
-        ontology_graph = rdflib.Graph()
         if shape_collections is None:
             shape_collections = [self.get_manifest()]
-        for shape_collection in shape_collections:
-            ontology_graph += shape_collection.graph
-
-        ontology_graph = skolemize_shapes(ontology_graph)
-
-        model_graph = copy_graph(self.graph).skolemize()
-
-        compiled_graph = shacl_inference(
-            model_graph, ontology_graph, engine=self._bm.shacl_engine
+        backend = get_shacl_backend(shacl_engine or self._bm.shacl_engine)
+        compiled_graph = backend.compile_model_graph(self.graph, shape_collections)
+        return CompiledModel(
+            self,
+            shape_collections,
+            compiled_graph,
+            shacl_engine=shacl_engine,
         )
-        return CompiledModel(self, shape_collections, compiled_graph)
 
     def get_manifest(self) -> ShapeCollection:
         """Get ShapeCollection from model.
@@ -257,11 +332,45 @@ class Model:
         """
         return ShapeCollection.load(self._manifest_id)
 
-    def update_manifest(self, manifest: ShapeCollection):
-        """Updates the manifest for this model by adding in the contents
-        of the shape graph inside the provided SHapeCollection
+    def add_to_manifest(self, manifest: ShapeCollection) -> None:
+        """Add the shapes in ``manifest`` to this model's manifest.
 
-        :param manifest: the ShapeCollection containing additional shapes against which to validate this model
+        This *merges*: existing shapes are kept. Use
+        :py:meth:`replace_manifest` to swap the manifest's contents wholesale.
+
+        :param manifest: a ShapeCollection whose shapes should also apply to
+            this model
         :type manifest: ShapeCollection
         """
         self.get_manifest().graph += manifest.graph
+
+    def replace_manifest(self, manifest: ShapeCollection) -> None:
+        """Replace this model's manifest with the contents of ``manifest``.
+
+        There was previously no way to do this through the public API --
+        ``update_manifest`` only ever merged, so a manifest could grow but never
+        shrink. Uses the ShapeCollection's copy-on-write replacement, so a
+        failure leaves the previous contents intact.
+
+        :param manifest: the ShapeCollection whose shapes become this model's
+            entire manifest
+        :type manifest: ShapeCollection
+        """
+        self.get_manifest().replace_graph(manifest.graph)
+
+    def update_manifest(self, manifest: ShapeCollection) -> None:
+        """Add the shapes in ``manifest`` to this model's manifest.
+
+        .. deprecated::
+            The name says "update" but the behavior is a merge, and there was no
+            counterpart that actually replaced. Use :py:meth:`add_to_manifest`,
+            or :py:meth:`replace_manifest` if you want the wholesale swap the
+            old name implied.
+        """
+        warnings.warn(
+            "Model.update_manifest() merges rather than updates; use "
+            "add_to_manifest() (same behavior) or replace_manifest().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add_to_manifest(manifest)

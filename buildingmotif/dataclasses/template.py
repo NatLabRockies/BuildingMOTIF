@@ -3,7 +3,7 @@ import logging
 import warnings
 from collections import Counter
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO, StringIO
 from itertools import chain
 from os import PathLike
@@ -42,15 +42,31 @@ if TYPE_CHECKING:
     from buildingmotif.dataclasses.library import Library
 
 
+class IncompleteTemplateError(ValueError):
+    """Raised by :py:meth:`Template.to_graph` when parameters are still unbound.
+
+    Subclasses ``ValueError`` so existing ``except ValueError`` handlers around
+    template evaluation keep working.
+    """
+
+    def __init__(self, template_name: str, missing: Set[str]):
+        self.template_name = template_name
+        self.missing = set(missing)
+        super().__init__(
+            f"Template '{template_name}' cannot be turned into a graph: "
+            f"unbound parameter(s) {', '.join(sorted(self.missing))}"
+        )
+
+
 @dataclass
 class Template:
     """This class mirrors :py:class`database.tables.DBTemplate`."""
 
     _id: int
     _name: str
-    body: rdflib.Graph
+    body: rdflib.Graph = field(compare=False)
     optional_args: List[str]
-    _bm: "BuildingMOTIF"
+    _bm: "BuildingMOTIF" = field(compare=False)
 
     @classmethod
     def load(cls, id: int) -> "Template":
@@ -143,21 +159,105 @@ class Template:
         :type args: Dict[str, str]
         """
 
-    def add_dependency(self, *args, **kwargs):
-        total_args = len(args) + len(kwargs)
-        if total_args == 2:
-            dependency: "Template" = kwargs.get("dependency", args[0])
-            args: Dict[str, str] = kwargs.get("args", args[1])
-            self._bm.table_connection.add_template_dependency_preliminary(
-                self.id, dependency.defining_library.name, dependency.name, args
+    def add_dependency(self, *args, **kwargs) -> None:
+        """Add a dependency on another template.
+
+        ``add_dependency(dependency: Template, args: Dict[str, str])``
+
+        The three-argument form
+        ``add_dependency(dependency_library, dependency_template, args)`` still
+        works but is deprecated; use :py:meth:`add_dependency_by_name`.
+
+        This used to dispatch on ``len(args) + len(kwargs)`` being exactly 2 or
+        3, with no ``else``, so a call with any other number of arguments
+        **silently did nothing** and the dependency was simply never created.
+        The keyword form its own overloads documented -- ``add_dependency(
+        dependency=t, args={...})`` -- raised ``IndexError`` instead, because
+        the default in ``kwargs.get("dependency", args[0])`` is evaluated
+        eagerly and ``args`` is empty. Both now raise ``TypeError``, or work.
+
+        :raises TypeError: on an unknown keyword, a duplicate value, a missing
+            argument, or too many positional arguments
+        """
+        allowed = {"dependency", "dependency_library", "dependency_template", "args"}
+        unexpected = set(kwargs) - allowed
+        if unexpected:
+            raise TypeError(
+                "add_dependency() got an unexpected keyword argument "
+                f"{sorted(unexpected)}"
             )
-        elif total_args == 3:
-            dependency_library: str = kwargs.get("dependency_library", args[0])
-            dependency_template: str = kwargs.get("dependency_template", args[1])
-            args: Dict[str, str] = kwargs.get("args", args[2])
-            self._bm.table_connection.add_template_dependency_preliminary(
-                self.id, dependency_library, dependency_template, args
+
+        by_name = (
+            "dependency_library" in kwargs
+            or "dependency_template" in kwargs
+            or len(args) == 3
+        )
+        names = (
+            ("dependency_library", "dependency_template", "args")
+            if by_name
+            else ("dependency", "args")
+        )
+
+        if len(args) > len(names):
+            raise TypeError(
+                f"add_dependency() takes at most {len(names)} positional "
+                f"arguments but {len(args)} were given"
             )
+        bound: Dict[str, object] = {}
+        for index, name in enumerate(names):
+            if index < len(args):
+                if name in kwargs:
+                    raise TypeError(
+                        f"add_dependency() got multiple values for argument '{name}'"
+                    )
+                bound[name] = args[index]
+            elif name in kwargs:
+                bound[name] = kwargs[name]
+            else:
+                raise TypeError(f"add_dependency() missing required argument '{name}'")
+
+        dep_args: Dict[str, str] = bound["args"]  # type: ignore[assignment]
+        if by_name:
+            warnings.warn(
+                "add_dependency(dependency_library, dependency_template, args) "
+                "is deprecated; use add_dependency_by_name(...).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.add_dependency_by_name(
+                bound["dependency_library"],  # type: ignore[arg-type]
+                bound["dependency_template"],  # type: ignore[arg-type]
+                dep_args,
+            )
+            return
+
+        dependency: "Template" = bound["dependency"]  # type: ignore[assignment]
+        self.add_dependency_by_name(
+            dependency.defining_library.name, dependency.name, dep_args
+        )
+
+    def add_dependency_by_name(
+        self,
+        dependency_library: str,
+        dependency_template: str,
+        args: Dict[str, str],
+    ) -> None:
+        """Add a dependency on a template named in another library.
+
+        Use this when the dependency is not loaded (or not loadable) as a
+        :class:`Template` object; otherwise prefer
+        :py:meth:`add_dependency`, which reads the names off the template.
+
+        :param dependency_library: name of the library containing the dependency
+        :type dependency_library: str
+        :param dependency_template: name of the dependency template
+        :type dependency_template: str
+        :param args: maps the *dependency's* parameter names to this template's
+        :type args: Dict[str, str]
+        """
+        self._bm.table_connection.add_template_dependency_preliminary(
+            self.id, dependency_library, dependency_template, args
+        )
 
     def check_dependencies(self):
         """
@@ -180,31 +280,12 @@ class Template:
         self._bm.table_connection.delete_template_dependency(self.id, dependency.id)
 
     @property
-    def all_parameters(self, error_on_missing_dependency: bool = True) -> Set[str]:
-        """The set of all parameters used in this template *including* its
-        dependencies. Includes optional parameters.
-
-        :param error_on_missing_dependency: Raise an erorr if a template has a missing depedency
-        :type error_on_missing_dependency: bool
-        :return: set of parameters *with* dependencies
-        :rtype: Set[str]
-        """
-        # handle local parameters first
-        params = set(self.parameters)
-
-        # then handle dependencies
-        for dep in self.get_dependencies():
-            if dep.template is None:
-                if error_on_missing_dependency:
-                    raise TemplateNotFound(name=dep.dependency_template_name)
-                continue
-            params.update(dep.template.parameters)
-        return params
-
-    @property
     def parameters(self) -> Set[str]:
         """The set of all parameters used in this template *excluding* its
         dependencies. Includes optional parameters.
+
+        For the parameters a template's dependencies contribute, see
+        :py:meth:`parameters_with_dependencies`.
 
         :return: set of parameters *without* dependencies
         :rtype: Set[str]
@@ -214,34 +295,142 @@ class Template:
         params = {str(p)[len(PARAM) :] for p in nodes if str(p).startswith(PARAM)}
         return params
 
-    @property
-    def dependency_parameters(
-        self, error_on_missing_dependency: bool = True
+    def parameters_with_dependencies(
+        self,
+        transitive: bool = True,
+        renamed: bool = True,
+        include_self: bool = True,
+        error_on_missing_dependency: bool = True,
     ) -> Set[str]:
-        """The set of all parameters used in this template's dependencies, including
-        optional parameters.
+        """The parameters of this template and its dependencies.
 
-        :param error_on_missing_dependency: Raise an erorr if a template has a missing depedency
+        This is the single entry point for every "parameters including
+        dependencies" question. The template's *own* parameters are
+        :py:attr:`parameters`; everything below is about how far down the
+        dependency chain to look and which names to report.
+
+        The three combinations that had their own names before:
+
+        - ``transitive=False, renamed=False`` -- the old ``all_parameters``
+        - ``transitive=False, renamed=False, include_self=False`` -- the old
+          ``dependency_parameters``
+        - the defaults -- the old ``transitive_parameters``
+
+        :param transitive: if True (default), recurse through the whole
+            dependency chain; if False, look only at direct dependencies
+        :type transitive: bool
+        :param renamed: if True (default), report the names each parameter will
+            have *after inlining* -- a dependency's parameter is reported under
+            the name this template's ``args`` bind it to, or prefixed with the
+            dependency's ``name`` binding when ``args`` does not mention it. If
+            False, report dependencies' parameters under their own local names.
+            ``renamed=True`` is what you want to know "what will I have to bind
+            after :py:meth:`inline_dependencies`"; ``renamed=False`` tells you
+            what the dependency templates call things.
+        :type renamed: bool
+        :param include_self: if True (default), include this template's own
+            parameters; if False, report only what the dependencies contribute.
+            Note this is *not* the same as subtracting :py:attr:`parameters`,
+            because a dependency may legitimately use a parameter name this
+            template also uses.
+        :type include_self: bool
+        :param error_on_missing_dependency: if True (default), raise when a
+            dependency cannot be resolved; if False, skip it
         :type error_on_missing_dependency: bool
-        :return: set of parameters used in dependencies
+        :raises TemplateNotFound: if a dependency is unresolvable and
+            ``error_on_missing_dependency`` is True
+        :return: the set of parameter names
         :rtype: Set[str]
         """
-        params: Set[str] = set()
+        params: Set[str] = set(self.parameters) if include_self else set()
+
         for dep in self.get_dependencies():
             if dep.template is None:
                 if error_on_missing_dependency:
                     raise TemplateNotFound(name=dep.dependency_template_name)
                 continue
-            params = params.union(dep.template.parameters)
+            if transitive:
+                dep_params = dep.template.parameters_with_dependencies(
+                    transitive=True,
+                    renamed=renamed,
+                    include_self=True,
+                    error_on_missing_dependency=error_on_missing_dependency,
+                )
+            else:
+                dep_params = set(dep.template.parameters)
+
+            if not renamed:
+                params.update(dep_params)
+                continue
+
+            # Report each dependency parameter under the name it will carry once
+            # inlined: the name `args` binds it to, or -- for parameters `args`
+            # does not mention -- the dependency's `name` binding as a prefix.
+            # This mirrors the renaming inline_dependencies() performs.
+            rename: Dict[str, str] = dict(dep.args)
+            name_prefix = dep.args.get("name")
+            for param in dep_params:
+                if param not in dep.args and param != "name":
+                    rename[param] = f"{name_prefix}-{param}"
+            params.update(rename.values())
         return params
 
     @property
-    def parameter_counts(self, error_on_missing_dependency: bool = True) -> Counter:
-        """An addressable histogram of the parameter name counts in this
-        template and all of its transitive dependencies.
+    def all_parameters(self) -> Set[str]:
+        """This template's parameters plus those of its *direct* dependencies,
+        under the dependencies' own names.
 
-        :param error_on_missing_dependency: Raise an erorr if a template has a missing depedency
-        :type error_on_missing_dependency: bool
+        .. deprecated::
+            Use ``parameters_with_dependencies(transitive=False, renamed=False)``,
+            which says which of the three axes it means. See
+            :py:meth:`parameters_with_dependencies`.
+
+        :return: set of parameters *with* dependencies
+        :rtype: Set[str]
+        """
+        warnings.warn(
+            "Template.all_parameters is deprecated; use "
+            "Template.parameters_with_dependencies(transitive=False, renamed=False).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameters_with_dependencies(transitive=False, renamed=False)
+
+    @property
+    def dependency_parameters(self) -> Set[str]:
+        """The parameters of this template's *direct* dependencies, under the
+        dependencies' own names, excluding this template's own.
+
+        .. deprecated::
+            Use
+            ``parameters_with_dependencies(transitive=False, renamed=False, include_self=False)``.
+            See :py:meth:`parameters_with_dependencies`.
+
+        :return: set of parameters used in dependencies
+        :rtype: Set[str]
+        """
+        warnings.warn(
+            "Template.dependency_parameters is deprecated; use "
+            "Template.parameters_with_dependencies(transitive=False, renamed=False, "
+            "include_self=False).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameters_with_dependencies(
+            transitive=False, renamed=False, include_self=False
+        )
+
+    @property
+    def parameter_counts(self) -> Counter:
+        """An addressable histogram of the parameter name counts in this
+        template and all of its transitive dependencies, under the
+        dependencies' own names.
+
+        Counts how often each name is *used* across the chain, which
+        :py:meth:`parameters_with_dependencies` cannot tell you because it
+        returns a set. Raises :py:class:`TemplateNotFound` on an unresolvable
+        dependency.
+
         :return: count of parameters
         :rtype: Counter
         """
@@ -249,9 +438,7 @@ class Template:
         counts.update(self.parameters)
         for dep in self.get_dependencies():
             if dep.template is None:
-                if error_on_missing_dependency:
-                    raise TemplateNotFound(name=dep.dependency_template_name)
-                continue
+                raise TemplateNotFound(name=dep.dependency_template_name)
             counts.update(dep.template.parameter_counts)
         return counts
 
@@ -300,25 +487,23 @@ class Template:
 
     @property
     def transitive_parameters(self) -> Set[str]:
-        """Get all parameters used in this template and its dependencies.
+        """Every parameter in this template and its whole dependency chain,
+        under the names they will carry after inlining.
+
+        .. deprecated::
+            Use ``parameters_with_dependencies()`` -- these are its defaults.
+            See :py:meth:`parameters_with_dependencies`.
 
         :return: set of all parameters
         :rtype: Set[str]
         """
-        params = set(self.parameters)
-        for dep in self.get_dependencies():
-            if dep.template is None:
-                raise TemplateNotFound(name=dep.dependency_template_name)
-            transitive_params = dep.template.transitive_parameters
-            rename_params: Dict[str, str] = {
-                ours: theirs for ours, theirs in dep.args.items()
-            }
-            name_prefix = dep.args.get("name")
-            for param in transitive_params:
-                if param not in dep.args and param != "name":
-                    rename_params[param] = f"{name_prefix}-{param}"
-            params.update(rename_params.values())
-        return params
+        warnings.warn(
+            "Template.transitive_parameters is deprecated; use "
+            "Template.parameters_with_dependencies() (these are its defaults).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameters_with_dependencies()
 
     def inline_dependencies(self) -> "Template":
         """Copies this template with all dependencies recursively inlined.
@@ -415,6 +600,113 @@ class Template:
 
         return templ
 
+    def substitute(
+        self,
+        bindings: Dict[str, Node],
+        warn_unused: bool = False,
+    ) -> "Template":
+        """Substitute the given bindings into this template.
+
+        **Always returns a Template**, whether or not the bindings covered every
+        parameter. Ask :py:attr:`is_complete` whether the result is ready to
+        become a graph, and call :py:meth:`to_graph` to make one. This is the
+        replacement for the deprecated :py:meth:`evaluate`, which returned
+        either a ``Template`` or an ``rdflib.Graph`` depending on the bindings
+        it happened to be given::
+
+            graph = template.substitute({"name": BLDG["ahu1"]}).to_graph()
+
+        :param bindings: map of parameter {name: RDF term} to substitute
+        :type bindings: Dict[str, Node]
+        :param warn_unused: if True, warn when the result still has unbound
+            parameters. Off by default -- with a single return type, an
+            incomplete result is an ordinary partial evaluation rather than
+            something that silently changed the return type. Defaults to False
+        :type warn_unused: bool
+        :return: a new template with the bindings applied
+        :rtype: Template
+        """
+        # TODO: handle datatype properties
+        templ = self.in_memory_copy()
+        # put all of the parameter names into the PARAM namespace so they can be
+        # directly subsituted in the template body
+        uri_bindings: Dict[Node, Node] = {PARAM[k]: v for k, v in bindings.items()}
+        # replace the param:<name> URIs in the template body with the bindings
+        replace_nodes(templ.body, uri_bindings)
+        if warn_unused and not templ.is_complete:
+            warnings.warn(
+                f"Parameters \"{', '.join(templ.parameters)}\" were not provided"
+                " during substitution",
+                UserWarning,
+            )
+        return templ
+
+    @property
+    def is_complete(self) -> bool:
+        """True iff every *required* parameter is bound.
+
+        Unbound optional parameters do not make a template incomplete -- they
+        are dropped by :py:meth:`to_graph`. Use
+        ``to_graph(require_optional_args=True)`` when optional parameters must
+        be bound too.
+
+        :return: whether this template can be turned into a graph
+        :rtype: bool
+        """
+        return self.parameters.issubset(set(self.optional_args))
+
+    @property
+    def missing_parameters(self) -> Set[str]:
+        """The required parameters that are still unbound. Empty iff
+        :py:attr:`is_complete`.
+
+        :return: set of unbound required parameters
+        :rtype: Set[str]
+        """
+        return self.parameters - set(self.optional_args)
+
+    def to_graph(
+        self,
+        namespaces: Optional[Dict[str, rdflib.Namespace]] = None,
+        require_optional_args: bool = False,
+    ) -> rdflib.Graph:
+        """Turn this template into a concrete graph.
+
+        Triples touching any *unbound optional* parameter are dropped, and
+        BuildingMOTIF's standard prefixes are bound on the result.
+
+        :param namespaces: additional namespace bindings to add to the graph,
+            defaults to None
+        :type namespaces: Optional[Dict[str, rdflib.Namespace]], optional
+        :param require_optional_args: if True, unbound *optional* parameters
+            also make the template incomplete, rather than being dropped;
+            defaults to False
+        :type require_optional_args: bool
+        :raises IncompleteTemplateError: if any parameter that must be bound is
+            not
+        :return: the graph this template evaluates to
+        :rtype: rdflib.Graph
+        """
+        if require_optional_args:
+            unbound = self.parameters
+        else:
+            unbound = self.missing_parameters
+        if unbound:
+            raise IncompleteTemplateError(self.name, unbound)
+
+        templ = self.in_memory_copy()
+        bind_prefixes(templ.body)
+        if namespaces:
+            for prefix, namespace in namespaces.items():
+                templ.body.bind(prefix, namespace)
+        if not require_optional_args:
+            # remove all triples that touch optional args that are still unbound;
+            # bound ones are no longer parameters, so intersecting with
+            # `parameters` is exactly "optional and still unbound"
+            for arg in set(templ.optional_args) & templ.parameters:
+                remove_triples_with_node(templ.body, PARAM[arg])
+        return templ.body
+
     def evaluate(
         self,
         bindings: Dict[str, Node],
@@ -423,6 +715,22 @@ class Template:
         warn_unused: bool = True,
     ) -> Union["Template", rdflib.Graph]:
         """Evaluate the template with the provided bindings.
+
+        .. deprecated::
+            Returns a ``Template`` *or* an ``rdflib.Graph`` depending on whether
+            the bindings happened to cover every parameter, so every caller has
+            to branch on ``isinstance``. Use :py:meth:`substitute` (always a
+            ``Template``) followed by :py:meth:`to_graph` (always a ``Graph``)::
+
+                # instead of:
+                result = template.evaluate(bindings)
+                if isinstance(result, Graph):
+                    model.add_graph(result)
+
+                # write:
+                filled = template.substitute(bindings)
+                if filled.is_complete:
+                    model.add_graph(filled.to_graph())
 
         If all parameters in the template have a provided binding, then a graph
         will be returned. Otherwise, a new Template will be returned that
@@ -449,14 +757,41 @@ class Template:
             parameters were provided
         :rtype: Union[Template, rdflib.Graph]
         """
-        # TODO: handle datatype properties
-        templ = self.in_memory_copy()
-        # put all of the parameter names into the PARAM namespace so they can be
-        # directly subsituted in the template body
-        uri_bindings: Dict[Node, Node] = {PARAM[k]: v for k, v in bindings.items()}
-        # replace the param:<name> URIs in the template body with the bindings
-        # provided in the call to evaluate()
-        replace_nodes(templ.body, uri_bindings)
+        warnings.warn(
+            "Template.evaluate() returns a Template or a Graph depending on its "
+            "bindings; use Template.substitute() (always a Template) and "
+            "Template.to_graph() (always a Graph) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._evaluate(
+            bindings,
+            namespaces=namespaces,
+            require_optional_args=require_optional_args,
+            warn_unused=warn_unused,
+        )
+
+    def _evaluate(
+        self,
+        bindings: Dict[str, Node],
+        namespaces: Optional[Dict[str, rdflib.Namespace]] = None,
+        require_optional_args: bool = False,
+        warn_unused: bool = True,
+    ) -> Union["Template", rdflib.Graph]:
+        """The un-deprecated body of :py:meth:`evaluate`, expressed in terms of
+        :py:meth:`substitute` / :py:meth:`to_graph` so the two paths cannot
+        drift. Exists so internal callers that genuinely want the old
+        either/or behavior do not have to emit a DeprecationWarning at
+        themselves.
+        """
+        templ = self.substitute(bindings, warn_unused=False)
+        complete = (
+            len(templ.parameters) == 0 if require_optional_args else templ.is_complete
+        )
+        if complete:
+            return templ.to_graph(
+                namespaces=namespaces, require_optional_args=require_optional_args
+            )
         leftover_params = (
             templ.parameters.difference(bindings.keys())
             if not require_optional_args
@@ -464,21 +799,6 @@ class Template:
                 bindings.keys()
             )
         )
-        # true if all parameters are now bound or only optional args are unbound
-        if len(templ.parameters) == 0 or (
-            not require_optional_args
-            and templ.parameters.issubset(set(self.optional_args))
-        ):
-            bind_prefixes(templ.body)
-            if namespaces:
-                for prefix, namespace in namespaces.items():
-                    templ.body.bind(prefix, namespace)
-            if not require_optional_args:
-                # remove all triples that touch unbound optional_args
-                unbound_optional_args = set(templ.optional_args) - set(bindings.keys())
-                for arg in unbound_optional_args:
-                    remove_triples_with_node(templ.body, PARAM[arg])
-            return templ.body
         if len(leftover_params) > 0 and warn_unused:
             warnings.warn(
                 f"Parameters \"{', '.join(leftover_params)}\" were not provided during evaluation",
@@ -504,9 +824,10 @@ class Template:
             for param in self.parameters
             if include_optional or param not in self.optional_args
         }
-        res = self.evaluate(bindings, require_optional_args=include_optional)
-        assert isinstance(res, rdflib.Graph)
-        return bindings, res
+        graph = self.substitute(bindings).to_graph(
+            require_optional_args=include_optional
+        )
+        return bindings, graph
 
     @property
     def defining_library(self) -> "Library":
@@ -621,7 +942,7 @@ class Template:
         workbook = Workbook()
         sheet = workbook.active
         if sheet is None:
-            raise Exception("Could not open active sheet in Workbook")
+            raise RuntimeError("openpyxl returned a Workbook with no active sheet")
 
         row_data = list(mandatory_parameters) + list(self.optional_args)
         for column_index, cell_value in enumerate(row_data, 1):

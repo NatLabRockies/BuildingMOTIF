@@ -43,7 +43,7 @@ from buildingmotif.dataclasses import Library
 bm = BuildingMOTIF("sqlite://") # in-memory
 
 # load in the library containing our template and get the template
-lib = Library.load(directory="csv-tutorial")
+lib = Library.from_directory("csv-tutorial")
 tstat_templ = lib.get_template_by_name('my-thermostat')
 ```
 
@@ -81,7 +81,7 @@ bm = BuildingMOTIF("sqlite://") # in-memory
 BLDG = Namespace("urn:my_site/")
 model = Model.create(BLDG) # create our model
 
-lib = Library.load(directory="csv-tutorial") # load in the library containing our template
+lib = Library.from_directory("csv-tutorial") # load in the library containing our template
 tstat_templ = lib.get_template_by_name('my-thermostat')
 
 csv = CSVIngress("data.csv") # the CSV file above

@@ -118,9 +118,9 @@ def create_model() -> flask.Response:
 
     current_app.building_motif.session.commit()
 
-    model = current_app.building_motif.table_connection.get_db_model(model.id)
+    db_model = current_app.building_motif.table_connection.get_db_model(model.id)
 
-    return jsonify(serialize(model)), status.HTTP_201_CREATED
+    return jsonify(serialize(db_model)), status.HTTP_201_CREATED
 
 
 @blueprint.route("/<models_id>/graph", methods=(["PATCH", "PUT"]))
@@ -150,9 +150,11 @@ def update_model_graph(models_id: int) -> flask.Response:
         return {"message": f"data is unreadable: {e}"}, status.HTTP_400_BAD_REQUEST
 
     if request.method == "PUT":
-        model.graph.remove((None, None, None))
-
-    model.add_graph(graph)
+        # PUT replaces the whole graph; copy-on-write keeps the previous
+        # contents intact until the session commits below.
+        model.replace_graph(graph)
+    else:
+        model.add_graph(graph)
 
     current_app.building_motif.session.commit()
 
@@ -204,9 +206,12 @@ def validate_model(models_id: int) -> flask.Response:
             }, status.HTTP_400_BAD_REQUEST
 
     # if shape_collections is empty, model.validate will default to the model's manifest
-    vaildation_context = model.validate(
-        shape_collections, error_on_missing_imports=False, shacl_engine=shacl_engine
-    )
+    try:
+        vaildation_context = model.validate(
+            shape_collections, error_on_missing_imports=False, shacl_engine=shacl_engine
+        )
+    except ValueError as e:
+        return {"message": str(e)}, status.HTTP_400_BAD_REQUEST
 
     return {
         "message": vaildation_context.report_string,

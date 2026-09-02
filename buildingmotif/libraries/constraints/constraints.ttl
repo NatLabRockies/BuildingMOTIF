@@ -25,12 +25,12 @@
 :hasExactCount a sh:SPARQLAskValidator ;
     sh:message "Not the right number {$exactCount} of instances of {$class}" ;
     sh:ask """
-        ASK WHERE {
+        ASK {
             {
-                SELECT * 
+                SELECT (COUNT(DISTINCT ?i) AS ?count)
                 WHERE { ?i a $class . }
-                HAVING (COUNT(DISTINCT ?i) = $exactCount)
             }
+            FILTER (?count = $exactCount)
         }""" ;
 .
 

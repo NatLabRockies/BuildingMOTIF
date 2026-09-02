@@ -237,15 +237,15 @@ pyproject_contents = tomlkit.load(pyproject_path.open("r"))
 # Query release list
 release_list = get_release_list(
     os.environ.get("PYPI_URL", "https://pypi.org/"),
-    pyproject_contents["tool"]["poetry"]["name"].lower(),
+    pyproject_contents["project"]["name"].lower(),
 )
 # Get current version from pyproject.toml
-version = pyproject_contents["tool"]["poetry"]["version"]
+version = pyproject_contents["project"]["version"]
 
 # Determine name for dev release
 next_dev_version = get_next_dev_version(version, release_list)
 print(next_dev_version)
-pyproject_contents["tool"]["poetry"]["version"] = next_dev_version
+pyproject_contents["project"]["version"] = next_dev_version
 
 # Update pyproject.toml
 tomlkit.dump(pyproject_contents, pyproject_path.open("w"))

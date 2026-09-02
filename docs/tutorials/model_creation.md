@@ -40,6 +40,29 @@ from buildingmotif import BuildingMOTIF
 bm = BuildingMOTIF("sqlite://") # in-memory instance
 ```
 
+Any missing tables are created for you, whether the database is in-memory or on disk, so there is nothing else to set up.
+
+```{margin}
+```{note}
+If your schema is managed out of band -- for example by the Alembic migrations in the repository's `migrations/` directory -- pass `create_tables=False` so BuildingMOTIF never touches it.
+```
+
+### Persisting your work
+
+For a *persistent* database, pass a file or Postgres URI instead. BuildingMOTIF spans two stores: RDF triples are written through to the graph store immediately, but the rows that point at them live in SQL and are only durable once the session is committed. Using the instance as a context manager handles that for you -- it commits when the block ends normally, rolls back if an exception escapes, and closes the instance either way:
+
+```python
+from buildingmotif import BuildingMOTIF
+from buildingmotif.dataclasses import Model
+
+with BuildingMOTIF("sqlite:///my_building.db") as bm:
+    model = Model.create("urn:bldg/")
+    model.add_graph(my_graph)
+# committed and closed here
+```
+
+Without the context manager you are responsible for calling `bm.session.commit()` yourself before the process ends, otherwise the triples you wrote will be on disk with no model referencing them.
+
 ```{margin}
 ```{note}
 A `Model` is an RDF graph representing part or all of a building.
@@ -75,7 +98,7 @@ The `model.graph` object is just the RDFLib Graph[^4] that stores the model. You
 `Libraries` are collections of Templates and Shapes.
 ```
 
-Before we can add semantic metadata to the model, we need to import some `Libraries`. We import libraries by calling `Library.load` in BuildingMOTIF. Libraries can be loaded from directories containing `.yml` and `.ttl` files (for Templates and Shapes, respectively), or from ontology files directly. The code below contains an example of importing the `brick` library, which is simply the Brick ontology. This allows BuildingMOTIF to take advantage of the classes and relationships defined by Brick when validating the model. Loading in these definitions also allows other libraries to refer to Brick definitions. You can also ask a library for the names of the templates it defines, which we'll limit to the first ten below.
+Before we can add semantic metadata to the model, we need to import some `Libraries`. We import libraries by calling `Library.from_ontology` (for an ontology file or graph) or `Library.from_directory` (for a directory) in BuildingMOTIF. Libraries can be loaded from directories containing `.yml` and `.ttl` files (for Templates and Shapes, respectively), or from ontology files directly. The code below contains an example of importing the `brick` library, which is simply the Brick ontology. This allows BuildingMOTIF to take advantage of the classes and relationships defined by Brick when validating the model. Loading in these definitions also allows other libraries to refer to Brick definitions. You can also ask a library for the names of the templates it defines, which we'll limit to the first ten below.
 
 ```{margin}
 ```{warning}
@@ -85,7 +108,7 @@ Currently, libraries in `../../buildingmotif/libraries/` are *included* and libr
 ```{code-cell}
 # load a library
 from buildingmotif.dataclasses import Library
-brick = Library.load(ontology_graph="../../libraries/brick/Brick-subset.ttl")
+brick = Library.from_ontology("../../libraries/brick/Brick-subset.ttl")
 
 # print the first 10 templates
 print("The Brick library contains the following templates:")
@@ -197,7 +220,7 @@ When creating a real Brick model, you would use BMS point names, equipment sched
 ```{code-cell}
 ahu_name = "Core_ZN-PSC_AC"
 ahu_binding_dict = {"name": BLDG[ahu_name]}
-ahu_graph = ahu_template.evaluate(ahu_binding_dict)
+ahu_graph = ahu_template.substitute(ahu_binding_dict).to_graph()
 
 # ahu_graph is just an instance of rdflib.Graph
 print(ahu_graph.serialize())
@@ -207,7 +230,7 @@ print(ahu_graph.serialize())
 
 ```{margin}
 ```{note}
-If using a persistent (disk-backed) instance of BuildingMOTIF instead of an in-memory instance, be sure to use `bm.session.commit()` to save your work after calling `add_graph`.
+If using a persistent (disk-backed) instance of BuildingMOTIF instead of an in-memory instance, run your work inside a `with BuildingMOTIF(...)` block (see "Persisting your work" above) or call `bm.session.commit()` yourself after calling `add_graph`.
 ```
 
 Now that we have an RDF graph representing an AHU, let's add it to the model using the `add_graph` function. 
@@ -229,25 +252,25 @@ clg_coil_template = brick.get_template_by_name(BRICK.Cooling_Coil)
 # add fan
 fan_name = f"{ahu_name}-Fan"
 fan_binding_dict = {"name": BLDG[fan_name]}
-fan_graph = fan_template.evaluate(fan_binding_dict)
+fan_graph = fan_template.substitute(fan_binding_dict).to_graph()
 model.add_graph(fan_graph)
 
 # add outdoor air/return air damper
 oa_ra_damper_name = f"{ahu_name}-OutsideDamper"
 oa_ra_damper_binding_dict = {"name": BLDG[oa_ra_damper_name]}
-oa_ra_damper_graph = oa_ra_damper_template.evaluate(oa_ra_damper_binding_dict)
+oa_ra_damper_graph = oa_ra_damper_template.substitute(oa_ra_damper_binding_dict).to_graph()
 model.add_graph(oa_ra_damper_graph)
 
 # add other damper
 damper_name = f"{ahu_name}-Damper"
 damper_binding_dict = {"name": BLDG[damper_name]}
-damper_graph = damper_template.evaluate(damper_binding_dict)
+damper_graph = damper_template.substitute(damper_binding_dict).to_graph()
 model.add_graph(damper_graph)
 
 # add clg coil
 clg_coil_name = f"{ahu_name}-Clg_Coil"
 clg_coil_binding_dict = {"name": BLDG[clg_coil_name]}
-clg_coil_graph = clg_coil_template.evaluate(clg_coil_binding_dict)
+clg_coil_graph = clg_coil_template.substitute(clg_coil_binding_dict).to_graph()
 model.add_graph(clg_coil_graph)
 
 # connect zone-temp, fan, dampers, and clg coil to AHU
@@ -279,7 +302,7 @@ htg_coil_template = brick.get_template_by_name(BRICK.Heating_Coil)
 # add htg coil
 htg_coil_name = f"{ahu_name}-Htg_Coil"
 htg_coil_binding = {"name": BLDG[htg_coil_name]}
-htg_coil_graph = htg_coil_template.evaluate(htg_coil_binding)
+htg_coil_graph = htg_coil_template.substitute(htg_coil_binding).to_graph()
 model.add_graph(htg_coil_graph)
 
 # connect htg coil to AHU

@@ -1,5 +1,6 @@
 import os
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
 from flask import Flask, current_app
 from flask_api import status
@@ -10,6 +11,7 @@ from buildingmotif.api.views.model import blueprint as model_blueprint
 from buildingmotif.api.views.parser import blueprint as parsers_blueprint
 from buildingmotif.api.views.template import blueprint as template_blueprint
 from buildingmotif.building_motif.building_motif import BuildingMOTIF
+from buildingmotif.shacl import DEFAULT_SHACL_ENGINE
 
 
 def _after_request(response):
@@ -44,23 +46,35 @@ def _after_error(error):
     return str(error), status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def create_app(DB_URI, shacl_engine: Optional[str] = "pyshacl"):
+def create_app(
+    DB_URI,
+    shacl_engine: Optional[str] = DEFAULT_SHACL_ENGINE,
+    graph_store_path: Optional[Union[str, Path]] = None,
+):
     """Creates a Flask API.
 
     :param db_uri: database URI
     :type db_uri: str
-    :param shacl_engine: the name of the engine to use for validation: "pyshacl" or "topquadrant". Using topquadrant
+    :param shacl_engine: the name of the engine to use for validation: "pyshifty", "pyshacl", or "topquadrant". "shifty" is
+        accepted as an alias for "pyshifty". Using topquadrant
         requires Java to be installed on this machine, and the "topquadrant" feature on BuildingMOTIF,
-        defaults to "pyshacl"
+        defaults to "pyshifty"
     :type shacl_engine: str, optional
+    :param graph_store_path: directory for the Oxigraph graph store. Defaults
+        to GRAPH_STORE_PATH or BuildingMOTIF's database-derived default.
     :return: flask app
     :rtype: Flask.app
     """
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
         DB_URI=DB_URI,
+        GRAPH_STORE_PATH=graph_store_path,
     )
-    app.building_motif = BuildingMOTIF(app.config["DB_URI"], shacl_engine=shacl_engine)
+    app.building_motif = BuildingMOTIF(
+        app.config["DB_URI"],
+        shacl_engine=shacl_engine,
+        graph_store_path=app.config["GRAPH_STORE_PATH"],
+    )
 
     app.after_request(_after_request)
     app.register_error_handler(Exception, _after_error)
@@ -79,5 +93,5 @@ if __name__ == "__main__":
     if db_uri is None:
         raise ValueError("Environment variable DB_URI not set.")
 
-    app = create_app(db_uri)
+    app = create_app(db_uri, graph_store_path=os.getenv("GRAPH_STORE_PATH"))
     app.run(debug=True, host="0.0.0.0", threaded=False)
