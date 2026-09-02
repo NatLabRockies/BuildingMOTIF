@@ -64,7 +64,7 @@ rich, repairable) vs `GraphDiff` (legacy, parsed, limited).
 
 **Never pass `shacl_engine="pyshacl"`.** `pyshifty` is a strict superset for this skill's
 purposes: standard W3C SHACL-Core validation, `ctx.report`/`ctx.report_string` as a
-conforming W3C report graph, and — as of `pyshifty` 0.2.7 — improved SPARQL-based
+conforming W3C report graph, and improved SPARQL-based
 SHACL-AF rule inference (`sh:rule` Triple Rules and SPARQL Construct Rules), which was the
 one place a gap could plausibly have pushed someone toward `pyshacl`. It's also the only
 engine that repairs. There is no case in this skill's workflows where `pyshacl` is the

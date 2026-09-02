@@ -190,10 +190,16 @@ env = bm.ontology_environment
 env.ontology_names()                      # IRIs of all registered ontologies
 env.graph_copy("https://brickschema.org/schema/Brick")   # fresh copy of one
 env.closure_copy("https://brickschema.org/schema/Brick") # (graph, [names]) closure
+env.closure_names("https://brickschema.org/schema/Brick") # names only; no merged graph
+env.iter_closure_triples("https://brickschema.org/schema/Brick") # stream closure triples
 env.missing_imports(some_graph)           # what owl:imports can't be resolved
 env.add("/path/to/onto.ttl", fetch_imports=True)         # register + resolve manually
 env.ensure_and_get_closure(graph, name)   # register if needed, return closure
 ```
+
+`closure_copy()` materializes a mutable merged graph, so use it only when the caller will
+change that graph. Use `closure_names()` for closure membership and
+`iter_closure_triples()` for read-only traversal; neither needs a merged RDF graph.
 
 `OntologyEnvironment.graph_name(graph)` static method returns a graph's ontology IRI (the
 subject of `a owl:Ontology`) or `None` — useful when you have a bare `rdflib.Graph` and
